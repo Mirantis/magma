@@ -19,13 +19,14 @@ allows different kind of operations: querying and creating of locations, equipme
 positions and links.
 
 Example of how to connect:
-    from pyinventory import InventoryClient
-    # since inventory is multi tenant system you will need to insert which
-    # partner you connect as
-    client = InventoryClient(email, password, "ipt")
-    location = client.addLocation(-1.22,2.66, ('City', 'Lima'))
-    client.addEquipment('HW1569', 'Antenna HW', location, {'altitude': 53.5})
-
+```
+from pyinventory import InventoryClient
+# since inventory is multi tenant system you will need to insert which
+# partner you connect as
+client = InventoryClient(email, password, "tenant_name")
+location = client.addLocation(-1.22,2.66, ('City', 'Brooklyn'))
+client.addEquipment('HW1569', 'Antenna HW', location, {'altitude': 53.5})
+```
 """
 
 
@@ -102,6 +103,12 @@ class InventoryClient(GraphqlClient):
         copy_equipment_with_all_attachments,
     )
     from .api.customer import add_customer, delete_customer, get_all_customers
+    from .api.port_type import (
+        add_equipment_port_type,
+        get_equipment_port_type,
+        edit_equipment_port_type,
+        delete_equipment_port_type,
+    )
 
     def __init__(
         self,

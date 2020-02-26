@@ -51,6 +51,9 @@ StoredSessionState SessionState::marshal()
   marshaled.imsi = imsi_;
   marshaled.session_id = session_id_;
   marshaled.core_session_id = core_session_id_;
+  marshaled.subscriber_quota_state = subscriber_quota_state_;
+  marshaled.tgpp_context = tgpp_context_;
+  marshaled.request_number = request_number_;
 
   return marshaled;
 }
@@ -58,7 +61,7 @@ StoredSessionState SessionState::marshal()
 SessionState::SessionState(
   const StoredSessionState &marshaled,
   StaticRuleStore &rule_store):
-  request_number_(2),
+  request_number_(marshaled.request_number),
   curr_state_(SESSION_ACTIVE),
   session_rules_(marshaled.rules, rule_store),
   charging_pool_(std::move(*ChargingCreditPool::unmarshal(marshaled.charging_pool))),
@@ -88,6 +91,8 @@ SessionState::Config cfg{};
   imsi_ = marshaled.imsi;
   session_id_ = marshaled.session_id;
   core_session_id_ = marshaled.core_session_id;
+  subscriber_quota_state_ = marshaled.subscriber_quota_state;
+  tgpp_context_ = marshaled.tgpp_context;
 }
 
 SessionState::SessionState(
@@ -155,10 +160,10 @@ void SessionState::add_used_credit(
   }
 }
 
-void SessionState::set_monitoring_quota_state(
+void SessionState::set_subscriber_quota_state(
     const magma::lte::SubscriberQuotaUpdate_Type state)
 {
-  monitoring_quota_state_ = state;
+  subscriber_quota_state_ = state;
 }
 
 bool SessionState::active_monitored_rules_exist()
@@ -234,9 +239,14 @@ void SessionState::start_termination(
   on_termination_callback_ = on_termination_callback;
 }
 
-bool SessionState::can_complete_termination()
+bool SessionState::can_complete_termination() const
 {
   return curr_state_ == SESSION_TERMINATING_FLOW_DELETED;
+}
+
+void SessionState::mark_as_awaiting_termination()
+{
+  curr_state_ = SESSION_TERMINATION_SCHEDULED;
 }
 
 void SessionState::complete_termination()
@@ -279,6 +289,16 @@ void SessionState::complete_termination()
   }
 }
 
+bool SessionState::is_dynamic_rule_installed(const std::string& rule_id)
+{
+  return session_rules_.is_dynamic_rule_installed(rule_id);
+}
+
+bool SessionState::is_static_rule_installed(const std::string& rule_id)
+{
+  return session_rules_.is_static_rule_installed(rule_id);
+}
+
 void SessionState::insert_dynamic_rule(const PolicyRule& dynamic_rule)
 {
   session_rules_.insert_dynamic_rule(dynamic_rule);
@@ -311,7 +331,7 @@ UsageMonitoringCreditPool& SessionState::get_monitor_pool()
   return monitor_pool_;
 }
 
-bool SessionState::is_same_config(const Config& new_config)
+bool SessionState::is_same_config(const Config& new_config) const
 {
   return config_.ue_ipv4.compare(new_config.ue_ipv4) == 0 &&
          config_.spgw_ipv4.compare(new_config.spgw_ipv4) == 0 &&
@@ -327,32 +347,37 @@ bool SessionState::is_same_config(const Config& new_config)
          config_.bearer_id == new_config.bearer_id;
 }
 
-std::string SessionState::get_session_id()
+std::string SessionState::get_session_id() const
 {
   return session_id_;
 }
 
-std::string SessionState::get_subscriber_ip_addr()
+std::string SessionState::get_subscriber_ip_addr() const
 {
   return config_.ue_ipv4;
 }
 
-std::string SessionState::get_mac_addr()
+std::string SessionState::get_mac_addr() const
 {
   return config_.mac_addr;
 }
 
-std::string SessionState::get_apn()
+std::string SessionState::get_msisdn() const
+{
+  return config_.msisdn;
+}
+
+std::string SessionState::get_apn() const
 {
   return config_.apn;
 }
 
-bool SessionState::is_radius_cwf_session()
+bool SessionState::is_radius_cwf_session() const
 {
   return (config_.rat_type == RATType::TGPP_WLAN);
 }
 
-std::string SessionState::get_radius_session_id()
+std::string SessionState::get_radius_session_id() const
 {
   return config_.radius_session_id;
 }
@@ -365,7 +390,7 @@ void SessionState::get_session_info(SessionState::SessionInfo& info)
   info.static_rules = session_rules_.get_static_rule_ids();
 }
 
-uint32_t SessionState::get_qci()
+uint32_t SessionState::get_qci() const
 {
   if (!config_.qos_info.enabled) {
     MLOG(MWARNING) << "QoS is not enabled.";
@@ -374,12 +399,12 @@ uint32_t SessionState::get_qci()
   return config_.qos_info.qci;
 }
 
-uint32_t SessionState::get_bearer_id()
+uint32_t SessionState::get_bearer_id() const
 {
   return config_.bearer_id;
 }
 
-bool SessionState::qos_enabled()
+bool SessionState::qos_enabled() const
 {
   return config_.qos_info.enabled;
 }
@@ -390,8 +415,17 @@ void SessionState::set_tgpp_context(const magma::lte::TgppContext& tgpp_context)
 }
 
 void SessionState::fill_protos_tgpp_context(
-  magma::lte::TgppContext* tgpp_context) {
+  magma::lte::TgppContext* tgpp_context) const
+{
   *tgpp_context = tgpp_context_;
+}
+
+uint32_t SessionState::get_request_number() {
+  return request_number_;
+}
+
+void SessionState::increment_request_number(uint32_t incr) {
+  request_number_ += incr;
 }
 
 } // namespace magma

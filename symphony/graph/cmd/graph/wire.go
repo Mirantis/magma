@@ -9,7 +9,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 
+	"github.com/facebookincubator/symphony/graph/event"
 	"github.com/facebookincubator/symphony/graph/graphgrpc"
 	"github.com/facebookincubator/symphony/graph/graphhttp"
 	"github.com/facebookincubator/symphony/graph/viewer"
@@ -18,20 +20,19 @@ import (
 	"github.com/facebookincubator/symphony/pkg/server"
 
 	"github.com/google/wire"
-	"gocloud.dev/pubsub"
 	"google.golang.org/grpc"
 )
 
 // NewApplication creates a new graph application.
 func NewApplication(ctx context.Context, flags *cliFlags) (*application, func(), error) {
 	wire.Build(
-		wire.FieldsOf(new(*cliFlags), "Log", "Census", "MySQL", "Orc8r"),
+		wire.FieldsOf(new(*cliFlags), "Log", "Census", "MySQL", "Event", "Orc8r"),
 		log.Set,
 		newApplication,
-		newTopic,
-		newSubscribeFunc,
 		newTenancy,
+		newAuthURL,
 		mysql.Open,
+		event.Set,
 		graphhttp.NewServer,
 		wire.Struct(new(graphhttp.Config), "*"),
 		graphgrpc.NewServer,
@@ -59,20 +60,10 @@ func newTenancy(logger log.Logger, dsn string) (*viewer.MySQLTenancy, error) {
 	return tenancy, nil
 }
 
-func newTopic(ctx context.Context, flags *cliFlags) (*pubsub.Topic, func(), error) {
-	topic, err := pubsub.OpenTopic(ctx, flags.PubSubURL)
+func newAuthURL(flags *cliFlags) (*url.URL, error) {
+	u, err := url.Parse(flags.AuthURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("opening events topic: %w", err)
+		return nil, fmt.Errorf("parsing auth url: %w", err)
 	}
-	return topic, func() { topic.Shutdown(ctx) }, nil
-}
-
-func newSubscribeFunc(flags *cliFlags) func(context.Context) (*pubsub.Subscription, error) {
-	return func(ctx context.Context) (*pubsub.Subscription, error) {
-		subscription, err := pubsub.OpenSubscription(ctx, flags.PubSubURL)
-		if err != nil {
-			return nil, fmt.Errorf("opening events subscription: %w", err)
-		}
-		return subscription, nil
-	}
+	return u, nil
 }

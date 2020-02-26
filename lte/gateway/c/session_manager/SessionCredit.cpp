@@ -260,10 +260,11 @@ bool SessionCredit::quota_exhausted(
 
 bool SessionCredit::should_deactivate_service()
 {
-  return credit_type_ == CreditType::CHARGING && !unlimited_quota_ &&
-    SessionCredit::TERMINATE_SERVICE_WHEN_QUOTA_EXHAUSTED &&
-    ((no_more_grant() && quota_exhausted()) ||
-      quota_exhausted(1, SessionCredit::EXTRA_QUOTA_MARGIN));
+  return credit_type_ == CreditType::CHARGING &&
+         !unlimited_quota_ &&
+         SessionCredit::TERMINATE_SERVICE_WHEN_QUOTA_EXHAUSTED &&
+         ((no_more_grant() && quota_exhausted()) ||
+           quota_exhausted(1, SessionCredit::EXTRA_QUOTA_MARGIN));
 }
 
 bool SessionCredit::validity_timer_expired()
@@ -378,6 +379,26 @@ bool SessionCredit::no_more_grant()
 
 RedirectServer SessionCredit::get_redirect_server() {
   return final_action_info_.redirect_server;
+}
+
+void SessionCredit::set_is_final(bool is_final) {
+  is_final_ = is_final;
+}
+
+void SessionCredit::set_reauth(ReAuthState reauth_state) {
+  reauth_state_ = reauth_state;
+}
+
+void SessionCredit::set_service_state(ServiceState service_state) {
+  service_state_ = service_state;
+}
+
+void SessionCredit::set_expiry_time(std::time_t expiry_time) {
+  expiry_time_ = expiry_time;
+}
+
+void SessionCredit::add_credit(uint64_t credit, Bucket bucket) {
+  buckets_[bucket] += credit;
 }
 
 } // namespace magma

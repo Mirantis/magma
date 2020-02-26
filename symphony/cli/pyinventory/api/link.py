@@ -12,8 +12,10 @@ from ..exceptions import (
     LinkNotFoundException,
     PortAlreadyOccupiedException,
 )
-from ..graphql.add_link_mutation import AddLinkInput, AddLinkMutation
+from ..graphql.add_link_input import AddLinkInput
+from ..graphql.add_link_mutation import AddLinkMutation
 from ..graphql.equipment_ports_query import EquipmentPortsQuery
+from ..graphql.link_side_input import LinkSide
 from ..graphql_client import GraphqlClient
 from ..reporter import FailedOperationException
 
@@ -72,26 +74,39 @@ def add_link(
     """Connects a link between two ports of two equipments.
 
         Args:
-            equipment_a (client.Equipment object): could be retrieved from the following apis:
-                * getEquipment
-                * getEquipmentInPosition
-                * addEquipment
-                * addEquipmentToPosition
+            equipment_a (pyinventory.consts.Equipment object): could be retrieved from the following apis:
+
+                * `pyinventory.api.equipment.get_equipment`
+
+                * `pyinventory.api.equipment.get_equipment_in_position`
+
+                * `pyinventory.api.equipment.add_equipment`
+
+                * `pyinventory.api.equipment.add_equipment_to_position`
+
             port_name_a (str): The name of port in equipment type
-            equipment_b (client.Equipment object): could be retrieved from the following apis:
-                * getEquipment
-                * getEquipmentInPosition
-                * addEquipment
-                * addEquipmentToPosition
+            equipment_b (pyinventory.consts.Equipment object): could be retrieved from the following apis:
+
+                * `pyinventory.api.equipment.get_equipment`
+
+                * `pyinventory.api.equipment.get_equipment_in_position`
+
+                * `pyinventory.api.equipment.add_equipment`
+
+                * `pyinventory.api.equipment.add_equipment_to_position`
+            
             port_name_b (str): The name of port in equipment type
 
-        Returns: client.Link object with id field
+        Returns: pyinventory.consts.Link object with id field
 
-        Raises: AssertionException if portName in any of the equipment does not exist, match more than one port
+        Raises: AssertionError if portName in any of the equipment does not exist, match more than one port
                                     or is already occupied by link
                 FailedOperationException for internal inventory error
 
-        Example: client.addLink(VSATEquipment, "Port A", MWEquipment, "Port B")
+        Example:
+        ```
+        client.addLink(VSATEquipment, "Port A", MWEquipment, "Port B")
+        ```
     """
 
     port_id_a = _find_port_definition_id(client, equipment_a, port_name_a)
@@ -99,8 +114,8 @@ def add_link(
 
     add_link_input = AddLinkInput(
         sides=[
-            AddLinkInput.LinkSide(equipment=equipment_a.id, port=port_id_a),
-            AddLinkInput.LinkSide(equipment=equipment_b.id, port=port_id_b),
+            LinkSide(equipment=equipment_a.id, port=port_id_a),
+            LinkSide(equipment=equipment_b.id, port=port_id_b),
         ],
         properties=[],
         serviceIds=[],

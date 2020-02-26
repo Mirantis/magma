@@ -4,7 +4,7 @@ info:
   title: Alertmanager Configurer Model Definitions and Paths
   description: Alertmanager Configurer REST APIs
   version: 1.0.1
-
+basePath: /v1
 paths:
   /{tenant_id}/receiver:
     post:
@@ -132,28 +132,28 @@ paths:
     get:
       summary: Retrieve alertmanager global config
       tags:
-        - Routes
+        - Global
       responses:
         '200':
           description: Alerting tree
           schema:
             $ref: '#/definitions/global_config'
-      post:
-        summary: Modify alertmanager global config
-        tags:
-          - Routes
-        parameters:
-          - in: body
-            name: global_config
-            description: Global config to be set
-            required: true
-            schema:
-              $ref: '#/definitions/global_config'
-        responses:
-          '200':
-            description: OK
-          default:
-            $ref: '#/responses/UnexpectedError'
+    post:
+      summary: Modify alertmanager global config
+      tags:
+        - Global
+      parameters:
+        - in: body
+          name: global_config
+          description: Global config to be set
+          required: true
+          schema:
+            $ref: '#/definitions/global_config'
+      responses:
+        '200':
+          description: OK
+        default:
+          $ref: '#/responses/UnexpectedError'
 
 parameters:
   tenant_id:

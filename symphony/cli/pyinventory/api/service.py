@@ -2,35 +2,33 @@
 # pyre-strict
 
 from dataclasses import asdict
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional
 
 from dacite import Config, from_dict
 
-from .._utils import PropertyValue, _get_graphql_properties, _make_property_types
+from .._utils import PropertyValue, format_properties, get_graphql_property_inputs
 from ..consts import (
     Customer,
     EquipmentPort,
     Link,
+    PropertyDefinition,
     Service,
     ServiceEndpoint,
     ServiceType,
 )
-from ..graphql.add_service_endpoint_mutation import (
-    AddServiceEndpointInput,
-    AddServiceEndpointMutation,
-)
+from ..graphql.add_service_endpoint_input import AddServiceEndpointInput
+from ..graphql.add_service_endpoint_mutation import AddServiceEndpointMutation
 from ..graphql.add_service_link_mutation import AddServiceLinkMutation
-from ..graphql.add_service_mutation import AddServiceMutation, ServiceCreateData
-from ..graphql.add_service_type_mutation import (
-    AddServiceTypeMutation,
-    ServiceTypeCreateData,
-)
-from ..graphql.property_kind_enum import PropertyKind
+from ..graphql.add_service_mutation import AddServiceMutation
+from ..graphql.add_service_type_mutation import AddServiceTypeMutation
+from ..graphql.property_type_input import PropertyTypeInput
 from ..graphql.remove_service_mutation import RemoveServiceMutation
 from ..graphql.remove_service_type_mutation import RemoveServiceTypeMutation
+from ..graphql.service_create_data_input import ServiceCreateData
 from ..graphql.service_details_query import ServiceDetailsQuery
 from ..graphql.service_endpoint_role_enum import ServiceEndpointRole
 from ..graphql.service_status_enum import ServiceStatus
+from ..graphql.service_type_create_data_input import ServiceTypeCreateData
 from ..graphql.service_type_services_query import ServiceTypeServicesQuery
 from ..graphql.service_types_query import ServiceTypesQuery
 from ..graphql_client import GraphqlClient
@@ -52,19 +50,10 @@ def add_service_type(
     client: GraphqlClient,
     name: str,
     hasCustomer: bool,
-    properties: List[Tuple[str, str, PropertyValue, bool]],
+    properties: List[PropertyDefinition],
 ) -> ServiceType:
-    property_types = _make_property_types(properties)
 
-    def property_type_to_kind(
-        key: str, value: Union[str, int, float, bool]
-    ) -> Union[str, int, float, bool, PropertyKind]:
-        return value if key != "type" else PropertyKind(value)
-
-    new_property_types = [
-        {k: property_type_to_kind(k, v) for k, v in property_type.items()}
-        for property_type in property_types
-    ]
+    new_property_types = format_properties(properties)
     result = AddServiceTypeMutation.execute(
         client,
         data=ServiceTypeCreateData(
@@ -72,9 +61,7 @@ def add_service_type(
             hasCustomer=hasCustomer,
             properties=[
                 from_dict(
-                    data_class=ServiceTypeCreateData.PropertyTypeInput,
-                    data=p,
-                    config=Config(strict=True),
+                    data_class=PropertyTypeInput, data=p, config=Config(strict=True)
                 )
                 for p in new_property_types
             ],
@@ -101,7 +88,7 @@ def add_service(
     links: List[Link],
 ) -> Service:
     property_types = client.serviceTypes[service_type].propertyTypes
-    properties = _get_graphql_properties(property_types, properties_dict)
+    properties = get_graphql_property_inputs(property_types, properties_dict)
     service_create_data = ServiceCreateData(
         name=name,
         externalId=external_id,
