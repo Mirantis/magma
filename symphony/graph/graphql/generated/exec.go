@@ -370,6 +370,7 @@ type ComplexityRoot struct {
 		BoolValue     func(childComplexity int) int
 		FilterType    func(childComplexity int) int
 		IDSet         func(childComplexity int) int
+		Key           func(childComplexity int) int
 		Operator      func(childComplexity int) int
 		PropertyValue func(childComplexity int) int
 		StringSet     func(childComplexity int) int
@@ -887,6 +888,7 @@ type ComplexityRoot struct {
 		Assignee            func(childComplexity int) int
 		CheckList           func(childComplexity int) int
 		CheckListCategories func(childComplexity int) int
+		CloseDate           func(childComplexity int) int
 		Comments            func(childComplexity int) int
 		CreationDate        func(childComplexity int) int
 		Description         func(childComplexity int) int
@@ -2448,6 +2450,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.GeneralFilter.IDSet(childComplexity), true
+
+	case "GeneralFilter.key":
+		if e.complexity.GeneralFilter.Key == nil {
+			break
+		}
+
+		return e.complexity.GeneralFilter.Key(childComplexity), true
 
 	case "GeneralFilter.operator":
 		if e.complexity.GeneralFilter.Operator == nil {
@@ -5595,6 +5604,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.WorkOrder.CheckListCategories(childComplexity), true
 
+	case "WorkOrder.closeDate":
+		if e.complexity.WorkOrder.CloseDate == nil {
+			break
+		}
+
+		return e.complexity.WorkOrder.CloseDate(childComplexity), true
+
 	case "WorkOrder.comments":
 		if e.complexity.WorkOrder.Comments == nil {
 			break
@@ -6985,6 +7001,7 @@ enum FilterEntity {
 
 type GeneralFilter {
   filterType: String!
+  key: String!
   operator: FilterOperator!
   stringValue: String
   idSet: [ID!]
@@ -7002,6 +7019,7 @@ type ReportFilter implements Node {
 
 input GeneralFilterInput {
   filterType: String!
+  key: String!
   operator: FilterOperator!
   stringValue: String
   idSet: [ID!]
@@ -7062,6 +7080,7 @@ type WorkOrder implements Node {
   checkList: [CheckListItem]!
   checkListCategories: [CheckListCategory!]!
   hyperlinks: [Hyperlink!]!
+  closeDate: Time
 }
 
 """
@@ -16217,6 +16236,43 @@ func (ec *executionContext) _GeneralFilter_filterType(ctx context.Context, field
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
 		return obj.FilterType, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _GeneralFilter_key(ctx context.Context, field graphql.CollectedField, obj *models.GeneralFilter) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "GeneralFilter",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Key, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -31399,6 +31455,40 @@ func (ec *executionContext) _WorkOrder_hyperlinks(ctx context.Context, field gra
 	return ec.marshalNHyperlink2ᚕᚖgithubᚗcomᚋfacebookincubatorᚋsymphonyᚋgraphᚋentᚐHyperlinkᚄ(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _WorkOrder_closeDate(ctx context.Context, field graphql.CollectedField, obj *ent.WorkOrder) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "WorkOrder",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CloseDate, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(time.Time)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOTime2timeᚐTime(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _WorkOrderConnection_edges(ctx context.Context, field graphql.CollectedField, obj *ent.WorkOrderConnection) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
@@ -35710,6 +35800,12 @@ func (ec *executionContext) unmarshalInputGeneralFilterInput(ctx context.Context
 			if err != nil {
 				return it, err
 			}
+		case "key":
+			var err error
+			it.Key, err = ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
 		case "operator":
 			var err error
 			it.Operator, err = ec.unmarshalNFilterOperator2githubᚗcomᚋfacebookincubatorᚋsymphonyᚋgraphᚋgraphqlᚋmodelsᚐFilterOperator(ctx, v)
@@ -39262,6 +39358,11 @@ func (ec *executionContext) _GeneralFilter(ctx context.Context, sel ast.Selectio
 			out.Values[i] = graphql.MarshalString("GeneralFilter")
 		case "filterType":
 			out.Values[i] = ec._GeneralFilter_filterType(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "key":
+			out.Values[i] = ec._GeneralFilter_key(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
@@ -43061,6 +43162,8 @@ func (ec *executionContext) _WorkOrder(ctx context.Context, sel ast.SelectionSet
 				}
 				return res
 			})
+		case "closeDate":
+			out.Values[i] = ec._WorkOrder_closeDate(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
