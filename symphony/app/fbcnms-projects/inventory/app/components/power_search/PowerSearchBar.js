@@ -8,6 +8,7 @@
  * @format
  */
 
+import type {Bookmark} from './PowerSearchContext';
 import type {
   EntityConfig,
   FilterConfig,
@@ -15,7 +16,6 @@ import type {
   FiltersQuery,
   SavedSearchConfig,
 } from '../comparison_view/ComparisonViewTypes';
-
 import type {FilterEntity} from '../../mutations/__generated__/AddReportFilterMutation.graphql';
 
 import * as React from 'react';
@@ -27,6 +27,7 @@ import PowerSearchContext from './PowerSearchContext';
 import Text from '@fbcnms/ui/components/design-system/Text';
 import classNames from 'classnames';
 import update from 'immutability-helper';
+import {LogEvents, ServerLogger} from '../../common/LoggingUtils';
 import {
   configToFilterQuery,
   doesFilterHasValue,
@@ -124,10 +125,10 @@ const PowerSearchBar = (props: Props) => {
 
   const [editingFilterIndex, setEditingFilterIndex] = useState((null: ?number));
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const [bookmarkName, setBookmarkName] = useState<?string>(null);
+  const [bookmark, setBookmark] = useState<?Bookmark>(null);
 
   const onFilterValueChanged = (index: number, filterValue: FilterValue) => {
-    setBookmarkName(null);
+    setBookmark(null);
     setFilterValues([
       ...filterValues.slice(0, index),
       filterValue,
@@ -140,7 +141,7 @@ const PowerSearchBar = (props: Props) => {
     const newFilterValues = update(filterValues, {
       $splice: [[index, 1]],
     });
-    setBookmarkName(null);
+    setBookmark(null);
     setFilterValues(newFilterValues);
     onFiltersChanged(newFilterValues);
     setEditingFilterIndex(null);
@@ -159,7 +160,7 @@ const PowerSearchBar = (props: Props) => {
     const newFilterValues = update(filterValues, {
       [index]: {$set: filterValue},
     });
-    setBookmarkName(null);
+    setBookmark(null);
     setFilterValues(newFilterValues);
     onFiltersChanged(newFilterValues);
   };
@@ -167,9 +168,13 @@ const PowerSearchBar = (props: Props) => {
   const savedSearch = React.useContext(AppContext).isFeatureEnabled(
     'saved_searches',
   );
+
   return (
     <PowerSearchContext.Provider
-      value={{bookmarkName: bookmarkName, setBookmark: setBookmarkName}}>
+      value={{
+        bookmark,
+        setBookmark,
+      }}>
       <div className={classNames(classes.root, props.className)}>
         <div className={classes.headerContainer}>
           {header != null && header}
@@ -221,7 +226,10 @@ const PowerSearchBar = (props: Props) => {
                   if (searchConfig == null) {
                     return null;
                   }
-                  setBookmarkName(searchConfig.label);
+                  ServerLogger.info(LogEvents.SAVED_SEARCH_LOADED, {
+                    bookmark_name: searchConfig.label,
+                  });
+                  setBookmark({id: searchConfig.id, name: searchConfig.label});
                   onFiltersChanged(configToFilterQuery(searchConfig));
                 } else {
                   const filterConfig = filterConfigs.find(

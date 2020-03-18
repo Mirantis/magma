@@ -499,6 +499,7 @@ type ComplexityRoot struct {
 		DeleteImage                              func(childComplexity int, entityType models.ImageEntity, entityID int, id int) int
 		DeleteProject                            func(childComplexity int, id int) int
 		DeleteProjectType                        func(childComplexity int, id int) int
+		DeleteReportFilter                       func(childComplexity int, id int) int
 		EditActionsRule                          func(childComplexity int, id int, input models.AddActionsRuleInput) int
 		EditEquipment                            func(childComplexity int, input models.EditEquipmentInput) int
 		EditEquipmentPort                        func(childComplexity int, input models.EditEquipmentPortInput) int
@@ -560,7 +561,7 @@ type ComplexityRoot struct {
 
 	Project struct {
 		Comments           func(childComplexity int) int
-		Creator            func(childComplexity int) int
+		CreatorName        func(childComplexity int) int
 		Description        func(childComplexity int) int
 		ID                 func(childComplexity int) int
 		Location           func(childComplexity int) int
@@ -886,7 +887,7 @@ type ComplexityRoot struct {
 	}
 
 	WorkOrder struct {
-		Assignee            func(childComplexity int) int
+		AssigneeName        func(childComplexity int) int
 		CheckList           func(childComplexity int) int
 		CheckListCategories func(childComplexity int) int
 		CloseDate           func(childComplexity int) int
@@ -1146,6 +1147,7 @@ type MutationResolver interface {
 	TechnicianWorkOrderCheckIn(ctx context.Context, workOrderID int) (*ent.WorkOrder, error)
 	AddReportFilter(ctx context.Context, input models.ReportFilterInput) (*ent.ReportFilter, error)
 	EditReportFilter(ctx context.Context, input models.EditReportFilterInput) (*ent.ReportFilter, error)
+	DeleteReportFilter(ctx context.Context, id int) (bool, error)
 }
 type ProjectResolver interface {
 	Type(ctx context.Context, obj *ent.Project) (*ent.ProjectType, error)
@@ -3268,6 +3270,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.DeleteProjectType(childComplexity, args["id"].(int)), true
 
+	case "Mutation.deleteReportFilter":
+		if e.complexity.Mutation.DeleteReportFilter == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_deleteReportFilter_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.DeleteReportFilter(childComplexity, args["id"].(int)), true
+
 	case "Mutation.editActionsRule":
 		if e.complexity.Mutation.EditActionsRule == nil {
 			break
@@ -3812,11 +3826,11 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		return e.complexity.Project.Comments(childComplexity), true
 
 	case "Project.creator":
-		if e.complexity.Project.Creator == nil {
+		if e.complexity.Project.CreatorName == nil {
 			break
 		}
 
-		return e.complexity.Project.Creator(childComplexity), true
+		return e.complexity.Project.CreatorName(childComplexity), true
 
 	case "Project.description":
 		if e.complexity.Project.Description == nil {
@@ -5592,11 +5606,11 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		return e.complexity.Viewer.User(childComplexity), true
 
 	case "WorkOrder.assignee":
-		if e.complexity.WorkOrder.Assignee == nil {
+		if e.complexity.WorkOrder.AssigneeName == nil {
 			break
 		}
 
-		return e.complexity.WorkOrder.Assignee(childComplexity), true
+		return e.complexity.WorkOrder.AssigneeName(childComplexity), true
 
 	case "WorkOrder.checkList":
 		if e.complexity.WorkOrder.CheckList == nil {
@@ -8310,6 +8324,7 @@ type Mutation {
   technicianWorkOrderCheckIn(workOrderId: ID!): WorkOrder!
   addReportFilter(input: ReportFilterInput!): ReportFilter!
   editReportFilter(input: EditReportFilterInput!): ReportFilter!
+  deleteReportFilter(id: ID!): Boolean!
 }
 
 type Subscription {
@@ -8900,6 +8915,20 @@ func (ec *executionContext) field_Mutation_deleteProjectType_args(ctx context.Co
 }
 
 func (ec *executionContext) field_Mutation_deleteProject_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 int
+	if tmp, ok := rawArgs["id"]; ok {
+		arg0, err = ec.unmarshalNID2int(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_deleteReportFilter_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
 	var arg0 int
@@ -21694,6 +21723,50 @@ func (ec *executionContext) _Mutation_editReportFilter(ctx context.Context, fiel
 	return ec.marshalNReportFilter2ᚖgithubᚗcomᚋfacebookincubatorᚋsymphonyᚋgraphᚋentᚐReportFilter(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _Mutation_deleteReportFilter(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_deleteReportFilter_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().DeleteReportFilter(rctx, args["id"].(int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _NetworkTopology_nodes(ctx context.Context, field graphql.CollectedField, obj *models.NetworkTopology) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
@@ -22135,7 +22208,7 @@ func (ec *executionContext) _Project_creator(ctx context.Context, field graphql.
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Creator, nil
+		return obj.CreatorName, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -30898,7 +30971,7 @@ func (ec *executionContext) _WorkOrder_assignee(ctx context.Context, field graph
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Assignee, nil
+		return obj.AssigneeName, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -40501,6 +40574,11 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			}
 		case "editReportFilter":
 			out.Values[i] = ec._Mutation_editReportFilter(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "deleteReportFilter":
+			out.Values[i] = ec._Mutation_deleteReportFilter(ctx, field)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
