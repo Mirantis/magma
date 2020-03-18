@@ -12,7 +12,6 @@ import type {
   AddReportFilterMutationResponse,
   AddReportFilterMutationVariables,
   FilterEntity,
-  FilterOperator,
 } from '../mutations/__generated__/AddReportFilterMutation.graphql';
 import type {
   DeleteReportFilterMutationResponse,
@@ -47,6 +46,7 @@ import nullthrows from '@fbcnms/util/nullthrows';
 import symphony from '../../../../fbcnms-packages/fbcnms-ui/theme/symphony';
 import {LogEvents, ServerLogger} from '../common/LoggingUtils';
 import {makeStyles} from '@material-ui/styles';
+import {stringToOperator} from './comparison_view/FilterUtils';
 import {useEffect} from 'react';
 import {usePowerSearch} from './power_search/PowerSearchContext';
 import {withSnackbar} from 'notistack';
@@ -91,6 +91,7 @@ type Props = WithSnackbarProps & {
 
 const FilterBookmark = (props: Props) => {
   const classes = useStyles();
+  const {filters, entity} = props;
   const {bookmark, setBookmark} = usePowerSearch();
 
   const [anchorEl, setAnchorEl] = React.useState(null);
@@ -126,7 +127,7 @@ const FilterBookmark = (props: Props) => {
       return {
         filterType: f.name.toUpperCase(),
         key: f.key,
-        operator: toOperator(f.operator),
+        operator: stringToOperator(f.operator),
         stringValue: f.stringValue,
         idSet: f.idSet,
         stringSet: f.stringSet,
@@ -142,24 +143,6 @@ const FilterBookmark = (props: Props) => {
     });
   };
 
-  const toOperator = (op: string): FilterOperator => {
-    switch (op) {
-      case 'is':
-        return 'IS';
-      case 'contains':
-        return 'CONTAINS';
-      case 'date_greater_than':
-        return 'DATE_GREATER_THAN';
-      case 'date_less_than':
-        return 'DATE_LESS_THAN';
-      case 'is_not_one_of':
-        return 'IS_NOT_ONE_OF';
-      case 'is_one_of':
-        return 'IS_ONE_OF';
-    }
-    throw new Error(`Operator ${op} is not supported`);
-  };
-
   const removeBookmark = () => {
     setSaving(true);
     const variables: DeleteReportFilterMutationVariables = {
@@ -167,9 +150,6 @@ const FilterBookmark = (props: Props) => {
     };
     const callbacks: MutationCallbacks<DeleteReportFilterMutationResponse> = {
       onCompleted: (response, errors) => {
-        ServerLogger.info(LogEvents.SAVED_SEARCH_DELETED, {
-          bookmark_name: bookmark?.name,
-        });
         if (errors && errors[0]) {
           props.enqueueSnackbar(errors[0].message, {
             children: key => (
@@ -179,6 +159,10 @@ const FilterBookmark = (props: Props) => {
                 variant="error"
               />
             ),
+          });
+        } else {
+          ServerLogger.info(LogEvents.SAVED_SEARCH_DELETED, {
+            bookmark_name: bookmark?.name,
           });
         }
         handleClose();
@@ -207,9 +191,6 @@ const FilterBookmark = (props: Props) => {
     };
     const callbacks: MutationCallbacks<EditReportFilterMutationResponse> = {
       onCompleted: (response, errors) => {
-        ServerLogger.info(LogEvents.SAVED_SEARCH_EDITED, {
-          bookmark_new_name: name,
-        });
         if (errors && errors[0]) {
           props.enqueueSnackbar(errors[0].message, {
             children: key => (
@@ -219,6 +200,10 @@ const FilterBookmark = (props: Props) => {
                 variant="error"
               />
             ),
+          });
+        } else {
+          ServerLogger.info(LogEvents.SAVED_SEARCH_EDITED, {
+            bookmark_name: name,
           });
         }
         handleClose();
@@ -242,7 +227,7 @@ const FilterBookmark = (props: Props) => {
 
   const saveFilterReport = () => {
     setSaving(true);
-    const filterInput = filtersQueryToFilterInput(props.filters);
+    const filterInput = filtersQueryToFilterInput(filters);
     const variables: AddReportFilterMutationVariables = {
       input: {
         name: name,
@@ -253,9 +238,6 @@ const FilterBookmark = (props: Props) => {
     const callbacks: MutationCallbacks<AddReportFilterMutationResponse> = {
       onCompleted: (response, errors) => {
         setSaving(false);
-        ServerLogger.info(LogEvents.SAVED_SEARCH_CREATED, {
-          bookmark_name: name,
-        });
         if (errors && errors[0]) {
           props.enqueueSnackbar(errors[0].message, {
             children: key => (
@@ -265,6 +247,10 @@ const FilterBookmark = (props: Props) => {
                 variant="error"
               />
             ),
+          });
+        } else {
+          ServerLogger.info(LogEvents.SAVED_SEARCH_CREATED, {
+            bookmark_name: name,
           });
         }
         setBookmark({
@@ -320,9 +306,21 @@ const FilterBookmark = (props: Props) => {
           ) : (
             <div className={classes.popup}>
               <div className={classes.text}>
-                <Text variant="body2" color="regular">
-                  <fbt desc="">SAVE SEARCH</fbt>
+                <Text variant="body1" color="regular">
+                  <fbt desc="">Saved Search</fbt>
                 </Text>
+                <div>
+                  <Text variant="subtitle2" color="gray">
+                    <fbt desc="">
+                      You can find it under the
+                      <fbt:param name="entity name">
+                        '`' +{entity[0] + entity.substring(1).toLowerCase()}
+                        +'`'
+                      </fbt:param>{' '}
+                      filter search bar.
+                    </fbt>
+                  </Text>
+                </div>
               </div>
               <TextInput
                 type="string"
@@ -343,11 +341,15 @@ const FilterBookmark = (props: Props) => {
                     {Strings.common.cancelButton}
                   </Button>
                   {isBookmark ? (
-                    <Button disabled={name.trim() == ''} onClick={editBookmark}>
+                    <Button
+                      disabled={name.trim() == '' || filters.length === 0}
+                      onClick={editBookmark}>
                       {Strings.common.saveButton}
                     </Button>
                   ) : (
-                    <Button disabled={name.trim() == ''} onClick={saveBookmark}>
+                    <Button
+                      disabled={name.trim() == '' || filters.length === 0}
+                      onClick={saveBookmark}>
                       {Strings.common.createButton}
                     </Button>
                   )}
