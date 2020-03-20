@@ -97,11 +97,11 @@ function userMiddleware(options: Options): express.Router {
       return;
     }
 
-    let isSSO = false;
+    let ssoSelectedType = 'none';
     try {
       if (req.organization) {
         const org = await req.organization();
-        isSSO = !!org.ssoEntrypoint;
+        ssoSelectedType = org.ssoSelectedType || 'none';
       }
     } catch (e) {
       logger.error('Error getting organization', e);
@@ -109,7 +109,8 @@ function userMiddleware(options: Options): express.Router {
 
     const appData: AppContextAppData = {
       csrfToken: req.csrfToken(),
-      ssoEnabled: isSSO,
+      ssoEnabled: ssoSelectedType !== 'none',
+      ssoSelectedType,
       csvCharset: null,
       enabledFeatures: [],
       tabs: [],
@@ -132,10 +133,36 @@ function userMiddleware(options: Options): express.Router {
     }),
   );
 
+  router.get(
+    '/login/oidc',
+    passport.authenticate('oidc', {
+      failureRedirect: options.loginFailureUrl,
+    }),
+  );
+  router.get('/login/oidc/callback', (req: FBCNMSRequest, res, next) => {
+    const to = req.query.to;
+    const loginSuccessUrl =
+      ensureRelativeUrl(Array.isArray(to) ? null : to) || '/';
+    passport.authenticate('oidc', (err, user, _info) => {
+      if (!user || err) {
+        logger.error('Error logging in with oidc: ' + err);
+        return res.redirect(options.loginFailureUrl);
+      }
+      req.logIn(user, err => {
+        if (err) {
+          next(err);
+          return;
+        }
+        res.redirect(loginSuccessUrl);
+      });
+    })(req, res, next);
+  });
+
   router.get('/logout', (req: FBCNMSRequest, res) => {
     if (req.isAuthenticated()) {
       req.logout();
     }
+    delete req.session.oidc;
     res.redirect('/');
   });
 
