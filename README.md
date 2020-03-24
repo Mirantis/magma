@@ -1,4 +1,4 @@
-# Magma
+# Magma - my demo tes
 
 [![facebookincubator](https://circleci.com/gh/facebookincubator/magma.svg?style=shield)](https://circleci.com/gh/facebookincubator/magma)
 
