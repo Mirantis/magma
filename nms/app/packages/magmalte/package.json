@@ -16,7 +16,7 @@
   "dependencies": {
     "@date-io/moment": "1.x",
     "@fbcnms/alarms": "^0.1.12",
-    "@fbcnms/auth": "^0.1.0",
+    "@fbcnms/auth": "^0.1.2",
     "@fbcnms/babel-register": "^0.1.2",
     "@fbcnms/magma-api": "^0.1.0",
     "@fbcnms/platform-server": "^0.1.12",

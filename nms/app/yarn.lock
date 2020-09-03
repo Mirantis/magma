@@ -1522,16 +1522,17 @@
     nearley "^2.19.0"
     notistack "^0.8.5"
 
-"@fbcnms/auth@^0.1.0":
-  version "0.1.0"
-  resolved "https://registry.yarnpkg.com/@fbcnms/auth/-/auth-0.1.0.tgz#5f64926f4d4c40b736f998f19736ab9152d0d1a9"
-  integrity sha512-GgptKjkQWiyypMvgAE6Qy4B6qj992gPtiiersMzmQ1t9+UWLDMe2q8GAsuOZSep1tAI54fP6T9ko8UruE0WB2Q==
+"@fbcnms/auth@^0.1.0", "@fbcnms/auth@^0.1.2":
+  version "0.1.2"
+  resolved "https://registry.yarnpkg.com/@fbcnms/auth/-/auth-0.1.2.tgz#80acd580226e7baae5747f00e5b2d76ec0f9cde5"
+  integrity sha512-xMxuv6TJXyAT2Wf/qJWqQXNkaCh/3tlwGlipvniDvL/BjhgZ4UHY1/IVmJRT2ILEIpjWmrjx8kkG7N2ihMuv4Q==
   dependencies:
     "@fbcnms/webpack-config" "^0.1.0"
     email-validator "^2.0.4"
     openid-client "2.4.5"
     passport "^0.4.0"
     passport-http "^0.3.0"
+    passport-http-bearer "^1.0.1"
     passport-local "^1.0.0"
     passport-saml "^1.0.0"
 
@@ -10241,6 +10242,13 @@ pascalcase@^0.1.1:
   version "0.1.1"
   resolved "https://registry.yarnpkg.com/pascalcase/-/pascalcase-0.1.1.tgz#b363e55e8006ca6fe21784d2db22bd15d7917f14"
   integrity sha1-s2PlXoAGym/iF4TS2yK9FdeRfxQ=
+
+passport-http-bearer@^1.0.1:
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/passport-http-bearer/-/passport-http-bearer-1.0.1.tgz#147469ea3669e2a84c6167ef99dbb77e1f0098a8"
+  integrity sha1-FHRp6jZp4qhMYWfvmdu3fh8AmKg=
+  dependencies:
+    passport-strategy "1.x.x"
 
 passport-http@^0.3.0:
   version "0.3.0"
