@@ -15,7 +15,9 @@ import logging
 from typing import Dict, NamedTuple
 
 import netifaces
-from google.protobuf.timestamp_pb2 import Timestamp
+from google.protobuf.timestamp_pb2 import (  # pylint: disable=no-name-in-module
+    Timestamp,
+)
 from lte.protos.session_manager_pb2 import (
     UPFAssociationState,
     UPFFeatureSet,
@@ -40,10 +42,9 @@ class NodeStateManager:
     TEID_RANGE_VALUE = 0
     ASSOC_MAX_RETRIES = 40
 
-    LocalNodeConfig = NamedTuple(
-        'LocalNodeConfig',
-        [('downlink_ip', str), ('node_identifier', str)],
-    )
+    class LocalNodeConfig(NamedTuple):
+        downlink_ip: str
+        node_identifier: str
 
     def __init__(self, loop, sessiond_setinterface, config):
         self.config = self._get_config(config)
@@ -110,23 +111,23 @@ class NodeStateManager:
     def send_association_setup_message(self):
 
         teid_range_indicate, teid_range_value =\
-                  self._get_teid_pool_range()
+            self._get_teid_pool_range()
 
         # Create Node association setup message
         assoc_message = \
-           UPFAssociationState(
-                           state_version=self._smf_assoc_version,
-                           assoc_state=UPFAssociationState.ESTABLISHED,
-                           feature_set=UPFFeatureSet(f_teid=True),
-                           recovery_time_stamp=self._recovery_timestamp.GetCurrentTime(),
-                           ip_resource_schema=[
-                               UserPlaneIPResourceSchema(
-                                   ipv4_address=self.config.downlink_ip,
-                                   teid_range_indication=teid_range_indicate,
-                                   teid_range=teid_range_value,
-                               ),
-                           ],
-           )
+            UPFAssociationState(
+                state_version=self._smf_assoc_version,
+                assoc_state=UPFAssociationState.ESTABLISHED,
+                feature_set=UPFFeatureSet(f_teid=True),
+                recovery_time_stamp=self._recovery_timestamp.GetCurrentTime(),
+                ip_resource_schema=[
+                    UserPlaneIPResourceSchema(
+                        ipv4_address=self.config.downlink_ip,
+                        teid_range_indication=teid_range_indicate,
+                        teid_range=teid_range_value,
+                    ),
+                ],
+            )
 
         self._assoc_mon_thread = hub.spawn(self._monitor_association, assoc_message)
 
@@ -139,7 +140,7 @@ class NodeStateManager:
 
         while assoc_established == False:
             assoc_established =\
-                    self._send_association_request_message(assoc_message)
+                self._send_association_request_message(assoc_message)
 
             if assoc_established == False:
                 retry_count += 1
@@ -158,8 +159,8 @@ class NodeStateManager:
 
         # Create Node association release message
         assoc_message = UPFAssociationState(
-                            state_version=self._smf_assoc_version + 1,
-                            assoc_state=UPFAssociationState.RELEASE,
+            state_version=self._smf_assoc_version + 1,
+            assoc_state=UPFAssociationState.RELEASE,
         )
 
         self._send_association_request_message(assoc_message)
@@ -171,23 +172,23 @@ class NodeStateManager:
         node_message = UPFNodeState(upf_id=self._node_id)
 
         teid_range_indicate, teid_range_value =\
-                         self._get_teid_pool_range()
+            self._get_teid_pool_range()
 
         # Create Node association setup message
         assoc_message = \
-           UPFAssociationState(
-                           state_version=self._smf_assoc_version,
-                           assoc_state=UPFAssociationState.ESTABLISHED,
-                           feature_set=UPFFeatureSet(f_teid=True),
-                           recovery_time_stamp=self._recovery_timestamp.GetCurrentTime(),
-                           ip_resource_schema=[
-                               UserPlaneIPResourceSchema(
-                                   ipv4_address=self.config.downlink_ip,
-                                   teid_range_indication=teid_range_indicate,
-                                   teid_range=teid_range_value,
-                               ),
-                           ],
-           )
+            UPFAssociationState(
+                state_version=self._smf_assoc_version,
+                assoc_state=UPFAssociationState.ESTABLISHED,
+                feature_set=UPFFeatureSet(f_teid=True),
+                recovery_time_stamp=self._recovery_timestamp.GetCurrentTime(),
+                ip_resource_schema=[
+                    UserPlaneIPResourceSchema(
+                        ipv4_address=self.config.downlink_ip,
+                        teid_range_indication=teid_range_indicate,
+                        teid_range=teid_range_value,
+                    ),
+                ],
+            )
 
         node_message.associaton_state.CopyFrom(assoc_message)
         return node_message

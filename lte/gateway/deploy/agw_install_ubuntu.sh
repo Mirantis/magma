@@ -24,7 +24,7 @@ DEPLOY_PATH="/home/$MAGMA_USER/magma/lte/gateway/deploy"
 SUCCESS_MESSAGE="ok"
 NEED_REBOOT=0
 WHOAMI=$(whoami)
-MAGMA_VERSION="${MAGMA_VERSION:-v1.6}"
+MAGMA_VERSION="${MAGMA_VERSION:-v1.8}"
 CLOUD_INSTALL="cloud"
 GIT_URL="${GIT_URL:-https://github.com/magma/magma.git}"
 INTERFACE_DIR="/etc/network/interfaces.d"
@@ -185,7 +185,7 @@ if [ "$MAGMA_INSTALLED" != "$SUCCESS_MESSAGE" ]; then
   apt-get -y install curl make virtualenv zip rsync git software-properties-common python3-pip python-dev apt-transport-https
 
   alias python=python3
-  pip3 install ansible
+  pip3 install ansible==5.10.0
 
   git clone "${GIT_URL}" /home/$MAGMA_USER/magma
   cd /home/$MAGMA_USER/magma || exit

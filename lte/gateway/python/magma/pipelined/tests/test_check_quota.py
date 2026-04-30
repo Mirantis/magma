@@ -32,7 +32,6 @@ from magma.pipelined.tests.pipelined_test_util import (
 )
 
 
-@unittest.skip("Skip test, currenlty flaky")
 class UEMacAddressTest(unittest.TestCase):
     BRIDGE = 'testing_br'
     IFACE = 'testing_br'
@@ -43,7 +42,7 @@ class UEMacAddressTest(unittest.TestCase):
     @classmethod
     @unittest.mock.patch(
         'netifaces.ifaddresses',
-        return_value=[[{'addr': '00:11:22:33:44:55'}]],
+        return_value={0: [{'addr': '00:11:22:33:44:55'}]},
     )
     @unittest.mock.patch('netifaces.AF_LINK', 0)
     def setUpClass(cls, *_):

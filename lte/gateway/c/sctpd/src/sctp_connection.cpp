@@ -11,21 +11,31 @@
  * limitations under the License.
  */
 
-#include "sctp_connection.h"
+#include "lte/gateway/c/sctpd/src/sctp_connection.hpp"
 
-#include <arpa/inet.h>
+// IWYU pragma: no_include <linux/sctp.h>
+
 #include <assert.h>
+#include <bits/exception.h>
 #include <errno.h>
+#include <glog/logging.h>
+#include <lte/protos/sctpd.pb.h>
+#include <netinet/in.h>
 #include <netinet/sctp.h>
 #include <stdlib.h>
-#include <string.h>
 #include <sys/epoll.h>
-#include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <exception>
+#include <map>
+#include <ostream>
+#include <stdexcept>
+#include <utility>
 
-#include "sctpd.h"
-#include "util.h"
+#include "lte/gateway/c/sctpd/src/sctp_assoc.hpp"
+#include "lte/gateway/c/sctpd/src/sctpd.hpp"
+#include "lte/gateway/c/sctpd/src/util.hpp"
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
 
 namespace magma {
 namespace sctpd {
@@ -66,17 +76,18 @@ void SctpConnection::Close() {
   close(_sctp_desc.sd());
 }
 
-void SctpConnection::Send(
-    uint32_t assoc_id, uint32_t stream, const std::string& msg) {
+void SctpConnection::Send(uint32_t assoc_id, uint32_t stream,
+                          const std::string& msg) {
   assert(_thread != nullptr);
 
   auto assoc = _sctp_desc.getAssoc(assoc_id);
   assert(assoc.sd >= 0);
 
   auto buf = msg.c_str();
-  auto n   = msg.size();
-  auto rc  = sctp_sendmsg(
-      assoc.sd, buf, n, NULL, 0, htonl(assoc.ppid), 0, stream, 0, 0);
+  auto n = msg.size();
+  // timetolive of 250ms is set as the default sack_timeout is 200ms.
+  auto rc = sctp_sendmsg(assoc.sd, buf, n, NULL, 0, htonl(assoc.ppid), 0,
+                         stream, 250, 0);
 
   if (rc < 0) {
     MLOG_perror("sctp_sendmsg");
@@ -96,7 +107,7 @@ void SctpConnection::Listen() {
   }
 
   struct epoll_event event;
-  event.events  = EPOLLIN;
+  event.events = EPOLLIN;
   event.data.fd = server_fd;
 
   if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event) < 0) {
@@ -107,7 +118,7 @@ void SctpConnection::Listen() {
   struct epoll_event events[NUM_EPOLL_EVENTS];
 
   while (!_done) {
-    int timeout    = 100;  // milliseconds = .1s
+    int timeout = 100;  // milliseconds = .1s
     int num_events = epoll_wait(epoll_fd, events, NUM_EPOLL_EVENTS, timeout);
 
     switch (num_events) {
@@ -119,7 +130,9 @@ void SctpConnection::Listen() {
       case 0: {  // timed out
         continue;
       }
-      default: { break; }
+      default: {
+        break;
+      }
     }
 
     for (int i = 0; i < num_events; i++) {
@@ -133,7 +146,7 @@ void SctpConnection::Listen() {
         }
 
         struct epoll_event event;
-        event.events  = EPOLLIN;
+        event.events = EPOLLIN;
         event.data.fd = client_sd;
 
         if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_sd, &event) < 0) {
@@ -151,6 +164,8 @@ void SctpConnection::Listen() {
             MLOG_perror("epoll_ctl");
             std::terminate();
           }
+          shutdown(client_sd, SHUT_RDWR);
+          close(client_sd);
         }
 
         if (status == SctpStatus::NEW_ASSOC_NOTIF_FAILED) {
@@ -159,6 +174,14 @@ void SctpConnection::Listen() {
       }
     }
   }
+}
+
+SctpStatus SctpConnection::HandleSendFailure(
+    int sd, struct sctp_send_failed* send_failed) {
+  MLOG(MDEBUG) << "Received SCTP_SEND_FAILED for sd: " << sd
+               << " assoc_id:" << send_failed->ssf_assoc_id
+               << " with ssf_error: " << send_failed->ssf_error;
+  return SctpStatus::FAILURE;
 }
 
 SctpStatus SctpConnection::HandleClientSock(int sd) {
@@ -178,7 +201,7 @@ SctpStatus SctpConnection::HandleClientSock(int sd) {
   }
 
   if (flags & MSG_NOTIFICATION) {
-    auto notif = (union sctp_notification*) msg;
+    auto notif = (union sctp_notification*)msg;
 
     switch (notif->sn_header.sn_type) {
       case SCTP_SHUTDOWN_EVENT: {
@@ -188,6 +211,10 @@ SctpStatus SctpConnection::HandleClientSock(int sd) {
       case SCTP_ASSOC_CHANGE: {
         MLOG(MDEBUG) << "SCTP association change event received";
         return HandleAssocChange(sd, &notif->sn_assoc_change);
+      }
+      case SCTP_SEND_FAILED: {
+        MLOG(MDEBUG) << "SCTP send failed event received";
+        return HandleSendFailure(sd, &notif->sn_send_failed);
       }
       default: {
         MLOG(MWARNING) << "Unhandled notification type "
@@ -200,7 +227,7 @@ SctpStatus SctpConnection::HandleClientSock(int sd) {
     SctpAssoc&& assoc = SctpAssoc();
     try {
       assoc = _sctp_desc.getAssoc(sinfo.sinfo_assoc_id);
-    } catch (std::out_of_range) {
+    } catch (const std::out_of_range&) {
       MLOG(MERROR) << "Received sctp msg for untracked assoc: "
                    << std::to_string(sinfo.sinfo_assoc_id);
       // TODO: handle this case
@@ -222,16 +249,15 @@ SctpStatus SctpConnection::HandleClientSock(int sd) {
                  << std::to_string(sinfo.sinfo_assoc_id) << ":"
                  << std::to_string(sinfo.sinfo_stream);
 
-    _handler.HandleRecv(
-        ntohl(sinfo.sinfo_ppid), sinfo.sinfo_assoc_id, sinfo.sinfo_stream,
-        std::string(msg, n));
+    _handler.HandleRecv(ntohl(sinfo.sinfo_ppid), sinfo.sinfo_assoc_id,
+                        sinfo.sinfo_stream, std::string(msg, n));
 
     return SctpStatus::OK;
   }
 }
 
-SctpStatus SctpConnection::HandleAssocChange(
-    int sd, struct sctp_assoc_change* change) {
+SctpStatus SctpConnection::HandleAssocChange(int sd,
+                                             struct sctp_assoc_change* change) {
   switch (change->sac_state) {
     case SCTP_COMM_UP: {
       return HandleComUp(sd, change);
@@ -251,14 +277,14 @@ SctpStatus SctpConnection::HandleAssocChange(
   }
 }
 
-SctpStatus SctpConnection::HandleComUp(
-    int sd, struct sctp_assoc_change* change) {
+SctpStatus SctpConnection::HandleComUp(int sd,
+                                       struct sctp_assoc_change* change) {
   SctpAssoc assoc;
 
-  assoc.sd         = sd;
-  assoc.ppid       = _ppid;
-  assoc.assoc_id   = change->sac_assoc_id;
-  assoc.instreams  = change->sac_inbound_streams;
+  assoc.sd = sd;
+  assoc.ppid = _ppid;
+  assoc.assoc_id = change->sac_assoc_id;
+  assoc.instreams = change->sac_inbound_streams;
   assoc.outstreams = change->sac_outbound_streams;
 
   _sctp_desc.addAssoc(assoc);

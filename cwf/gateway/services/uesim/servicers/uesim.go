@@ -15,6 +15,7 @@ package servicers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -22,17 +23,16 @@ import (
 	"strings"
 	"time"
 
-	"fbc/lib/go/radius"
 	cwfprotos "magma/cwf/cloud/go/protos"
 	"magma/orc8r/cloud/go/blobstore"
 	"magma/orc8r/cloud/go/storage"
 	"magma/orc8r/lib/go/protos"
 
-	"context"
 	"github.com/golang/glog"
-	"github.com/pkg/errors"
+	"github.com/hashicorp/go-multierror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"layeh.com/radius"
 )
 
 const (
@@ -47,7 +47,7 @@ const (
 
 // UESimServer tracks all the UEs being simulated.
 type UESimServer struct {
-	store blobstore.BlobStorageFactory
+	store blobstore.StoreFactory
 	cfg   *UESimConfig
 }
 
@@ -126,7 +126,7 @@ func (summary *TrafficSummary) ToProto() *cwfprotos.TrafficSummary {
 
 // NewUESimServer initializes a UESimServer with an empty store map.
 // Output: a new UESimServer
-func NewUESimServer(factory blobstore.BlobStorageFactory) (*UESimServer, error) {
+func NewUESimServer(factory blobstore.StoreFactory) (*UESimServer, error) {
 	config, err := GetUESimConfig()
 	if err != nil {
 		return nil, err
@@ -187,7 +187,7 @@ func (srv *UESimServer) Authenticate(ctx context.Context, id *cwfprotos.Authenti
 
 	resultBytes, err := result.Encode()
 	if err != nil {
-		return &cwfprotos.AuthenticateResponse{}, errors.Wrap(err, "Error encoding Radius packet")
+		return &cwfprotos.AuthenticateResponse{}, fmt.Errorf("Error encoding Radius packet: %w", err)
 	}
 	radiusPacket := &cwfprotos.AuthenticateResponse{RadiusPacket: resultBytes}
 
@@ -197,15 +197,15 @@ func (srv *UESimServer) Authenticate(ctx context.Context, id *cwfprotos.Authenti
 func (srv *UESimServer) Disconnect(ctx context.Context, id *cwfprotos.DisconnectRequest) (*cwfprotos.DisconnectResponse, error) {
 	radiusP, err := srv.MakeAccountingStopRequest(id.GetCalledStationID())
 	if err != nil {
-		return nil, errors.Wrap(err, "Error making Accounting Stop Radius message")
+		return nil, fmt.Errorf("Error making Accounting Stop Radius message: %w", err)
 	}
 	response, err := radius.Exchange(context.Background(), radiusP, srv.cfg.radiusAcctAddress)
 	if err != nil {
-		return nil, errors.Wrap(err, "Error exchanging Radius message")
+		return nil, fmt.Errorf("Error exchanging Radius message: %w", err)
 	}
 	encoded, err := response.Encode()
 	if err != nil {
-		return nil, errors.Wrap(err, "Error encoding Radius packet")
+		return nil, fmt.Errorf("Error encoding Radius packet: %w", err)
 	}
 	return &cwfprotos.DisconnectResponse{RadiusPacket: encoded}, nil
 }
@@ -213,10 +213,10 @@ func (srv *UESimServer) Disconnect(ctx context.Context, id *cwfprotos.Disconnect
 // GenTraffic generates traffic using a remote iperf server. The command to be sent is configured using GenTrafficRequest
 // Note that GenTrafficRequest have parameter that configures iperf client itself, and parameters that configure UESim
 // Configuration parameters related to the UESim client itself (not iperf) are:
-// - timeout: if different than 0 stops iperf externally after n seconds. Use it to avoid the test to hang on a unreachable server
-// 	 If the test timesout it will be counted as an error. By default this is 0 (DISABLED)
-// - disableServerReachabilityCheck: enables/disables the function to request the server to send the UE small packets to check if
-//   the server is alive. By default this is ENABLED
+//   - timeout: if different than 0 stops iperf externally after n seconds. Use it to avoid the test to hang on a unreachable server
+//     If the test timesout it will be counted as an error. By default this is 0 (DISABLED)
+//   - disableServerReachabilityCheck: enables/disables the function to request the server to send the UE small packets to check if
+//     the server is alive. By default this is ENABLED
 func (srv *UESimServer) GenTraffic(ctx context.Context, req *cwfprotos.GenTrafficRequest) (*cwfprotos.GenTrafficResponse, error) {
 	if req == nil {
 		return &cwfprotos.GenTrafficResponse{}, fmt.Errorf("Nil GenTrafficRequest provided")
@@ -259,28 +259,29 @@ func blobToUE(blob blobstore.Blob) (*cwfprotos.UEConfig, error) {
 }
 
 // getUE gets the UE with the specified IMSI from the blobstore.
-func getUE(blobStoreFactory blobstore.BlobStorageFactory, imsi string) (ue *cwfprotos.UEConfig, err error) {
+func getUE(blobStoreFactory blobstore.StoreFactory, imsi string) (ue *cwfprotos.UEConfig, err error) {
 	store, err := blobStoreFactory.StartTransaction(nil)
 	if err != nil {
-		err = errors.Wrap(err, "Error while starting transaction")
+		err = fmt.Errorf("Error while starting transaction: %w", err)
 		return
 	}
 	defer func() {
-		switch err {
-		case nil:
+		if err == nil {
 			if commitErr := store.Commit(); commitErr != nil {
-				err = errors.Wrap(err, "Error while committing transaction")
+				err = fmt.Errorf("Error while committing transaction: %w", commitErr)
 			}
-		default:
+		} else {
 			if rollbackErr := store.Rollback(); rollbackErr != nil {
-				glog.Errorf("Error while rolling back transaction: %s", err)
+				glog.Errorf("Error while rolling back transaction: %s", rollbackErr)
+				errs := multierror.Append(err, fmt.Errorf("Error while rolling back transaction: %w", rollbackErr))
+				err = errs.ErrorOrNil()
 			}
 		}
 	}()
 
 	blob, err := store.Get(networkIDPlaceholder, storage.TK{Type: blobTypePlaceholder, Key: imsi})
 	if err != nil {
-		err = errors.Wrap(err, "Error getting UE with specified IMSI")
+		err = fmt.Errorf("Error getting UE with specified IMSI: %w", err)
 		return
 	}
 	ue, err = blobToUE(blob)
@@ -380,10 +381,11 @@ func executeCommandWithRetries(command string, argList []string) (*IperfResponse
 		if !isIperfErrorDueToControlMessage(err) {
 			break
 		}
-		err_msg := "Retried IPERF command due to unable to receive control message"
-		glog.Warning(err_msg)
-		err = errors.Wrap(err, err_msg)
+		glog.Warning("Retried IPERF command due to an specific error")
 		time.Sleep(300 * time.Millisecond)
+	}
+	if err != nil {
+		err = fmt.Errorf("executeCommandWithRetries had error but didn't retry: %s", err)
 	}
 	return res, err
 }
@@ -395,9 +397,9 @@ func executeCommand(command string, argList []string) (*IperfResponse, error) {
 	rawOutput, err := cmd.Output()
 	output, _ := (&IperfResponse{}).FromBytes(rawOutput)
 	if err != nil {
-		newError := errors.Wrap(err, fmt.Sprintf(
+		newError := fmt.Errorf(fmt.Sprintf(
 			"error while executing \"%s %s\"\n output:\n%v",
-			command, strings.Join(argList, " "), string(rawOutput)))
+			command, strings.Join(argList, " "), string(rawOutput))+": %w", err)
 		glog.Error(newError)
 		return output, newError
 	}

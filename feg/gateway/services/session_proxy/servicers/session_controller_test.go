@@ -37,6 +37,7 @@ import (
 	"magma/feg/gateway/services/session_proxy/servicers"
 	"magma/gateway/mconfig"
 	"magma/lte/cloud/go/protos"
+	"magma/orc8r/cloud/go/test_utils"
 	orcprotos "magma/orc8r/lib/go/protos"
 )
 
@@ -60,7 +61,7 @@ var (
 	initialRequestedUnits = &protos.RequestedUnits{Total: 10000, Tx: 10000, Rx: 10000}
 )
 
-//  ---- MockMultiplexor ----
+// ---- MockMultiplexor ----
 type MockMultiplexor struct {
 	imsiToIndex map[uint64]int
 }
@@ -338,6 +339,7 @@ func standardUsageTest(
 	}
 	assert.ElementsMatch(t, allRuleIDs, []string{"static_rule_1", "static_rule_2", "base_rule_1", "base_rule_2"})
 
+	emptyRedirect := &protos.RedirectInformation{Support: 0, AddressType: 0, ServerAddress: ""}
 	for _, rule := range createResponse.DynamicRules {
 		if rule.PolicyRule.Id == "dyn_rule_20" {
 			assert.Equal(t, protos.RedirectInformation_ENABLED, rule.PolicyRule.Redirect.Support)
@@ -348,7 +350,7 @@ func standardUsageTest(
 			assert.Equal(t, &timestamp.Timestamp{Seconds: 1}, rule.ActivationTime)
 			assert.Equal(t, &timestamp.Timestamp{Seconds: 2}, rule.DeactivationTime)
 		} else if rule.PolicyRule.Id == "dyn_rule_21" {
-			assert.Empty(t, rule.PolicyRule.Redirect)
+			test_utils.AssertMessagesEqual(t, emptyRedirect, rule.PolicyRule.Redirect)
 			assert.Nil(t, rule.PolicyRule.Qos)
 			assert.Equal(t, &timestamp.Timestamp{Seconds: 1}, rule.ActivationTime)
 			assert.Equal(t, &timestamp.Timestamp{Seconds: 2}, rule.DeactivationTime)
@@ -546,8 +548,10 @@ func TestSessionControllerTimeouts(t *testing.T) {
 	mockConfig := getTestConfig()
 
 	// set small timeouts for this test to force timeout quicker
-	mockConfig[0].RequestTimeout = time.Millisecond
-	mockConfig[1].RequestTimeout = time.Millisecond
+	mockConfig[0].RequestTimeoutGx = time.Millisecond
+	mockConfig[0].RequestTimeoutGy = time.Millisecond
+	mockConfig[1].RequestTimeoutGx = time.Millisecond
+	mockConfig[1].RequestTimeoutGy = time.Millisecond
 
 	mockControlParams := getMockControllerParams(mockConfig)
 	mockPolicyDBClient := &mockPolicyDB.PolicyDBClient{}
@@ -596,7 +600,7 @@ func TestSessionControllerTimeouts(t *testing.T) {
 	).Return(nil).Run(func(args mock.Arguments) {
 		done := args.Get(1).(chan interface{})
 		request := args.Get(2).(*gy.CreditControlRequest)
-		if request.RequestNumber%1 == 0 {
+		if request.RequestNumber%2 == 1 {
 			return
 		} else {
 			done <- &gy.CreditControlAnswer{
@@ -1178,7 +1182,8 @@ func getTestConfig() []*servicers.SessionControllerConfig {
 				Addr:     fmt.Sprintf("127.0.0.1:%s", pcrf_port),
 				Protocol: "tcp"},
 			},
-			RequestTimeout: 3 * time.Second,
+			RequestTimeoutGx: 3 * time.Second,
+			RequestTimeoutGy: 3 * time.Second,
 		}
 		serverCfg[i] = srv
 	}

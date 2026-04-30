@@ -38,8 +38,8 @@ magma-gen-meta:
       filename: machine_info_swaggergen.go
     - go-struct-name: NetworkInterface
       filename: network_interface_swaggergen.go
-    - go-struct-name: Package
-      filename: package_swaggergen.go
+    - go-struct-name: DistributionPackage
+      filename: distribution_package_swaggergen.go
     - go-struct-name: PlatformInfo
       filename: platform_info_swaggergen.go
     - go-struct-name: Route
@@ -1451,12 +1451,27 @@ definitions:
       upload_mme_log:
         type: boolean
         example: false
+      number_of_lines_in_log:
+        type: integer
+        format: uint32
+        example: 1000
       sample_rate:
         type: number
         format: float
         minimum: 0
         maximum: 1
         example: 0.5
+      exclusion_patterns:
+        type: array
+        items:
+          type: string
+        minItems: 0
+        description: log message patterns that are excluded (regex substring match)
+    default:
+      upload_mme_log: false
+      number_of_lines_in_log: 0
+      sample_rate: 1
+      exclusion_patterns: []
 
   state_config:
     type: object
@@ -1473,7 +1488,6 @@ definitions:
     type: object
     description: Full representation of a generic gateway
     required:
-      - device
       - id
       - name
       - description
@@ -1482,6 +1496,8 @@ definitions:
     properties:
       device:
         $ref: '#/definitions/gateway_device'
+      registration_info:
+        $ref: './orc8r-swagger-common.yml#/definitions/registration_info'
       id:
         $ref: './orc8r-swagger-common.yml#/definitions/gateway_id'
       name:
@@ -1852,7 +1868,7 @@ definitions:
         x-omitempty: true
         items:
           $ref: '#/definitions/disk_partition'
-  package:
+  distribution_package:
     type: object
     properties:
       name:
@@ -1881,7 +1897,7 @@ definitions:
         type: array
         x-omitempty: true
         items:
-          $ref: '#/definitions/package'
+          $ref: '#/definitions/distribution_package'
       kernel_version:
         type: string
         example: 4.9.0-6-amd64

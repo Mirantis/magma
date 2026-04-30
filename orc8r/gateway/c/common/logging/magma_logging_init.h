@@ -12,11 +12,12 @@
  */
 #pragma once
 
-#include "magma_logging.h"
-
-// GLOG LOGGING
-#ifdef LOG_WITH_GLOG
+#include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <stdint.h>
+#include <ostream>
+
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
 
 namespace magma {
 
@@ -29,6 +30,7 @@ static void set_verbosity(uint32_t verbosity) {
 
 // get_verbosity gets the the global logging verbosity
 static google::int32 get_verbosity() {
+  (void)get_verbosity;  // casting to void to suppress unused reference warning
   return FLAGS_v;
 }
 
@@ -40,19 +42,3 @@ static void init_logging(const char* service_name) {
   FLAGS_logtostderr = 1;
 }
 }  // namespace magma
-#endif
-
-// NON GLOG LOGGING
-#ifndef LOG_WITH_GLOG
-#include <iostream>
-
-namespace magma {
-static void set_verbosity(__attribute__((unused)) uint32_t verbosity) {}
-// get_verbosity gets the the global logging verbosity
-static uint32_t get_verbosity() {
-  return 0;
-}
-static void init_logging(__attribute__((unused)) const char* service_name) {}
-
-}  // namespace magma
-#endif

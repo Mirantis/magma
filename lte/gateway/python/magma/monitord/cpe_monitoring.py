@@ -19,7 +19,11 @@ from typing import Dict, List, NamedTuple, Optional
 import grpc
 from lte.protos.mobilityd_pb2 import IPAddress
 from lte.protos.mobilityd_pb2_grpc import MobilityServiceStub
-from magma.common.rpc_utils import grpc_async_wrapper
+from magma.common.rpc_utils import (
+    grpc_async_wrapper,
+    indicates_connection_error,
+)
+from magma.common.sentry import EXCLUDE_FROM_ERROR_MONITORING
 from magma.common.service_registry import ServiceRegistry
 from magma.magmad.check.network_check.ping import PingCommandResult
 from magma.monitord.icmp_state import ICMPMonitoringResponse
@@ -34,13 +38,10 @@ subscriber_icmp_latency_ms = Histogram(
     buckets=[50, 100, 200, 500, 1000, 2000],
 )
 
-PingedTargets = NamedTuple(
-    'PingedTargets',
-    [
-        ('ping_targets', Dict['str', IPAddress]),
-        ('ping_addresses', List[IPAddress]),
-    ],
-)
+
+class PingedTargets(NamedTuple):
+    ping_targets: Dict[str, IPAddress]
+    ping_addresses: List[IPAddress]
 
 
 def _get_addr_from_subscribers(sub_ip) -> str:
@@ -92,7 +93,14 @@ class CpeMonitoringModule:
                 ping_targets[sub.sid.id] = ip
         except grpc.RpcError as err:
             logging.error(
-                "GetSubscribers Error for %s! %s", err.code(), err.details(),
+                "GetSubscribers Error for %s! %s",
+                err.code(),
+                err.details(),
+                extra=(
+                    EXCLUDE_FROM_ERROR_MONITORING
+                    if indicates_connection_error(err)
+                    else None
+                ),
             )
         return PingedTargets(ping_targets, ping_addresses)
 

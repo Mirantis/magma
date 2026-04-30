@@ -10,8 +10,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-import ipaddress
 from enum import Enum
+from typing import Optional
+
+from magma.mobilityd.utils import IPAddress, IPNetwork
 
 
 class IPState(Enum):
@@ -47,9 +49,9 @@ class IPDesc:
     """
 
     def __init__(
-        self, ip: ipaddress.ip_address = None, state: IPState = None,
-        sid: str = None, ip_block: ipaddress.ip_network = None,
-        ip_type: IPType = None, vlan_id: int = 0,
+        self, ip: Optional[IPAddress] = None, state: Optional[IPState] = None,
+        sid: Optional[str] = None, ip_block: Optional[IPNetwork] = None,
+        ip_type: Optional[IPType] = None, vlan_id: int = 0,
     ):
         self.ip = ip
         self.ip_block = ip_block
@@ -75,3 +77,11 @@ class IPDesc:
 
         as_str = as_str + " }}>"
         return as_str
+
+    def __eq__(self, other):
+        return self.ip == other.ip and \
+            self.ip_block == other.ip_block and \
+            self.state == other.state and \
+            self.sid == other.sid and \
+            self.type == other.type and \
+            self.vlan_id == other.vlan_id

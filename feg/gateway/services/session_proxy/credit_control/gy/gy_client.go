@@ -108,7 +108,7 @@ func NewGyClient(
 	cloudRegistry service_registry.GatewayRegistry,
 	globalConfig *GyGlobalConfig,
 ) *GyClient {
-	diamClient := diameter.NewClient(clientCfg)
+	diamClient := diameter.NewClient(clientCfg, serverCfg.LocalAddr)
 	diamClient.BeginConnection(serverCfg)
 	return NewConnectedGyClient(diamClient, serverCfg, reAuthHandler, cloudRegistry, globalConfig)
 }
@@ -117,15 +117,19 @@ func NewGyClient(
 // given connection. Multiple requests can be sent in a row without waiting for
 // the answer
 // Example use:
-// 	client := NewGyClient()
-//  done :=  make(chan *CreditControlAnswer, 1)
-// 	client.SendCreditControlRequest(server, done, requests)
-// 	answer := <- done
-// Input: DiameterServerConfig containing info about where to send messages
-//				chan<- *CreditControlAnswer to send answers to
-//			  CreditControlRequest containing the request to send
 //
-// Output: error if server connection failed
+//		client := NewGyClient()
+//	    done :=  make(chan *CreditControlAnswer, 1)
+//		client.SendCreditControlRequest(server, done, requests)
+//		answer := <- done
+//
+// Input:
+//   - DiameterServerConfig containing info about where to send messages
+//   - chan<- *CreditControlAnswer to send answers to
+//   - CreditControlRequest containing the request to send
+//
+// Output:
+//   - error if server connection failed
 func (gyClient *GyClient) SendCreditControlRequest(
 	server *diameter.DiameterServerConfig,
 	done chan interface{},
@@ -144,7 +148,7 @@ func (gyClient *GyClient) SendCreditControlRequest(
 		return err
 	}
 
-	glog.V(2).Infof("Sending Gy CCR message:\n%s\n", message)
+	glog.V(3).Infof("Sending Gy CCR message:\n%s\n", message)
 	key := credit_control.GetRequestKey(credit_control.Gy, request.SessionID, request.RequestNumber)
 	return gyClient.diamClient.SendRequest(server, done, message, key)
 }
@@ -184,7 +188,7 @@ func (gyClient *GyClient) DisableConnections(period time.Duration) {
 // messages received from the OCS
 func registerReAuthHandler(reAuthHandler ChargingReAuthHandler, diamClient *diameter.Client) {
 	reqHandler := func(conn diam.Conn, message *diam.Message) {
-		glog.V(2).Infof("Received Gy reauth message:\n%s\n", message)
+		glog.V(3).Infof("Received Gy reauth message:\n%s\n", message)
 		rar := &ChargingReAuthRequest{}
 		if err := message.Unmarshal(rar); err != nil {
 			glog.Errorf("Received unparseable RAR over Gy %s\n%s", message, err)
@@ -230,10 +234,13 @@ func getAdditionalAvps(request *CreditControlRequest, globalConfig *GyGlobalConf
 // createCreditControlMessage creates a base message to be used for any Credit
 // Control Request message. Init will just use this, and update and terminate
 // pass in extra AVPs through additionalAVPs
-// Input: context.Context which has information on where to send to,
-//				CreditControlRequest with relevant request info
-//			  ...*diam.AVP with any AVPs to add on
-// Output: *diam.Message with all AVPs filled in, error if there was an issue
+// Input:
+//   - context.Context which has information on where to send to,
+//   - CreditControlRequest with relevant request info
+//   - ...*diam.AVP with any AVPs to add on
+//
+// Output:
+//   - *diam.Message with all AVPs filled in, error if there was an issue
 func (gyClient *GyClient) createCreditControlMessage(
 	server *diameter.DiameterServerConfig,
 	request *CreditControlRequest,
@@ -386,7 +393,7 @@ func getMSCCAVP(requestType credit_control.CreditRequestType, credits *UsedCredi
 	// Requested-Service-Unit can only be send in CCR-I and CCR-U
 	if requestType != credit_control.CRTTerminate {
 		var usuGrp []*diam.AVP
-		// controlled by DISABLE_REQUESTED_SERVICE_UNIT_AVP env var on docker-compose
+		// controlled by DISABLE_REQUESTED_SERVICE_UNIT_AVP env var on docker compose
 		if globalConfig.DisableServiceGrantedUnitsAVP {
 			usuGrp = []*diam.AVP{}
 		} else {
@@ -399,7 +406,7 @@ func getMSCCAVP(requestType credit_control.CreditRequestType, credits *UsedCredi
 		avpGroup = append(avpGroup, diam.NewAVP(avp.RequestedServiceUnit, avp.Mbit, 0, &diam.GroupedAVP{AVP: usuGrp}))
 	}
 
-	if serviceIdentifier >= 0 {
+	if serviceIdentifier >= 0 && serviceIdentifier <= 4294967295 { // check if is in bounds of Unsigned32 type
 		avpGroup = append(
 			avpGroup,
 			diam.NewAVP(avp.ServiceIdentifier, avp.Mbit, 0, datatype.Unsigned32(serviceIdentifier)))
@@ -461,12 +468,15 @@ func getReceivedCredits(cca *CCADiameterMessage) []*ReceivedCredits {
 
 // getCCAHandler returns a callback function to use when an answer is received
 // over Gy. Parses the message for relevant information.
-// Input: requestTracker *diameter.RequestTracker to get channel to send answers out
-//				when one is received
-// Output: diam.HandlerFunc
+// Input:
+//   - requestTracker *diameter.RequestTracker to get channel to send answers out
+//     when one is received
+//
+// Output:
+//   - diam.HandlerFunc
 func getCCAHandler() diameter.AnswerHandler {
 	return func(message *diam.Message) diameter.KeyAndAnswer {
-		glog.V(2).Infof("Received Gy CCA message:\n%s\n", message)
+		glog.V(3).Infof("Received Gy CCA message:\n%s\n", message)
 		var cca CCADiameterMessage
 		if err := message.Unmarshal(&cca); err != nil {
 			metrics.GyUnparseableMsg.Inc()

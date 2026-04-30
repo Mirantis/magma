@@ -18,14 +18,14 @@ import s1ap_types
 from integ_tests.s1aptests import s1ap_wrapper
 
 
-class TestSecurityModeReject(unittest.TestCase):
+class TestAttachSecurityModeReject(unittest.TestCase):
     def setUp(self):
         self._s1ap_wrapper = s1ap_wrapper.TestWrapper()
 
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_security_mode_reject(self):
+    def test_attach_security_mode_reject(self):
         """ Testing of security mode reject procedure """
         num_ues = 1
 
@@ -50,9 +50,7 @@ class TestSecurityModeReject(unittest.TestCase):
         )
 
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_AUTH_REQ_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_AUTH_REQ_IND.value
         print("Received auth req ind ")
 
         auth_res = s1ap_types.ueAuthResp_t()
@@ -66,9 +64,7 @@ class TestSecurityModeReject(unittest.TestCase):
         )
 
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_SEC_MOD_CMD_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_SEC_MOD_CMD_IND.value
         print("Received Security Mode Command ue-id", auth_res.ue_Id)
 
         sec_mode_reject = s1ap_types.ueSecModeReject_t()

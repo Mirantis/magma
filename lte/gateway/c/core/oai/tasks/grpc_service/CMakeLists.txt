@@ -53,8 +53,8 @@ generate_grpc_protos("${SMOSRV_LTE_GRPC_PROTOS}" "${PROTO_SRCS}"
     "${PROTO_HDRS}" ${LTE_PROTO_DIR} ${LTE_OUT_DIR})
 
 # S1ap Service
-set(S1APSRV_LTE_CPP_PROTOS s1ap_service)
-set(S1APSRV_LTE_GRPC_PROTOS s1ap_service)
+set(S1APSRV_LTE_CPP_PROTOS s1ap_service oai/s1ap_state)
+set(S1APSRV_LTE_GRPC_PROTOS s1ap_service oai/s1ap_state)
 generate_cpp_protos("${S1APSRV_LTE_CPP_PROTOS}" "${PROTO_SRCS}"
     "${PROTO_HDRS}" ${LTE_PROTO_DIR} ${LTE_OUT_DIR})
 generate_grpc_protos("${S1APSRV_LTE_GRPC_PROTOS}" "${PROTO_SRCS}"
@@ -69,18 +69,34 @@ generate_grpc_protos("${HASRV_LTE_GRPC_PROTOS}" "${PROTO_SRCS}"
     "${PROTO_HDRS}" ${LTE_PROTO_DIR} ${LTE_OUT_DIR})
 
 # AMF
-set(AMFSRV_M5G_CPP_PROTOS apn subscriberdb session_manager subscriberauth)
+set(AMFSRV_M5G_CPP_PROTOS apn subscriberdb session_manager diam_errors subscriberauth)
 set(AMFSRV_M5G_GRPC_PROTOS session_manager subscriberauth)
 generate_cpp_protos("${AMFSRV_M5G_CPP_PROTOS}" "${PROTO_SRCS}"
     "${PROTO_HDRS}" ${LTE_PROTO_DIR} ${LTE_OUT_DIR})
 generate_grpc_protos("${AMFSRV_M5G_GRPC_PROTOS}" "${PROTO_SRCS}"
     "${PROTO_HDRS}" ${LTE_PROTO_DIR} ${LTE_OUT_DIR})
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+# S8a
+set(S8SRV_FEG_CPP_PROTOS s8_proxy)
+set(S8SRV_FEG_GRPC_PROTOS s8_proxy)
+set(S8SRV_LTE_CPP_PROTOS oai/spgw_state  oai/common_types oai/std_3gpp_types)
+set(S8SRV_LTE_GRPC_PROTOS oai/spgw_state  oai/common_types oai/std_3gpp_types)
+generate_cpp_protos("${S8SRV_FEG_CPP_PROTOS}" "${PROTO_SRCS}"
+  "${PROTO_HDRS}" ${FEG_PROTO_DIR} ${FEG_OUT_DIR})
+generate_grpc_protos("${S8SRV_FEG_GRPC_PROTOS}" "${PROTO_SRCS}"
+  "${PROTO_HDRS}" ${FEG_PROTO_DIR} ${FEG_OUT_DIR})
+generate_cpp_protos("${S8SRV_LTE_CPP_PROTOS}" "${PROTO_SRCS}"
+  "${PROTO_HDRS}" ${LTE_PROTO_DIR} ${LTE_OUT_DIR})
+generate_grpc_protos("${S8SRV_LTE_GRPC_PROTOS}" "${PROTO_SRCS}"
+  "${PROTO_HDRS}" ${LTE_PROTO_DIR} ${LTE_OUT_DIR})
+
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories("${MAGMA_ROOT}/orc8r/gateway/c/common/logging")
+
+if (EMBEDDED_SGW)
 add_library(TASK_GRPC_SERVICE
     AmfServiceImpl.cpp
     SpgwServiceImpl.cpp
-    S6aGatewayImpl.cpp
     S6aServiceImpl.cpp
     CSFBGatewayServiceImpl.cpp
     SMSOrc8rGatewayServiceImpl.cpp
@@ -91,9 +107,30 @@ add_library(TASK_GRPC_SERVICE
     amf_service_handler.c
     proto_msg_to_itti_msg.cpp
     grpc_service.cpp
+    grpc_service_task.c
+    S8ServiceImpl.cpp
     ${PROTO_SRCS}
     ${PROTO_HDRS}
     )
+else (EMBEDDED_SGW)
+add_library(TASK_GRPC_SERVICE
+    AmfServiceImpl.cpp
+    SpgwServiceImpl.cpp
+    S6aServiceImpl.cpp
+    CSFBGatewayServiceImpl.cpp
+    SMSOrc8rGatewayServiceImpl.cpp
+    S1apServiceImpl.cpp
+    HaServiceImpl.cpp
+    AmfServiceImpl.cpp
+    spgw_service_handler.c
+    amf_service_handler.c
+    proto_msg_to_itti_msg.cpp
+    grpc_service.cpp
+    grpc_service_task.c
+    ${PROTO_SRCS}
+    ${PROTO_HDRS}
+    )
+endif (EMBEDDED_SGW)
 
 target_link_libraries(TASK_GRPC_SERVICE
     COMMON
@@ -101,9 +138,12 @@ target_link_libraries(TASK_GRPC_SERVICE
     LIB_HASHTABLE
     ${PROTOBUF_LIBRARIES}
     grpc++
-    folly
+    TASK_SGS
+    TASK_S6A
+    TASK_SMS_ORC8R
     )
 target_include_directories(TASK_GRPC_SERVICE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
     $<TARGET_FILE_DIR:TASK_GRPC_SERVICE>
     )

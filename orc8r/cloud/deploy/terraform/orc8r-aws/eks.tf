@@ -11,6 +11,10 @@
 # limitations under the License.
 ################################################################################
 
+locals {
+  orc8r_worker_group = var.enable_orc8r_blue_green_deployment ? var.blue_green_worker_groups : var.eks_worker_groups
+}
+
 resource "tls_private_key" "eks_workers" {
   count = var.eks_worker_group_key == null ? 1 : 0
 
@@ -31,8 +35,8 @@ module "eks" {
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
 
-  vpc_id       = module.vpc.vpc_id
-  subnets      = length(module.vpc.private_subnets) > 0 ? module.vpc.private_subnets : module.vpc.public_subnets
+  vpc_id  = module.vpc.vpc_id
+  subnets = length(module.vpc.private_subnets) > 0 ? module.vpc.private_subnets : module.vpc.public_subnets
 
   cluster_enabled_log_types = [
     "api",
@@ -42,19 +46,21 @@ module "eks" {
     "scheduler",
   ]
 
-  cluster_create_timeout   = "30m"
+  cluster_create_timeout = "30m"
 
   workers_group_defaults = {
     key_name = var.eks_worker_group_key == null ? aws_key_pair.eks_workers[0].key_name : var.eks_worker_group_key
   }
   worker_additional_security_group_ids = concat([aws_security_group.default.id], var.eks_worker_additional_sg_ids)
   workers_additional_policies          = var.eks_worker_additional_policy_arns
-  worker_groups                        = var.thanos_enabled ? concat(var.eks_worker_groups, var.thanos_worker_groups) : var.eks_worker_groups
+  worker_groups                        = var.thanos_enabled ? concat(local.orc8r_worker_group, var.thanos_worker_groups) : local.orc8r_worker_group
 
   map_roles = var.eks_map_roles
   map_users = var.eks_map_users
 
   tags = var.global_tags
+
+  enable_irsa = var.eks_enable_irsa
 }
 
 # role assume policy for eks workers

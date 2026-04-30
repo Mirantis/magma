@@ -14,7 +14,7 @@ limitations under the License.
 import unittest
 from unittest import mock
 
-from google.protobuf.any_pb2 import Any
+from google.protobuf.any_pb2 import Any  # pylint: disable=no-name-in-module
 from magma.configuration import mconfigs
 from orc8r.protos.mconfig import mconfigs_pb2
 
@@ -67,6 +67,19 @@ class MconfigsTest(unittest.TestCase):
         expected = {
             'magmad': configs_by_key['magmad'],
             'directoryd': configs_by_key['directoryd'],
+        }
+        self.assertEqual(expected, actual)
+
+        # Including 'shared_mconfig'
+        configs_by_key['shared_mconfig'] = {
+            '@type': 'type.googleapis.com/magma.mconfig.SharedMconfig',
+            'value': 'shared'.encode(),
+        }
+        actual = mconfigs.filter_configs_by_key(configs_by_key)
+        expected = {
+            'magmad': configs_by_key['magmad'],
+            'directoryd': configs_by_key['directoryd'],
+            'shared_mconfig': configs_by_key['shared_mconfig'],
         }
         self.assertEqual(expected, actual)
 

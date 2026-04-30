@@ -78,7 +78,7 @@ class HeTableTest(unittest.TestCase):
     @classmethod
     @unittest.mock.patch(
         'netifaces.ifaddresses',
-        return_value=[[{'addr': '00:11:22:33:44:55'}]],
+        return_value={0: [{'addr': '00:11:22:33:44:55'}]},
     )
     @unittest.mock.patch('netifaces.AF_LINK', 0)
     def setUpClass(cls, *_):
@@ -460,10 +460,10 @@ class EnforcementTableHeTest(unittest.TestCase):
     BRIDGE = 'testing_br'
     IFACE = 'testing_br'
     MAC_DEST = "5e:cc:cc:b1:49:4b"
-    he_controller_reference = Future()
+    he_controller_reference: Future = Future()
     VETH = 'tveth1'
     VETH_NS = 'tveth1_ns'
-    PROXY_PORT = '16'
+    PROXY_PORT = '15'
 
     @classmethod
     def setUpClass(cls):
@@ -520,6 +520,7 @@ class EnforcementTableHeTest(unittest.TestCase):
                 'enable_nat': True,
                 'ovs_gtp_port_number': 10,
                 'setup_type': 'LTE',
+                'redis_enabled': False,
             },
             mconfig=PipelineD(),
             loop=None,
@@ -542,8 +543,6 @@ class EnforcementTableHeTest(unittest.TestCase):
         Add policy to subscriber with HE config
 
         """
-        cls = self.__class__
-
         fake_controller_setup(self.enforcement_controller)
 
         imsi = 'IMSI010000000088888'

@@ -20,7 +20,7 @@
 
 #include <stdint.h>
 
-#include "common_types.h"
+#include "lte/gateway/c/core/oai/common/common_types.h"
 
 #define EPS_QUALITY_OF_SERVICE_MINIMUM_LENGTH 2
 #define EPS_QUALITY_OF_SERVICE_MAXIMUM_LENGTH 10
@@ -42,20 +42,27 @@ typedef struct {
   EpsQoSBitRates bitRatesExt2;
 } EpsQualityOfService;
 
-int encode_eps_quality_of_service(
-    EpsQualityOfService* epsqualityofservice, uint8_t iei, uint8_t* buffer,
-    uint32_t len);
+int encode_eps_quality_of_service(EpsQualityOfService* epsqualityofservice,
+                                  uint8_t iei, uint8_t* buffer, uint32_t len);
 
-int decode_eps_quality_of_service(
-    EpsQualityOfService* epsqualityofservice, uint8_t iei, uint8_t* buffer,
-    uint32_t len);
+int decode_eps_quality_of_service(EpsQualityOfService* epsqualityofservice,
+                                  uint8_t iei, uint8_t* buffer, uint32_t len);
 
 int eps_qos_bit_rate_value(uint8_t br);
 int eps_qos_bit_rate_ext_value(uint8_t br);
 int eps_qos_bit_rate_ext2_value(uint8_t br);
-int qos_params_to_eps_qos(
-    const qci_t qci, const bitrate_t mbr_dl, const bitrate_t mbr_ul,
-    const bitrate_t gbr_dl, const bitrate_t gbr_ul,
-    EpsQualityOfService* const eps_qos, bool is_default_bearer);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+status_code_e qos_params_to_eps_qos(const qci_t qci, const bitrate_t mbr_dl,
+                                    const bitrate_t mbr_ul,
+                                    const bitrate_t gbr_dl,
+                                    const bitrate_t gbr_ul,
+                                    EpsQualityOfService* const eps_qos,
+                                    bool is_default_bearer);
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* EPS_QUALITY_OF_SERVICE_SEEN */

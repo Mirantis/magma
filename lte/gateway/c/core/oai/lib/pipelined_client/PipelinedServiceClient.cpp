@@ -11,7 +11,7 @@
  * limitations under the License.
  */
 
-#include "PipelinedServiceClient.h"
+#include "lte/gateway/c/core/oai/lib/pipelined_client/PipelinedServiceClient.hpp"
 
 #include <utility>
 #include <cassert>
@@ -26,14 +26,14 @@
 
 #include <grpcpp/impl/codegen/async_unary_call.h>
 
+#include "lte/gateway/c/core/common/common_defs.h"
+#include "lte/gateway/c/core/oai/lib/pipelined_client/proto_converters.hpp"
+#include "lte/protos/mobilityd.pb.h"
 #include "lte/protos/pipelined.grpc.pb.h"
 #include "lte/protos/pipelined.pb.h"
-#include "lte/protos/mobilityd.pb.h"
-#include "orc8r/protos/common.pb.h"
 #include "lte/protos/subscriberdb.pb.h"
-#include "includes/ServiceRegistrySingleton.h"
-#include "common_defs.h"
-#include "proto_converters.h"
+#include "orc8r/gateway/c/common/service_registry/ServiceRegistrySingleton.hpp"
+#include "orc8r/protos/common.pb.h"
 
 namespace grpc {
 class Channel;

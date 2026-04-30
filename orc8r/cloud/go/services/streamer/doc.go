@@ -21,13 +21,9 @@ limitations under the License.
 // E.g., consider a gateway requesting subscriber updates, from the
 // "subscriber" stream. This takes the form
 //
-//		gateway -(a)-> streamer -(b)-> lte
+//	gateway -(a)-> streamer -(b)-> lte
 //
 // (a) GetUpdates("subscriber")
 // (*) streamer: look up service name of provider for "subscriber" stream
 // (b) GetUpdates("subscriber")
 package streamer
-
-const (
-	ServiceName = "STREAMER"
-)

@@ -12,8 +12,23 @@
  */
 
 #include <gtest/gtest.h>
-#include "includes/MetricsRegistry.h"
 #include <prometheus/registry.h>
+#include <memory>
+#include <string>
+
+#include "orc8r/gateway/c/common/service303/MetricsRegistry.hpp"
+#include "prometheus/counter_builder.h"
+
+namespace io {
+namespace prometheus {
+namespace client {
+class MetricFamily;
+}  // namespace client
+}  // namespace prometheus
+}  // namespace io
+namespace prometheus {
+class Counter;
+}  // namespace prometheus
 
 using io::prometheus::client::MetricFamily;
 using magma::service303::MetricsRegistry;
@@ -48,10 +63,5 @@ TEST_F(Test, test_metrics_registry) {
   registry.Get("test", {{"key", "value2"}});
   EXPECT_EQ(registry.SizeFamilies(), 2);
   EXPECT_EQ(registry.SizeMetrics(), 4);
-}
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 }  // namespace magma

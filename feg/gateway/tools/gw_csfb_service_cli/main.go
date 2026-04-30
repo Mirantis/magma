@@ -16,6 +16,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 
@@ -157,9 +158,12 @@ func marshalLocationUpdateAccept() (decode.SGsMessageType, *any.Any, error) {
 func marshalLocationUpdateReject() (decode.SGsMessageType, *any.Any, error) {
 	var rejectCause []byte
 	if len(flag.Args()) == 2 {
-		rejectCauseCode, err := strconv.Atoi(flag.Arg(1))
+		rejectCauseCode, err := strconv.ParseUint(flag.Arg(1), 10, 8)
 		if err != nil {
 			return decode.SGsAPLocationUpdateReject, nil, err
+		}
+		if rejectCauseCode > math.MaxUint8 {
+			return decode.SGsAPLocationUpdateReject, nil, fmt.Errorf("number %d is outside the bounds of byte type", rejectCauseCode)
 		}
 		rejectCause = []byte{byte(rejectCauseCode)}
 	} else {

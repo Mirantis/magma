@@ -20,7 +20,6 @@ import (
 
 	"github.com/go-openapi/swag"
 	"github.com/golang/glog"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc/metadata"
 
 	"magma/feg/cloud/go/feg"
@@ -30,7 +29,7 @@ import (
 	"magma/orc8r/cloud/go/services/configurator"
 	"magma/orc8r/cloud/go/services/device"
 	orc8rModels "magma/orc8r/cloud/go/services/orchestrator/obsidian/models"
-	merrors "magma/orc8r/lib/go/errors"
+	"magma/orc8r/lib/go/merrors"
 	"magma/orc8r/lib/go/protos"
 )
 
@@ -93,7 +92,7 @@ func getFegCfg(ctx context.Context, networkID, gatewayID string) (*models.Gatewa
 		serdes.Entity,
 	)
 	if err != nil && err != merrors.ErrNotFound {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
 	if err == nil && fegGateway.Config != nil {
 		return fegGateway.Config.(*models.GatewayFederationConfigs), nil

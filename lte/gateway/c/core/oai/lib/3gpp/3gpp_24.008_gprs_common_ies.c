@@ -37,9 +37,9 @@
 
 #include <stdint.h>
 
-#include "3gpp_24.008.h"
-#include "TLVDecoder.h"
-#include "TLVEncoder.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_24.008.h"
+#include "lte/gateway/c/core/oai/common/TLVDecoder.h"
+#include "lte/gateway/c/core/oai/common/TLVEncoder.h"
 
 //******************************************************************************
 // 10.5.7 GPRS Common information elements
@@ -52,8 +52,8 @@
 static const long gprs_timer_unit[] = {2, 60, 360, 60, 60, 60, 60, 0};
 
 //------------------------------------------------------------------------------
-int decode_gprs_timer_ie(
-    gprs_timer_t* gprstimer, uint8_t iei, uint8_t* buffer, const uint32_t len) {
+int decode_gprs_timer_ie(gprs_timer_t* gprstimer, uint8_t iei, uint8_t* buffer,
+                         const uint32_t len) {
   int decoded = 0;
 
   if (iei > 0) {
@@ -61,19 +61,19 @@ int decode_gprs_timer_ie(
     CHECK_IEI_DECODER(iei, *buffer);
     decoded++;
   } else {
-    CHECK_PDU_POINTER_AND_LENGTH_DECODER(
-        buffer, GPRS_TIMER_IE_MIN_LENGTH - 1, len);
+    CHECK_PDU_POINTER_AND_LENGTH_DECODER(buffer, GPRS_TIMER_IE_MIN_LENGTH - 1,
+                                         len);
   }
 
-  gprstimer->unit       = (*(buffer + decoded) >> 5) & 0x7;
+  gprstimer->unit = (*(buffer + decoded) >> 5) & 0x7;
   gprstimer->timervalue = *(buffer + decoded) & 0x1f;
   decoded++;
   return decoded;
 }
 
 //------------------------------------------------------------------------------
-int encode_gprs_timer_ie(
-    gprs_timer_t* gprstimer, uint8_t iei, uint8_t* buffer, const uint32_t len) {
+int encode_gprs_timer_ie(gprs_timer_t* gprstimer, uint8_t iei, uint8_t* buffer,
+                         const uint32_t len) {
   uint32_t encoded = 0;
 
   /*

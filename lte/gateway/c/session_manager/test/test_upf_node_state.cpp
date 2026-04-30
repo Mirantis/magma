@@ -11,24 +11,31 @@
  * limitations under the License.
  */
 
-#include <glog/logging.h>
+#include <gmock/gmock.h>
+#include <grpcpp/impl/codegen/status.h>
 #include <gtest/gtest.h>
-
+#include <lte/protos/mconfig/mconfigs.pb.h>
+#include <lte/protos/session_manager.pb.h>
+#include <orc8r/protos/common.pb.h>
+#include <stdint.h>
+#include <yaml-cpp/yaml.h>
+#include <experimental/optional>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-#include "UpfMsgManageHandler.h"
-#include "SessionStateEnforcer.h"
-#include "includes/MagmaService.h"
-#include "ProtobufCreators.h"
-#include "RuleStore.h"
-#include "includes/ServiceRegistrySingleton.h"
-#include "SessionState.h"
-#include "SessionStore.h"
-#include "SessiondMocks.h"
-#include "StoredState.h"
-#include "magma_logging.h"
-#include "PipelinedClient.h"
-#include "AmfServiceClient.h"
+#include "lte/gateway/c/session_manager/AmfServiceClient.hpp"
+#include "lte/gateway/c/session_manager/MeteringReporter.hpp"
+#include "lte/gateway/c/session_manager/PipelinedClient.hpp"
+#include "lte/gateway/c/session_manager/RuleStore.hpp"
+#include "lte/gateway/c/session_manager/SessionState.hpp"
+#include "lte/gateway/c/session_manager/SessionStateEnforcer.hpp"
+#include "lte/gateway/c/session_manager/SessionStore.hpp"
+#include "lte/gateway/c/session_manager/Types.hpp"
+#include "lte/gateway/c/session_manager/test/SessiondMocks.hpp"
+#include "orc8r/gateway/c/common/config/ServiceConfigLoader.hpp"
+#include "orc8r/gateway/c/common/service303/MagmaService.hpp"
 
 #define SESSIOND_SERVICE "sessiond"
 #define SESSIOND_VERSION "1.0"
@@ -41,12 +48,14 @@ namespace magma {
 class SetUPFNodeState : public ::testing::Test {
  public:
   virtual void SetUp() {
-    rule_store    = std::make_shared<StaticRuleStore>();
+    rule_store = std::make_shared<StaticRuleStore>();
+    reporter = std::make_shared<MockSessionReporter>();
     session_store = std::make_shared<SessionStore>(
         rule_store, std::make_shared<MeteringReporter>());
     std::unordered_multimap<std::string, uint32_t> pdr_map;
     auto pipelined_client = std::make_shared<magma::AsyncPipelinedClient>();
-    amf_srv_client        = std::make_shared<magma::AsyncAmfServiceClient>();
+    amf_srv_client = std::make_shared<magma::AsyncAmfServiceClient>();
+    events_reporter = std::make_shared<MockEventsReporter>();
 
     magma::mconfig::SessionD mconfig;
     mconfig.set_log_level(magma::orc8r::LogLevel::INFO);
@@ -56,7 +65,8 @@ class SetUPFNodeState : public ::testing::Test {
 
     session_enforcer = std::make_shared<magma::SessionStateEnforcer>(
         rule_store, *session_store, pdr_map, pipelined_client, amf_srv_client,
-        mconfig, config["session_force_termination_timeout_ms"].as<int32_t>(),
+        reporter.get(), events_reporter, mconfig,
+        config["session_force_termination_timeout_ms"].as<int32_t>(),
         session_max_rtx_count);
 
     set_interface_for_up_mock =
@@ -73,6 +83,8 @@ class SetUPFNodeState : public ::testing::Test {
   std::shared_ptr<AsyncAmfServiceClient> amf_srv_client;
   std::shared_ptr<MockSetInterfaceForUserPlane> set_interface_for_up_mock;
   std::shared_ptr<UPFSessionConfigState> sess_config;
+  std::shared_ptr<MockSessionReporter> reporter;
+  std::shared_ptr<MockEventsReporter> events_reporter;
 };  // End of class
 
 // Testing the functionality of SetUPFNodeState
@@ -85,7 +97,7 @@ TEST_F(SetUPFNodeState, test_upf_node_state) {
   std::string upf_n3_addr = "192.168.60.112";
 
   session_enforcer->set_upf_node(upf_node_id, upf_n3_addr);
-  std::string upf_id    = session_enforcer->get_upf_node_id();
+  std::string upf_id = session_enforcer->get_upf_node_id();
   std::string ipv4_addr = session_enforcer->get_upf_n3_addr();
 
   // Validate the functionality of UPF Node ID
@@ -102,14 +114,14 @@ TEST_F(SetUPFNodeState, test_upf_session_config) {
       .WillByDefault(Return(Status::OK));
 
   auto& ses_config = *sess_config;
-  int32_t count    = 0;
+  int32_t count = 0;
   for (auto& upf_session : ses_config.upf_session_state()) {
     // Deleting the IMSI prefix from imsi
     std::string imsi_upf = upf_session.subscriber_id();
-    std::string imsi     = imsi_upf.substr(4, imsi_upf.length() - 4);
-    uint32_t version     = upf_session.session_version();
-    uint32_t teid        = upf_session.local_f_teid();
-    auto session_map     = session_store->read_sessions({imsi});
+    std::string imsi = imsi_upf.substr(4, imsi_upf.length() - 4);
+    uint32_t version = upf_session.session_version();
+    uint32_t teid = upf_session.local_f_teid();
+    auto session_map = session_store->read_sessions({imsi});
     /* Search with session search criteria of IMSI and session_id and
      * find  respective sesion to operate
      */
@@ -121,16 +133,17 @@ TEST_F(SetUPFNodeState, test_upf_session_config) {
       EXPECT_FALSE(session_it);
       continue;
     }
-    auto& session    = **session_it;
+    auto& session = **session_it;
     auto cur_version = session->get_current_version();
 
     /* Validating UPF verions of session imsi of teid received version
      * with SMF latest version
      */
     EXPECT_LE(version, cur_version);
-
+    RulesToProcess pending_activation, pending_deactivation;
     // Sending the session request to UPF
-    session_enforcer->m5g_send_session_request_to_upf(session);
+    session_enforcer->m5g_send_session_request_to_upf(
+        session, pending_activation, pending_deactivation);
 
     // Validating count increment
     auto inc = count++;
@@ -139,10 +152,4 @@ TEST_F(SetUPFNodeState, test_upf_session_config) {
   // Validating UPF periodic report config missmatch session
   EXPECT_EQ(ses_config.upf_session_state_size(), count);
 }
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
-
 }  // namespace magma

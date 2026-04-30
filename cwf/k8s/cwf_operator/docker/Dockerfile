@@ -9,7 +9,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-FROM ubuntu:bionic as builder
+FROM ubuntu:bionic AS builder
 
 # Add the magma apt repo
 RUN apt-get update && \
@@ -18,11 +18,15 @@ RUN apt-get update && \
 # Install the runtime deps.
 RUN apt-get update && apt-get install -y bzr curl daemontools gcc
 
-# Install Golang 1.13.
+# Install Golang
 WORKDIR /usr/local
-RUN curl https://facebookconnectivity.jfrog.io/artifactory/generic/go1.13.4.linux-amd64.tar.gz -O && \
-    tar xf go1.13.4.linux-amd64.tar.gz && \
-    cp -r go/bin/* /usr/local/bin/
+ARG GOLANG_VERSION="1.21.12"
+RUN GO_TARBALL="go${GOLANG_VERSION}.linux-amd64.tar.gz" \
+    && curl https://golang.org/dl/${GO_TARBALL} --remote-name --location \
+    && tar -xzf ${GO_TARBALL} \
+    && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+    && rm ${GO_TARBALL}
 
 ENV GOBIN /var/opt/magma/bin
 ENV PATH ${PATH}:${GOBIN}
@@ -60,7 +64,7 @@ RUN go install ./cmd/manager/
 # -----------------------------------------------------------------------------
 # Production image
 # -----------------------------------------------------------------------------
-FROM ubuntu:bionic as cwf_operator
+FROM ubuntu:bionic AS cwf_operator
 
 ENV OPERATOR=/usr/local/bin/cwf-operator \
     USER_UID=1001 \

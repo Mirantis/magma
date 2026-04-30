@@ -56,13 +56,14 @@ def main():
     service = MagmaService('magmad', mconfigs_pb2.MagmaD())
 
     # Optionally pipe errors to Sentry
-    sentry_init(service_name=service.name)
+    sentry_init(service_name=service.name, sentry_mconfig=service.shared_mconfig.sentry_config)
 
     logging.info('Starting magmad for UUID: %s', snowflake.make_snowflake())
 
     # Create service manager
     services = service.config.get('magma_services')
     init_system = service.config.get('init_system', 'systemd')
+    logging.info("Running magmad with init system %s", init_system)
     registered_dynamic_services = service.config.get(
         'registered_dynamic_services', [],
     )

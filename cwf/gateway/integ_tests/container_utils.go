@@ -11,9 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	dockerTypes "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	dockerFilters "github.com/docker/docker/api/types/filters"
 	dockerClient "github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -26,7 +26,7 @@ const (
 	mconfigFileName string = "gateway.mconfig"
 )
 
-//RestartService adds ability to restart a particular service managed by docker
+// RestartService adds ability to restart a particular service managed by docker
 func (tr *TestRunner) RestartService(serviceName string) error {
 	fmt.Printf("Restarting docker container: %v\n", serviceName)
 	ctx := context.Background()
@@ -34,12 +34,15 @@ func (tr *TestRunner) RestartService(serviceName string) error {
 	if err != nil {
 		return err
 	}
-	timeout := 30 * time.Second
-	err = cli.ContainerRestart(ctx, containerID, &timeout)
+	var dockerRequestTimeout int = 3
+	options := container.StopOptions{
+		Timeout: &dockerRequestTimeout,
+	}
+	err = cli.ContainerRestart(ctx, containerID, options)
 	return err
 }
 
-//StartService
+// StartService
 func (tr *TestRunner) StartService(serviceName string) error {
 	fmt.Printf("Starting docker container: %v\n", serviceName)
 	ctx := context.Background()
@@ -57,7 +60,7 @@ func (tr *TestRunner) StartService(serviceName string) error {
 	return cli.ContainerStart(ctx, serviceName, dockerTypes.ContainerStartOptions{})
 }
 
-//StopService
+// StopService
 func (tr *TestRunner) StopService(serviceName string) error {
 	fmt.Printf("Stop a docker container: %v\n", serviceName)
 	ctx := context.Background()
@@ -72,11 +75,14 @@ func (tr *TestRunner) StopService(serviceName string) error {
 		fmt.Print(err)
 		return err
 	}
-	timeout := 30 * time.Second
-	return cli.ContainerStop(ctx, containerId, &timeout)
+	var dockerRequestTimeout int = 3
+	options := container.StopOptions{
+		Timeout: &dockerRequestTimeout,
+	}
+	return cli.ContainerStop(ctx, containerId, options)
 }
 
-//StopService adds ability to stop a particular service managed by docker
+// StopService adds ability to stop a particular service managed by docker
 func (tr *TestRunner) PauseService(serviceName string) error {
 	fmt.Printf("Pausing docker container: %v\n", serviceName)
 	ctx := context.Background()
@@ -88,14 +94,14 @@ func (tr *TestRunner) PauseService(serviceName string) error {
 	return err
 }
 
-//CmdOutput struct representing output of docker container command
+// CmdOutput struct representing output of docker container command
 type CmdOutput struct {
 	cmd    []string
 	output string
 	err    error
 }
 
-//RunCommandInContainer adds ability to run a specific command within a container
+// RunCommandInContainer adds ability to run a specific command within a container
 func (tr *TestRunner) RunCommandInContainer(serviceName string, cmdList [][]string) ([]*CmdOutput, error) {
 	fmt.Printf("RunCommandInContainer: %v\n", serviceName)
 	ctx := context.Background()
@@ -124,7 +130,7 @@ func (tr *TestRunner) RunCommandInContainer(serviceName string, cmdList [][]stri
 			continue
 		}
 
-		attachResp, err := cli.ContainerExecAttach(ctx, createResp.ID, dockerTypes.ExecConfig{})
+		attachResp, err := cli.ContainerExecAttach(ctx, createResp.ID, dockerTypes.ExecStartCheck{})
 		if err != nil {
 			r.err = err
 			continue
@@ -192,7 +198,7 @@ func (tr *TestRunner) OverwriteMConfig(mconfigPath string, serviceName string) e
 	return nil
 }
 
-//ScanContainerLogs provides ability to scan the container logs for a string
+// ScanContainerLogs provides ability to scan the container logs for a string
 func (tr *TestRunner) ScanContainerLogs(serviceName string, line string) int {
 	ctx := context.Background()
 	cli, containerID, err := tr.getDockerClientAndContainerID(serviceName)

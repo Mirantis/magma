@@ -13,7 +13,12 @@
 
 #pragma once
 
-#include "common_types.h"
+#define MAX_QOS_FLOW 64
+#define MAX_NO_OF_MULTI_CONN 4
+#define RULE_ID_LEN 256
+
+#include "lte/gateway/c/core/oai/common/common_types.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_24.008.h"
 //-----------------------------------------------------------------------------
 /** @struct itti_n11_create_pdu_session_response_t
  *  @brief Create PDU Session Response */
@@ -56,15 +61,57 @@ typedef struct qos_flow_level_qos_parameters_s {
   m5g_allocation_and_retention_priority alloc_reten_priority;
 } qos_flow_level_qos_parameters;
 
+typedef enum qos_flow_action_s {
+  policy_action_add = 0,
+  policy_action_del = 1,
+  policy_action_mod = 2
+} qos_flow_action_t;
+
+typedef enum qos_policy_state_s {
+  policy_state_install = 0,
+  policy_state_pending = 1,
+  ploicy_state_reject = 2
+} qos_policy_state_t;
+
+typedef struct qos_flow_descriptor_s {
+  uint32_t qos_flow_identifier;
+  uint32_t fiveQi;
+  uint32_t mbr_dl;
+  uint32_t mbr_ul;
+  uint32_t gbr_dl;
+  uint32_t gbr_ul;
+} qos_flow_descriptor_t;
+
 typedef struct qos_flow_setup_request_item_s {
   uint32_t qos_flow_identifier;
   qos_flow_level_qos_parameters qos_flow_level_qos_param;
+  qos_flow_action_t qos_flow_action;
+  qos_flow_descriptor_t qos_flow_descriptor;
+  traffic_flow_template_t ul_tft;
+  uint32_t qos_flow_version;
+  uint8_t rule_id[RULE_ID_LEN];
   // E-RAB ID is optional spec-38413 - 9.3.4.1
 } qos_flow_setup_request_item;
 
 typedef struct qos_flow_request_list_s {
   qos_flow_setup_request_item qos_flow_req_item;
 } qos_flow_request_list_t;
+
+typedef struct qos_flow_add_or_modify_resp_item_s {
+  uint32_t qos_flow_identifier;
+} qos_flow_add_or_mdofiy_resp_item_t;
+
+typedef struct qos_flow_add_or_modify_request_list_s {
+  uint8_t maxNumOfQosFlows;
+  qos_flow_request_list_t item[MAX_QOS_FLOW];
+} qos_flow_add_or_modify_request_list_t;
+
+typedef qos_flow_add_or_modify_request_list_t qos_flow_list_t;
+
+typedef struct qos_flow_add_or_modify_response_list_s {
+  uint8_t maxNumOfQosFlows;
+  qos_flow_add_or_mdofiy_resp_item_t item[MAX_QOS_FLOW];
+} qos_flow_add_or_modify_response_list_t;
 
 typedef struct amf_pdn_type_value_s {
   pdn_type_value_t pdn_type;
@@ -79,17 +126,16 @@ typedef struct up_transport_layer_information_s {
   gtp_tunnel gtp_tnl;
 } up_transport_layer_information_t;
 
+typedef struct ul_ng_u_up_tnl_modify_list_s {
+  uint32_t numOfItems;
+  up_transport_layer_information_t
+      ul_ng_u_up_tnl_modfy_item[MAX_NO_OF_MULTI_CONN];
+} ul_ng_u_up_tnl_modify_list_t;
+
 typedef struct amf_ue_aggregate_maximum_bit_rate_s {
   uint64_t dl;
   uint64_t ul;
 } amf_ue_aggregate_maximum_bit_rate_t;
-
-typedef struct pdu_session_resource_setup_request_transfer_s {
-  amf_ue_aggregate_maximum_bit_rate_t pdu_aggregate_max_bit_rate;
-  up_transport_layer_information_t up_transport_layer_info;
-  amf_pdn_type_value_t pdu_ip_type;
-  qos_flow_request_list_t qos_flow_setup_request_list;
-} pdu_session_resource_setup_request_transfer_t;
 
 /***********************pdu_res_set_change ends*************************/
 
@@ -111,46 +157,46 @@ typedef enum pdu_session_type_e {
 typedef enum ssc_mode_e { SSC_MODE_1, SSC_MODE_2, SSC_MODE_3 } ssc_mode_t;
 
 typedef enum m5g_sm_cause_e {
-  M5GSM_OPERATOR_DETERMINED_BARRING                       = 0,
-  M5GSM_INSUFFICIENT_RESOURCES                            = 1,
-  M5GSM_MISSING_OR_UNKNOWN_DNN                            = 2,
-  M5GSM_UNKNOWN_PDU_SESSION_TYPE                          = 3,
-  M5GSM_USER_AUTHENTICATION_OR_AUTHORIZATION_FAILED       = 4,
-  M5GSM_REQUEST_REJECTED_UNSPECIFIED                      = 5,
-  M5GSM_SERVICE_OPTION_NOT_SUPPORTED                      = 6,
-  M5GSM_REQUESTED_SERVICE_OPTION_NOT_SUBSCRIBED           = 7,
-  M5GSM_SERVICE_OPTION_TEMPORARILY_OUT_OF_ORDER           = 8,
-  M5GSM_REGULAR_DEACTIVATION                              = 10,
-  M5GSM_NETWORK_FAILURE                                   = 11,
-  M5GSM_REACTIVATION_REQUESTED                            = 12,
-  M5GSM_INVALID_PDU_SESSION_IDENTITY                      = 13,
-  M5GSM_SEMANTIC_ERRORS_IN_PACKET_FILTER                  = 14,
-  M5GSM_SYNTACTICAL_ERROR_IN_PACKET_FILTER                = 15,
-  M5GSM_OUT_OF_LADN_SERVICE_AREA                          = 16,
-  M5GSM_PTI_MISMATCH                                      = 17,
-  M5GSM_PDU_SESSION_TYPE_IPV4_ONLY_ALLOWED                = 18,
-  M5GSM_PDU_SESSION_TYPE_IPV6_ONLY_ALLOWED                = 19,
-  M5GSM_PDU_SESSION_DOES_NOT_EXIST                        = 20,
+  M5GSM_OPERATOR_DETERMINED_BARRING = 0,
+  M5GSM_INSUFFICIENT_RESOURCES = 1,
+  M5GSM_MISSING_OR_UNKNOWN_DNN = 2,
+  M5GSM_UNKNOWN_PDU_SESSION_TYPE = 3,
+  M5GSM_USER_AUTHENTICATION_OR_AUTHORIZATION_FAILED = 4,
+  M5GSM_REQUEST_REJECTED_UNSPECIFIED = 5,
+  M5GSM_SERVICE_OPTION_NOT_SUPPORTED = 6,
+  M5GSM_REQUESTED_SERVICE_OPTION_NOT_SUBSCRIBED = 7,
+  M5GSM_SERVICE_OPTION_TEMPORARILY_OUT_OF_ORDER = 8,
+  M5GSM_REGULAR_DEACTIVATION = 10,
+  M5GSM_NETWORK_FAILURE = 11,
+  M5GSM_REACTIVATION_REQUESTED = 12,
+  M5GSM_INVALID_PDU_SESSION_IDENTITY = 13,
+  M5GSM_SEMANTIC_ERRORS_IN_PACKET_FILTER = 14,
+  M5GSM_SYNTACTICAL_ERROR_IN_PACKET_FILTER = 15,
+  M5GSM_OUT_OF_LADN_SERVICE_AREA = 16,
+  M5GSM_PTI_MISMATCH = 17,
+  M5GSM_PDU_SESSION_TYPE_IPV4_ONLY_ALLOWED = 18,
+  M5GSM_PDU_SESSION_TYPE_IPV6_ONLY_ALLOWED = 19,
+  M5GSM_PDU_SESSION_DOES_NOT_EXIST = 20,
   M5GSM_INSUFFICIENT_RESOURCES_FOR_SPECIFIC_SLICE_AND_DNN = 21,
-  M5GSM_NOT_SUPPORTED_SSC_MODE                            = 22,
-  M5GSM_INSUFFICIENT_RESOURCES_FOR_SPECIFIC_SLICE         = 23,
-  M5GSM_MISSING_OR_UNKNOWN_DNN_IN_A_SLICE                 = 24,
-  M5GSM_INVALID_PTI_VALUE                                 = 25,
+  M5GSM_NOT_SUPPORTED_SSC_MODE = 22,
+  M5GSM_INSUFFICIENT_RESOURCES_FOR_SPECIFIC_SLICE = 23,
+  M5GSM_MISSING_OR_UNKNOWN_DNN_IN_A_SLICE = 24,
+  M5GSM_INVALID_PTI_VALUE = 25,
   M5GSM_MAXIMUM_DATA_RATE_PER_UE_FOR_USER_PLANE_INTEGRITY_PROTECTION_IS_TOO_LOW =
       26,
-  M5GSM_SEMANTIC_ERROR_IN_THE_QOS_OPERATION                 = 27,
-  M5GSM_SYNTACTICAL_ERROR_IN_THE_QOS_OPERATION              = 28,
-  M5GSM_INVALID_MAPPED_EPS_BEARER_IDENTITY                  = 29,
-  M5GSM_SEMANTICALLY_INCORRECT_MESSAGE                      = 30,
-  M5GSM_INVALID_MANDATORY_INFORMATION                       = 31,
-  M5GSM_MESSAGE_TYPE_NON_EXISTENT_OR_NOT_IMPLEMENTED        = 32,
+  M5GSM_SEMANTIC_ERROR_IN_THE_QOS_OPERATION = 27,
+  M5GSM_SYNTACTICAL_ERROR_IN_THE_QOS_OPERATION = 28,
+  M5GSM_INVALID_MAPPED_EPS_BEARER_IDENTITY = 29,
+  M5GSM_SEMANTICALLY_INCORRECT_MESSAGE = 30,
+  M5GSM_INVALID_MANDATORY_INFORMATION = 31,
+  M5GSM_MESSAGE_TYPE_NON_EXISTENT_OR_NOT_IMPLEMENTED = 32,
   M5GSM_MESSAGE_TYPE_NOT_COMPATIBLE_WITH_THE_PROTOCOL_STATE = 33,
-  M5GSM_IE_NON_EXISTENT_OR_NOT_IMPLEMENTED                  = 34,
-  M5GSM_CONDITIONAL_IE_ERROR                                = 35,
-  M5GSM_MESSAGE_NOT_COMPATIBLE_WITH_THE_PROTOCOL_STATE      = 36,
-  M5GSM_PROTOCOL_ERROR_UNSPECIFIED                          = 37,
-  M5GSM_PTI_ALREADY_IN_USE                                  = 38,
-  M5GSM_OPERATION_SUCCESS                                   = 40
+  M5GSM_IE_NON_EXISTENT_OR_NOT_IMPLEMENTED = 34,
+  M5GSM_CONDITIONAL_IE_ERROR = 35,
+  M5GSM_MESSAGE_NOT_COMPATIBLE_WITH_THE_PROTOCOL_STATE = 36,
+  M5GSM_PROTOCOL_ERROR_UNSPECIFIED = 37,
+  M5GSM_PTI_ALREADY_IN_USE = 38,
+  M5GSM_OPERATION_SUCCESS = 40
 } m5g_sm_cause_t;
 
 typedef enum redirect_address_type_e {
@@ -168,8 +214,8 @@ typedef struct redirect_server_s {
 typedef struct QosRules_response_s {
   uint32_t qos_rule_identifier;
   bool dqr;
-  uint32_t number_of_packet_filters;
-  uint32_t packet_filter_identifier[16];
+  traffic_flow_template_t ul_tft;
+  traffic_flow_template_t dl_tft;
   uint32_t qos_rule_precedence;
   bool segregation;
   uint32_t qos_flow_identifier;
@@ -205,23 +251,24 @@ typedef struct itti_n11_create_pdu_session_response_s {
   pdu_session_type_t pdu_session_type;
   ssc_mode_t selected_ssc_mode;
   m5g_sm_cause_t m5gsm_cause;
+  SessionAmbr_response session_ambr;
   QosRules_response
       authorized_qos_rules[4];  // TODO 32 in NAS5g,3 in pcap, revisit later
-  SessionAmbr_response session_ambr;
   bool always_on_pdu_session_indication;
   ssc_mode_t allowed_ssc_mode;
   bool m5gsm_congetion_re_attempt_indicator;
-  redirect_server_t pdu_address;
+  redirect_server_t redirect_server_addr;
+  paa_t pdu_address;
 
-  qos_flow_request_list_t qos_list;
+  qos_flow_list_t qos_flow_list;
   TeidSet_response upf_endpoint;
-  uint8_t procedure_trans_identity[2];
+  uint8_t procedure_trans_identity;
 } itti_n11_create_pdu_session_response_t;
 
-#define N11_CREATE_PDU_SESSION_RESPONSE(mSGpTR)                                \
+#define N11_CREATE_PDU_SESSION_RESPONSE(mSGpTR) \
   (mSGpTR)->ittiMsg.n11_create_pdu_session_response
 
-#define N11_NOTIFICATION_RECEIVED(mSGpTR)                                      \
+#define N11_NOTIFICATION_RECEIVED(mSGpTR) \
   (mSGpTR)->ittiMsg.n11_notification_received
 
 // Resource relese request
@@ -231,8 +278,7 @@ typedef enum {
   TXNRELOCOVERALL_EXPIRY,
   SUCCESSFUL_HANDOVER,
   RELEASE_DUE_TO_NG_RAN_GENERATED_REASON,
-  RELEASE_DUE_TO_5GC_GENERATED,
-  REASON,
+  RELEASE_DUE_TO_5GC_GENERATED_REASON,
   HANDOVER_CANCELLED,
   PARTIAL_HANDOVER,
   HANDOVER_FAILURE_IN_TARGET_5GC_NGRAN_NODE_OR_TARGET_SYSTEM,
@@ -291,7 +337,7 @@ typedef struct transport_layer_s {
 
 typedef enum {
   NORMAL_RELEASE,
-  AUTHENTICATION_FAILURE_NAS,  //#defined on AUTHENTICATION_FAILURE
+  AUTHENTICATION_FAILURE_NAS,  // #defined on AUTHENTICATION_FAILURE
   DEREGISTER,
   UNSPECIFIED_NAS_CAUSE,
 } NAS_cause;
@@ -354,16 +400,18 @@ typedef struct pdu_session_resource_release_command_transfer_s {
   cause_t cause;
 } pdu_session_resource_release_command_transfer;
 
-#define N11_NOTIFICATION_RECEIVED(mSGpTR)                                      \
+typedef pdu_session_resource_release_command_transfer
+    pdu_session_resource_modify_unsuccessful_transfer_t;
+#define N11_NOTIFICATION_RECEIVED(mSGpTR) \
   (mSGpTR)->ittiMsg.n11_notification_received
 
 // RequestType
 typedef enum RequestType_received_s {
-  INITIAL_REQUEST                = 0,
-  EXISTING_PDU_SESSION           = 1,
-  INITIAL_EMERGENCY_REQUEST      = 2,
+  INITIAL_REQUEST = 0,
+  EXISTING_PDU_SESSION = 1,
+  INITIAL_EMERGENCY_REQUEST = 2,
   EXISTING_EMERGENCY_PDU_SESSION = 3,
-  MODIFICATION_REQUEST           = 4,
+  MODIFICATION_REQUEST = 4,
 } RequestType_received;
 
 // M5GSMCapability
@@ -372,8 +420,11 @@ typedef struct M5GSMCapability_received_s {
   bool multi_homed_ipv6_pdu_session;
 } M5GSMCapability_received;
 
-#define N11_CREATE_PDU_SESSION_RESPONSE(mSGpTR)                                \
+#define N11_CREATE_PDU_SESSION_RESPONSE(mSGpTR) \
   (mSGpTR)->ittiMsg.n11_create_pdu_session_response
+
+#define N11_CREATE_PDU_SESSION_FAILURE(mSGpTR) \
+  (mSGpTR)->ittiMsg.n11_create_pdu_session_failure
 
 typedef enum {
   PDU_SESSION_INACTIVE_NOTIFY,         // AMF <=> SMF
@@ -399,3 +450,36 @@ typedef struct itti_n11_received_notification_s {
   // Idle/paging/periodic_reg events and UE state notification
   notify_ue_event notify_ue_evnt;
 } itti_n11_received_notification_t;
+
+typedef struct itti_n11_pdu_failure_t {
+  // common context
+  char imsi[IMSI_BCD_DIGITS_MAX + 1];
+  uint32_t pdu_session_id;
+  uint8_t error_code;
+} itti_n11_create_pdu_session_failure_t;
+
+typedef struct qos_flow_item_s {
+  uint32_t qos_flow_identifier;
+  cause_t cause;
+} qos_flow_item_t;
+
+typedef struct qos_flow_list_cause_s {
+  uint8_t numOfItems;
+  qos_flow_item_t item[MAX_QOS_FLOW];
+} qos_flow_list_cause_t;
+
+typedef struct pdu_session_resource_setup_request_transfer_s {
+  amf_ue_aggregate_maximum_bit_rate_t pdu_aggregate_max_bit_rate;
+  up_transport_layer_information_t up_transport_layer_info;
+  amf_pdn_type_value_t pdu_ip_type;
+  qos_flow_add_or_modify_request_list_t qos_flow_add_or_mod_request_list;
+} pdu_session_resource_setup_request_transfer_t;
+
+typedef struct pdu_session_resource_modify_request_transfer_s {
+  amf_ue_aggregate_maximum_bit_rate_t pdu_sess_aggregate_max_bit_rate;
+  ul_ng_u_up_tnl_modify_list_t ul_ng_u_up_tnl_modify_list;
+  uint32_t network_instance;
+  qos_flow_add_or_modify_request_list_t qos_flow_add_or_mod_request_list;
+  qos_flow_list_cause_t qos_flow_to_release_list;
+  uint32_t common_network_instance;
+} pdu_session_resource_modify_request_transfer_t;

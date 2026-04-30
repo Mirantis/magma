@@ -29,12 +29,6 @@ if (NOT BUILD_TESTS)
       "${CMAKE_C_FLAGS_RELWITHDEBINFO} -fsanitize=leak -fno-omit-frame-pointer")
   set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO
       "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} -fsanitize=leak")
-else () # BUILD_TESTS
-  message("Adding code coverage build and linker flags for BUILD_TESTS")
-  set(CMAKE_CXX_FLAGS_DEBUG
-      "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -fprofile-arcs -ftest-coverage")
-  set(CMAKE_LINKER_FLAGS_DEBUG
-      "${CMAKE_LINKER_FLAGS_DEBUG} -fprofile-arcs -ftest-coverage")
 endif ()
 
 add_definitions(-DLOG_WITH_GLOG)
@@ -48,6 +42,7 @@ find_package(MAGMA_LOGGING REQUIRED)
 find_package(SERVICE303_LIB REQUIRED)
 find_package(MAGMA_CONFIG REQUIRED)
 find_package(SERVICE_REGISTRY REQUIRED)
+find_package(MAGMA_SENTRY REQUIRED)
 
 # compile the needed protos
 set(CT_ORC8R_CPP_PROTOS "")
@@ -62,19 +57,20 @@ message("Proto_hdr are ${PROTO_HDRS}")
 
 add_library(CONNECTION_TRACKER
     PacketGenerator.cpp
-    PacketGenerator.h
+    PacketGenerator.hpp
     EventTracker.cpp
-    EventTracker.h
+    EventTracker.hpp
     ${PROTO_SRCS}
     ${PROTO_HDRS})
 
 target_link_libraries(CONNECTION_TRACKER
-    SERVICE303_LIB SERVICE_REGISTRY MAGMA_LOGGING MAGMA_CONFIG
+    SERVICE303_LIB SERVICE_REGISTRY MAGMA_LOGGING MAGMA_CONFIG MAGMA_SENTRY
     glog gflags folly pthread ${GCOV_LIB} grpc++ grpc yaml-cpp protobuf cpp_redis
     prometheus-cpp tacopie mnl tins
     )
 
 target_include_directories(CONNECTION_TRACKER PUBLIC
+    $ENV{MAGMA_ROOT}
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
     $<TARGET_FILE_DIR:CONNECTION_TRACKER>)
 

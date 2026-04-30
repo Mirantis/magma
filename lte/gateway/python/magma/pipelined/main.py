@@ -20,13 +20,14 @@ import logging
 import threading
 
 import aioeventlet
+import sdnotify
 from lte.protos.mconfig import mconfigs_pb2
 from magma.common.misc_utils import get_ip_from_if
 from magma.common.sentry import sentry_init
 from magma.common.service import MagmaService
 from magma.configuration import environment
 from magma.pipelined.app import of_rest_server
-from magma.pipelined.app.he import PROXY_PORT_NAME
+from magma.pipelined.app.he import PROXY_OF_PORT, PROXY_PORT_NAME
 from magma.pipelined.bridge_util import BridgeTools
 from magma.pipelined.check_quota_server import run_flask
 from magma.pipelined.datapath_setup import (
@@ -39,13 +40,12 @@ from magma.pipelined.gtp_stats_collector import (
     MIN_OVSDB_DUMP_POLLING_INTERVAL,
     GTPStatsCollector,
 )
-from magma.pipelined.ifaces import monitor_ifaces
+from magma.pipelined.ifaces import get_mac_address_from_iface, monitor_ifaces
 from magma.pipelined.rpc_servicer import PipelinedRpcServicer
 from magma.pipelined.service_manager import ServiceManager
 from ryu import cfg
 from ryu.base.app_manager import AppManager
 from ryu.ofproto.ofproto_v1_4 import OFPP_LOCAL
-from scapy.arch import get_if_hwaddr
 
 
 def main():
@@ -61,7 +61,7 @@ def main():
     service = MagmaService('pipelined', mconfigs_pb2.PipelineD())
 
     # Optionally pipe errors to Sentry
-    sentry_init(service_name=service.name)
+    sentry_init(service_name=service.name, sentry_mconfig=service.shared_mconfig.sentry_config)
 
     service_config = service.config
 
@@ -100,6 +100,19 @@ def main():
     )
     service.config['sgi_management_iface_gw'] = sgi_gateway_ip
 
+    # SGi IPv6 address conf
+    sgi_ipv6 = service.config.get(
+        'sgi_management_iface_ipv6_addr',
+        service.mconfig.sgi_management_iface_ipv6_addr,
+    )
+    service.config['sgi_management_iface_ipv6_addr'] = sgi_ipv6
+
+    sgi_gateway_ipv6 = service.config.get(
+        'sgi_management_iface_ipv6_gw',
+        service.mconfig.sgi_management_iface_ipv6_gw,
+    )
+    service.config['sgi_management_iface_ipv6_gw'] = sgi_gateway_ipv6
+
     # Keep router mode off for smooth upgrade path
     service.config['dp_router_enabled'] = service.config.get(
         'dp_router_enabled',
@@ -108,9 +121,9 @@ def main():
     if 'virtual_mac' not in service.config:
         if service.config['dp_router_enabled']:
             up_iface_name = service.config.get('nat_iface', None)
-            mac_addr = get_if_hwaddr(up_iface_name)
+            mac_addr = get_mac_address_from_iface(up_iface_name)
         else:
-            mac_addr = get_if_hwaddr(service.config.get('bridge_name'))
+            mac_addr = get_mac_address_from_iface(service.config.get('bridge_name'))
 
         service.config['virtual_mac'] = mac_addr
 
@@ -127,6 +140,10 @@ def main():
     he_enabled_flag = False
     if service.mconfig.he_config:
         he_enabled_flag = service.mconfig.he_config.enable_header_enrichment
+        if he_enabled_flag:
+            bridge = service.config.get('bridge_name')
+            BridgeTools.add_ovs_port(bridge, PROXY_PORT_NAME, PROXY_OF_PORT)
+
     he_enabled = service.config.get('he_enabled', he_enabled_flag)
     service.config['he_enabled'] = he_enabled
 
@@ -139,8 +156,10 @@ def main():
     # monitoring related configuration
     mtr_interface = service.config.get('mtr_interface', None)
     if mtr_interface:
-        mtr_ip = get_ip_from_if(mtr_interface)
-        service.config['mtr_ip'] = mtr_ip
+        try:
+            service.config['mtr_ip'] = get_ip_from_if(mtr_interface)
+        except ValueError:
+            logging.warning("Unable to set up mtr interface", exc_info=True)
 
     # Load the ryu apps
     service_manager = ServiceManager(service)
@@ -166,7 +185,9 @@ def main():
         manager.applications.get('VlanLearnController', None),
         manager.applications.get('TunnelLearnController', None),
         manager.applications.get('Classifier', None),
-        manager.applications.get('InOutController', None),
+        manager.applications.get('IngressController', None),
+        manager.applications.get('MiddleController', None),
+        manager.applications.get('EgressController', None),
         manager.applications.get('NGServiceController', None),
         service.config,
         service_manager,
@@ -201,6 +222,9 @@ def main():
             service.loop,
         )
         collector.start()
+
+    notifier = sdnotify.SystemdNotifier()
+    notifier.notify("READY=1")
 
     # Run the service loop
     service.run()

@@ -141,21 +141,6 @@ MME :
         LAC = "{{ lac }}";
     };
 
-    # NGAP definitions
-    NGAP :
-    {
-      # outcome drop timer value (seconds)
-      #  S1AP_OUTCOME_TIMER = 10;
-      AMF_NAME = "{{ amf_name }}"
-    };
-    # AMF served GUAMFIs
-    # AMF code DEFAULT  size = 8 bits
-    # AMF GROUP ID size = 16 bits
-    GUAMFI_LIST = (
-     { MCC="{{ mcc }}" ; MNC="{{ mnc }}"; AMF_REGION_ID="{{ amf_region_id }}" ; AMF_SET_ID="{{ amf_set_id }}"; AMF_POINTER="{{ amf_pointer }}"}
-    );
-
-
     NAS :
     {
         # 3GPP TS 33.401 section 7.2.4.3 Procedures for NAS algorithm selection
@@ -258,11 +243,13 @@ MME :
         # we don't advise wireless interfaces
         MME_INTERFACE_NAME_FOR_S1_MME         = "{{ s1ap_iface_name }}";
         MME_IPV4_ADDRESS_FOR_S1_MME           = "{{ s1ap_ip }}";
+        MME_IPV6_ADDRESS_FOR_S1_MME           = "{{ s1ap_ipv6 }}";
 
         # MME binded interface for S11 communication (GTPV2-C)
         MME_INTERFACE_NAME_FOR_S11_MME        = "{{ s11_iface_name }}";
         MME_IPV4_ADDRESS_FOR_S11_MME          = "{{ mme_s11_ip }}";
         MME_PORT_FOR_S11_MME                  = 2123;
+        MME_S1_IPV6_ENABLED                   = "{{ s1ap_ipv6_enabled }}";
     };
 
     LOGGING :
@@ -349,13 +336,29 @@ MME :
    }
 };
 
-NGAP :
+AMF :
 {
     # DNS address communicated to UEs
     DEFAULT_DNS_IPV4_ADDRESS     = "{{ ipv4_dns }}";
     DEFAULT_DNS_SEC_IPV4_ADDRESS = "{{ ipv4_sec_dns }}";
+    P_CSCF_IPV4_ADDRESS          = "{{ ipv4_p_cscf_address }}";
+
     AMF_NAME = "{{ amf_name }}";
+    DEFAULT_DNN = "{{ default_dnn }}";
+    AUTHENTICATION_MAX_RETRY = "{{ auth_retry_max_count }}";
+    AUTHENTICATION_TIMER_EXPIRY = "{{ auth_retry_interval }}";
     PLMN_SUPPORT_LIST = (
-       { MCC="{{ mcc }}" ; MNC="{{ mnc }}"; DEFAULT_SLICE_SERVICE_TYPE="{{ default_slice_service_type }}" ; DEFAULT_SLICE_DIFFERENTIATOR="{{ default_slice_differentiator }}"; }
+       { MCC="{{ mcc }}" ; MNC="{{ mnc }}"; AMF_DEFAULT_SLICE_SERVICE_TYPE="{{ amf_default_slice_service_type }}" ; AMF_DEFAULT_SLICE_DIFFERENTIATOR="{{ amf_default_slice_differentiator }}"; }
     );
+
+    # AMF served GUAMFIs
+    # AMF code DEFAULT  size = 8 bits
+    # AMF GROUP ID size = 16 bits
+    GUAMFI_LIST = (
+     { MCC="{{ mcc }}" ; MNC="{{ mnc }}"; AMF_REGION_ID="{{ amf_region_id }}" ; AMF_SET_ID="{{ amf_set_id }}"; AMF_POINTER="{{ amf_pointer }}"}
+    );
+
+    # IMP VoPS FEATURE
+    ENABLE_IMS_VoPS_3GPP = "{{ enable_IMS_VoPS_3GPP }}";
+    T3512 = 10
 };

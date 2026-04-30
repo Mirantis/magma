@@ -3,9 +3,24 @@
     "Getting Started": [
       "basics/introduction",
       "basics/prerequisites",
-      "basics/quick_start_guide"
+      "basics/quick_start_guide",
+      "bazel/agw_with_bazel"
     ],
     "Tutorials": [
+      {
+        "type": "subcategory",
+        "label": "Operate your own private mobile network with Charmed Magma",
+        "ids": [
+          "tutorials/00_overview",
+          "tutorials/01_getting_started",
+          "tutorials/02_deploying_magma_orchestrator",
+          "tutorials/03_deploying_magma_agw",
+          "tutorials/04_integrating_agw_with_orc8r",
+          "tutorials/05_deploying_the_radio_simulator",
+          "tutorials/06_simulating_user_traffic",
+          "tutorials/06_destroying_the_env"
+        ]
+      }
     ],
     "Usage": [
       {
@@ -14,17 +29,15 @@
         "ids": [
           "howtos/ue_metering",
           "howtos/config_agw_bridged",
+          "howtos/5g_nsa_support",
           "howtos/call_tracing",
           "howtos/events_monitoring",
+          "howtos/ipv6_agw",
           "howtos/he_api",
           "howtos/inbound_roaming",
-          "howtos/pcap"
-        ]
-      },
-      {
-        "type": "subcategory",
-        "label": "Access Gateway",
-        "ids": [
+          "howtos/l3_transport",
+          "howtos/network_probe",
+          "howtos/package"
         ]
       },
       {
@@ -59,15 +72,14 @@
         "ids": [
           "orc8r/architecture_overview",
           "orc8r/architecture_modularity",
-          "orc8r/architecture_security",
-          "nms/nms_arch_overview"
+          "orc8r/architecture_security"
         ]
       },
       {
         "type": "subcategory",
         "label": "NMS",
         "ids": [
-          "nms/nms_arch_overview"
+          "nms/architecture_overview"
         ]
       },
       {
@@ -76,17 +88,33 @@
         "ids": [
           "feg/architecture_overview"
         ]
+      },
+      {
+        "type": "subcategory",
+        "label": "Domain Proxy",
+        "ids": [
+          "dp/architecture_overview"
+        ]
       }
     ],
     "Deploy": [
       {
         "type": "subcategory",
+        "label": "General",
+        "ids": [
+          "general/aws_cloudstrapper"
+        ]
+      },
+      {
+        "type": "subcategory",
         "label": "Access Gateway",
         "ids": [
           "lte/deploy_install",
+          "lte/deploy_install_docker",
           "lte/deploy_config_agw",
           "lte/deploy_config_enodebd",
           "lte/deploy_config_apn",
+          "lte/deploy_agw_using_juju",
           "lte/build_install_magma_pkg_in_agw"
         ]
       },
@@ -96,7 +124,8 @@
         "ids": [
           "orc8r/deploy_intro",
           "orc8r/deploy_install",
-          "orc8r/deploy_orcl",
+          "orc8r/deploy_using_ansible",
+          "orc8r/deploy_using_juju",
           "orc8r/deploy_terraform_options",
           "orc8r/deploy_faq"
         ]
@@ -115,6 +144,22 @@
           "feg/deploy_intro",
           "feg/deploy_build",
           "feg/deploy_install"
+        ]
+      },
+      {
+        "type": "subcategory",
+        "label": "Domain Proxy",
+        "ids": [
+          "dp/deploy_build"
+        ]
+      },
+      {
+        "type": "subcategory",
+        "label": "Carrier WiFi",
+        "ids": [
+          "cwf/deploy_intro",
+          "cwf/deploy_build",
+          "cwf/deploy_install"
         ]
       }
     ],
@@ -139,6 +184,13 @@
         "label": "Federation Gateway",
         "ids": [
           "feg/configure_federation"
+        ]
+      },
+      {
+        "type": "subcategory",
+        "label": "NMS",
+        "ids": [
+          "nms/nms_organizations"
         ]
       }
     ],
@@ -196,7 +248,8 @@
         "label": "Access Gateway",
         "ids": [
           "lte/debug_show_tech",
-          "lte/debug_dp_probe"
+          "lte/debug_dp_probe",
+          "lte/debug_user_control_plane"
         ]
       },
       {
@@ -204,6 +257,14 @@
         "label": "Federated Gateway",
         "ids": [
           "feg/debug_cli"
+        ]
+      },
+      {
+        "type": "subcategory",
+        "label": "Carrier WiFi",
+        "ids": [
+          "cwf/healthchecker",
+          "cwf/pipelined_packet_tracer_debugging"
         ]
       },
       {
@@ -219,28 +280,20 @@
         "ids": [
           "nms/alerts_troubleshooting"
         ]
-      }
-    ],
-    "Contribute": [
-      {
-        "type": "subcategory",
-        "label": "Contribute",
-        "ids": [
-          "contributing/contribute_onboarding",
-          "contributing/contribute_workflow",
-          "contributing/contribute_conventions",
-          "contributing/contribute_id_mappings",
-          "contributing/contribute_ci_checks"
-        ]
       },
       {
         "type": "subcategory",
-        "label": "Maintain",
+        "label": "Domain Proxy",
         "ids": [
-          "contributing/contribute_proposals",
-          "contributing/contribute_codeowners"
+          "dp/debug_logs"
         ]
       }
+    ],
+    "Contribute": [
+      "contributing/contribute_github",
+      "contributing/contribute_codeowners",
+      "contributing/contribute_tsc_norms",
+      "contributing/contribute_proposals"
     ],
     "Technical Reference": [
       {
@@ -249,20 +302,32 @@
         "ids": [
           "resources/ref_pcap",
           "resources/ref_useful_links",
-          "resources/ref_magma_metrics",
-          "docs/docs_overview"
+          "resources/ref_magma_metrics"
         ]
       },
       {
         "type": "subcategory",
         "label": "Access Gateway",
         "ids": [
+          "lte/readme_agw",
           "lte/dev_notes",
+          "lte/openvswitch",
+          "lte/pipelined",
+          "lte/ebpf_datapath",
+          "lte/ipfix",
+          "lte/pipelined_tests",
           "lte/dev_unit_testing",
           "lte/tr069",
           "lte/s1ap_tests",
           "lte/eventd",
-          "lte/access_service_restrictions"
+          "lte/sessiond",
+          "lte/access_service_restrictions",
+          "lte/dev_teid_allocation",
+          "lte/integrated_5g_sa",
+          "lte/extended_5g_sa_features",
+          "lte/suci_extensions",
+          "lte/redirectd",
+          "lte/readme_callflow"
         ]
       },
       {
@@ -276,7 +341,9 @@
           "orc8r/dev_security",
           "orc8r/dev_indexers",
           "orc8r/dev_sub_digests",
+          "orc8r/dev_rest_api_auth",
           "orc8r/dev_dependencies",
+          "orc8r/dev_gateway_registration",
           "orc8r/dev_aws_stack"
         ]
       },
@@ -294,7 +361,10 @@
         "type": "subcategory",
         "label": "Federation Gateway",
         "ids": [
-          "feg/dev_testing"
+          "feg/dev_testing",
+          "feg/docker",
+          "feg/s1ap_federated_tests",
+          "feg/session_proxy"
         ]
       },
       {
@@ -305,7 +375,7 @@
         ]
       }
     ],
-    "Proposals": [
+    "Design Documents": [
       {
         "type": "subcategory",
         "label": "General",
@@ -322,7 +392,7 @@
         "label": "Access Gateway",
         "ids": [
           "proposals/p003_qos_enforcement",
-          "proposals/p004_fua-restrict-feature",
+          "proposals/p004_fua_restrict_feature",
           "proposals/p007_header_enrichment",
           "proposals/p008_apn_correction",
           "proposals/p013_Ubuntu_upgrade",

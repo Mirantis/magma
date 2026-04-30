@@ -11,9 +11,10 @@
  * limitations under the License.
  */
 #include <gtest/gtest.h>
-#include "yaml-cpp/yaml.h"
+#include <yaml-cpp/yaml.h>
+#include <string>
 
-#include "YAMLUtils.h"
+#include "orc8r/gateway/c/common/config/YAMLUtils.hpp"
 
 using ::testing::Test;
 using YAML::Node;
@@ -22,11 +23,11 @@ namespace magma {
 
 TEST(test_simple_field_overrides, test_yaml_utils) {
   Node default_node;
-  default_node["foo"]     = "bar";
+  default_node["foo"] = "bar";
   default_node["default"] = "default";
 
   Node override_node;
-  override_node["foo"]      = "barbar";
+  override_node["foo"] = "barbar";
   override_node["override"] = "override";
 
   auto merge = YAMLUtils::merge_nodes(default_node, override_node);
@@ -47,27 +48,22 @@ TEST(test_nested_overrides, test_yaml_utils) {
   Node default_node;
   default_node["foo"] = "bar";
   Node nested_node;
-  nested_node["a"]     = "b";
-  nested_node["c"]     = "d";
+  nested_node["a"] = "b";
+  nested_node["c"] = "d";
   default_node["nest"] = nested_node;
 
   Node override_node;
   Node nest_override;
   Node new_nest;
-  nest_override["a"]    = "e";
-  new_nest["new_nest"]  = "other";
+  nest_override["a"] = "e";
+  new_nest["new_nest"] = "other";
   override_node["nest"] = nest_override;
-  override_node["foo"]  = new_nest;
+  override_node["foo"] = new_nest;
 
   auto merge = YAMLUtils::merge_nodes(default_node, override_node);
   EXPECT_TRUE(merge["foo"].IsMap());
   EXPECT_EQ("other", merge["foo"]["new_nest"].as<std::string>());
   EXPECT_EQ("e", merge["nest"]["a"].as<std::string>());
   EXPECT_EQ("d", merge["nest"]["c"].as<std::string>());
-}
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 }  // namespace magma

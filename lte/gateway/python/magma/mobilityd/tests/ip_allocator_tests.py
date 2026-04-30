@@ -22,7 +22,7 @@ import ipaddress
 import time
 import unittest
 
-from magma.common.redis.client import get_default_client
+import fakeredis
 from magma.mobilityd.ip_address_man import (
     IPAddressManager,
     IPNotInUseError,
@@ -51,7 +51,7 @@ class IPAllocatorTests(unittest.TestCase):
         """
         Creates and sets up an IPAllocator with the given recycling interval.
         """
-        store = MobilityStore(get_default_client(), False, 3980)
+        store = MobilityStore(fakeredis.FakeStrictRedis())
         store.dhcp_gw_info.read_default_gw()
         ip_allocator = IpAllocatorPool(store)
         ipv6_allocator = IPv6AllocatorPool(

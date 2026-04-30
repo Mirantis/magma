@@ -25,11 +25,18 @@ services:
   analytics:
     host: "localhost"
     port: 9200
+    protected_port: 9300
+    proxy_type: "clientcert"
+
+  dp_service:
+    host: "localhost"
+    port: 50053
     proxy_type: "clientcert"
 
   orchestrator:
     host: "localhost"
     port: 9112
+    protected_port: 9212
     echo_port: 10112
     proxy_type: "clientcert"
     labels:
@@ -54,11 +61,13 @@ services:
   streamer:
     host: "localhost"
     port: 9082
+    protected_port: 9182
     proxy_type: "clientcert"
 
   metricsd:
     host: "localhost"
     port: 9084
+    protected_port: 9184
     echo_port: 10084
     proxy_type: "clientcert"
     labels:
@@ -75,23 +84,33 @@ services:
   certifier:
     host: "localhost"
     port: 9086
+    protected_port: 9186
+    echo_port: 10089
     proxy_type: "internal"
     labels:
       orc8r.io/analytics_collector: "true"
+      orc8r.io/obsidian_handlers: "true"
+      orc8r.io/swagger_spec: "true"
+    annotations:
+      orc8r.io/obsidian_handlers_path_prefixes: >
+        /magma/v1/user,
 
   bootstrapper:
     host: "localhost"
     port: 9088
+    protected_port: 9188
     proxy_type: "open"
 
   accessd:
     host: "localhost"
     port: 9091
+    protected_port: 9191
     proxy_type: "clientcert"
 
   eventd:
     host: "localhost"
     port: 9121
+    protected_port: 9221
     echo_port: 10121
     proxy_type: "clientcert"
     labels:
@@ -105,36 +124,49 @@ services:
   obsidian:
     host: "localhost"
     port: 9093
+    protected_port: 9193
     proxy_type: "obsidian"
 
   dispatcher:
     host: "localhost"
     port: 9096
+    protected_port: 9196
     proxy_type: "clientcert"
 
   directoryd:
     host: "localhost"
     port: 9100
+    protected_port: 9102
     proxy_type: "clientcert"
 
   state:
     host: "localhost"
     port: 9105
+    protected_port: 9305
+    proxy_type: "clientcert"
+
+  orc8r_worker:
+    host: "localhost"
+    port: 9122
+    protected_port: 9222
     proxy_type: "clientcert"
 
   device:
     host: "localhost"
     port: 9106
+    protected_port: 9306
     proxy_type: "clientcert"
 
   configurator:
     host: "localhost"
     port: 9108
+    protected_port: 9208
     proxy_type: "clientcert"
 
   ctraced:
     host: "localhost"
     port: 9118
+    protected_port: 9218
     echo_port: 10118
     proxy_type: "clientcert"
     labels:
@@ -147,6 +179,7 @@ services:
   tenants:
     host: "localhost"
     port: 9110
+    protected_port: 9210
     echo_port: 10110
     proxy_type: "clientcert"
     labels:
@@ -160,4 +193,5 @@ services:
   service_registry:
     host: "localhost"
     port: 9180
+    protected_port: 9190
     proxy_type: "clientcert"

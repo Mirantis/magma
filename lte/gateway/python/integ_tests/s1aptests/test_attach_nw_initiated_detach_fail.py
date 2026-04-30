@@ -79,12 +79,10 @@ class TestAttachNwInitiatedDetachFail(unittest.TestCase):
             attach.esmInfo.epsBearerId,
         )
         # Receive NW initiated detach request
+        # Wait for timer 3422 expiry 5 times
         for _ in range(5):
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_NW_INIT_DETACH_REQUEST.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_NW_INIT_DETACH_REQUEST.value
             print("**************** Received NW initiated Detach Req")
 
         time.sleep(6)

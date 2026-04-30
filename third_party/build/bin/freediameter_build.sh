@@ -8,13 +8,14 @@
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
+# See the License for the specific language governing permissions and 
 # limitations under the License.
 
 set -e
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+PATCHES_DIR="${SCRIPT_DIR}/../../../lte/gateway/c/core/oai/patches"
 source "${SCRIPT_DIR}"/../lib/util.sh
-GIT_URL=https://github.com/lionelgo/opencord.org.freeDiameter.git
+GIT_URL=https://github.com/OPENAIRINTERFACE/opencord.org.freeDiameter.git
 GIT_COMMIT=13b0e7de0d66906d50e074a339f890d6e59813ad
 PKGVERSION=0.0.1
 ITERATION=1
@@ -59,7 +60,8 @@ git clone "${GIT_URL}" freediameter
 cd freediameter
 git checkout "${GIT_COMMIT}"
 
-patch -p1 < $MAGMA_ROOT/lte/gateway/c/oai/patches/0001-opencoord.org.freeDiameter.patch
+patch -p1 < "$PATCHES_DIR/0001-opencoord.org.freeDiameter.patch"
+patch -p1 < "$PATCHES_DIR/0002-opencoord.org.freeDiameter.patch"
 
 awk '{if (/^DISABLE_SCTP/) gsub(/OFF/, "ON"); print}' CMakeCache.txt > tmp && mv tmp CMakeCache.txt
 
@@ -77,20 +79,20 @@ PKGFILE="$(pkgfilename)"
 BUILD_PATH=${OUTPUT_DIR}/${PKGFILE}
 
 # remove old packages
-if [ -f ${BUILD_PATH} ]; then
-  rm ${BUILD_PATH}
+if [ -f "${BUILD_PATH}" ]; then
+  rm "${BUILD_PATH}"
 fi
 
 fpm \
     -s dir \
-    -t ${PKGFMT} \
-    -a ${ARCH} \
-    -n ${PKGNAME} \
-    -v ${PKGVERSION} \
-    --iteration ${ITERATION} \
-    --provides ${PKGNAME} \
-    --conflicts ${PKGNAME} \
-    --replaces ${PKGNAME} \
-    --package ${BUILD_PATH} \
+    -t "${PKGFMT}" \
+    -a "${ARCH}" \
+    -n "${PKGNAME}" \
+    -v "${PKGVERSION}" \
+    --iteration "${ITERATION}" \
+    --provides "${PKGNAME}" \
+    --conflicts "${PKGNAME}" \
+    --replaces "${PKGNAME}" \
+    --package "${BUILD_PATH}" \
     --description 'freediameter' \
     -C ${WORK_DIR}/install

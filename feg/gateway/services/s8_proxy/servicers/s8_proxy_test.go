@@ -88,6 +88,9 @@ func TestS8proxyCreateAndDeleteSession(t *testing.T) {
 	// check Agw control Plane TEID on the response
 	assert.Equal(t, AGWTeidC, csRes.CAgwTeid)
 
+	// check Agw user Plane TEID on the response
+	assert.Equal(t, csReq.BearerContext.UserPlaneFteid.Teid, csRes.UAgwTeid)
+
 	// check Pgw Control Plane TEID
 	assert.NotEmpty(t, csRes.CPgwFteid)
 	assert.Equal(t, PgwTEIDc, csRes.CPgwFteid.Teid)
@@ -620,7 +623,8 @@ func TestS8proxyCreateSessionNoProtocolConfigurationOptions(t *testing.T) {
 
 	// check PCO
 	assert.NoError(t, err)
-	assert.Empty(t, csRes.ProtocolConfigurationOptions)
+	emptyProcConfOpts := &protos.ProtocolConfigurationOptions{ConfigProtocol: 0, ProtoOrContainerId: nil}
+	test_utils.AssertMessagesEqual(t, emptyProcConfOpts, csRes.ProtocolConfigurationOptions)
 
 	// Test no PCO at all
 	// ------------------------

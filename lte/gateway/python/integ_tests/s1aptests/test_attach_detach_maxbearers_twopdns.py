@@ -20,7 +20,7 @@ import s1ap_wrapper
 from integ_tests.s1aptests.s1ap_utils import SpgwUtil
 
 
-class TestMaximumBearersTwoPdnsPerUe(unittest.TestCase):
+class TestAttachDetachMaxBearersTwoPdns(unittest.TestCase):
     """Test maximum bearers with two pdns"""
 
     def setUp(self):
@@ -41,7 +41,7 @@ class TestMaximumBearersTwoPdnsPerUe(unittest.TestCase):
         self._s1ap_wrapper.configUEDevice(num_ues)
 
         # 1 oai PDN + 1 dedicated bearer, 1 ims pdn + 8 dedicated bearers
-        loop = 8
+        num_ims_ded_bearers = 8
 
         # APN of the secondary PDN
         ims = {
@@ -57,7 +57,7 @@ class TestMaximumBearersTwoPdnsPerUe(unittest.TestCase):
         # APN list to be configured
         apn_list = [ims]
 
-        for i in range(num_ues):
+        for _ in range(num_ues):
             req = self._s1ap_wrapper.ue_req
 
             self._s1ap_wrapper.configAPN(
@@ -96,9 +96,7 @@ class TestMaximumBearersTwoPdnsPerUe(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             act_ded_ber_req_oai_apn = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
             )
@@ -113,9 +111,7 @@ class TestMaximumBearersTwoPdnsPerUe(unittest.TestCase):
             self._s1ap_wrapper.sendPdnConnectivityReq(ue_id, apn)
             # Receive PDN CONN RSP/Activate default EPS bearer context req
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value
             act_def_bearer_req = response.cast(s1ap_types.uePdnConRsp_t)
             addr = act_def_bearer_req.m.pdnInfo.pAddr.addrInfo
             sec_ip = ipaddress.ip_address(bytes(addr[:4]))
@@ -128,26 +124,30 @@ class TestMaximumBearersTwoPdnsPerUe(unittest.TestCase):
 
             print("Sleeping for 5 seconds")
             time.sleep(5)
-            for i in range(loop):
+            num_flows_per_bearer = 4
+            pdn_count = 1
+            for idx in range(num_ims_ded_bearers):
                 # Add dedicated bearer to 2nd PDN
                 print(
                     "********************** Adding dedicated bearer to ims"
                     " PDN",
                 )
+
+                uniq_port_idx = pdn_count * 100 + idx * num_flows_per_bearer
+
                 flow_lists2.append(
-                    self._spgw_util.create_default_ipv4_flows(port_idx=i),
+                    self._spgw_util.create_default_ipv4_flows(
+                        port_idx=uniq_port_idx,
+                    ),
                 )
                 self._spgw_util.create_bearer(
                     "IMSI" + "".join([str(i) for i in req.imsi]),
                     act_def_bearer_req.m.pdnInfo.epsBearerId,
-                    flow_lists2[i],
-                    qci_val=i + 1,
+                    flow_lists2[idx],
+                    qci_val=idx + 1,
                 )
                 response = self._s1ap_wrapper.s1_util.get_response()
-                self.assertEqual(
-                    response.msg_type,
-                    s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-                )
+                assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
                 act_ded_ber_req_ims_apn = response.cast(
                     s1ap_types.UeActDedBearCtxtReq_t,
                 )

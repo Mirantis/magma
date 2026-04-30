@@ -11,12 +11,21 @@
  * limitations under the License.
  */
 
+#include "lte/gateway/c/session_manager/DirectorydClient.hpp"
+#include "lte/gateway/c/session_manager/GrpcMagmaUtils.hpp"
+
+#include <grpcpp/channel.h>
+#include <orc8r/protos/common.pb.h>
+#include <orc8r/protos/directoryd.grpc.pb.h>
+#include <orc8r/protos/directoryd.pb.h>
 #include <memory>
 #include <utility>
 
-#include "DirectorydClient.h"
-#include "magma_logging.h"
-#include "includes/ServiceRegistrySingleton.h"
+#include "orc8r/gateway/c/common/service_registry/ServiceRegistrySingleton.hpp"
+
+namespace grpc {
+class Status;
+}  // namespace grpc
 
 using grpc::Status;
 
@@ -36,6 +45,7 @@ void AsyncDirectorydClient::update_directoryd_record(
     std::function<void(Status status, Void)> callback) {
   auto local_response =
       new AsyncLocalResponse<Void>(std::move(callback), RESPONSE_TIMEOUT);
+  PrintGrpcMessage(static_cast<const google::protobuf::Message&>(request));
   local_response->set_response_reader(stub_->AsyncUpdateRecord(
       local_response->get_context(), request, &queue_));
 }
@@ -45,6 +55,7 @@ void AsyncDirectorydClient::delete_directoryd_record(
     std::function<void(Status status, Void)> callback) {
   auto local_response =
       new AsyncLocalResponse<Void>(std::move(callback), RESPONSE_TIMEOUT);
+  PrintGrpcMessage(static_cast<const google::protobuf::Message&>(request));
   local_response->set_response_reader(stub_->AsyncDeleteRecord(
       local_response->get_context(), request, &queue_));
 }

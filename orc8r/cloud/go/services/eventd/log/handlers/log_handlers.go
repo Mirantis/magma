@@ -1,3 +1,16 @@
+/*
+ * Copyright 2020 The Magma Authors.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package handlers
 
 import (
@@ -9,10 +22,10 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	"github.com/olivere/elastic/v7"
 
-	"magma/orc8r/cloud/go/obsidian"
+	"magma/orc8r/cloud/go/services/obsidian"
 )
 
 const (
@@ -48,7 +61,7 @@ func GetQueryLogHandler(client *elastic.Client) func(c echo.Context) error {
 	}
 }
 
-//GetCountLogHandler returns the count query handler
+// GetCountLogHandler returns the count query handler
 func GetCountLogHandler(client *elastic.Client) func(c echo.Context) error {
 	return func(c echo.Context) error {
 		return countLogs(c, client)
@@ -63,7 +76,7 @@ func countLogs(c echo.Context, client *elastic.Client) error {
 
 	params, err := getCountParameters(c)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	query := secureElasticQuery(networkID, params)
 	result, err := client.Count().
@@ -71,7 +84,7 @@ func countLogs(c echo.Context, client *elastic.Client) error {
 		Query(query).
 		Do(c.Request().Context())
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusOK, result)
 }
@@ -104,7 +117,7 @@ func queryLogs(c echo.Context, client *elastic.Client) error {
 
 	params, err := getQueryParameters(c)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	query := secureElasticQuery(networkID, params)
 
@@ -116,10 +129,10 @@ func queryLogs(c echo.Context, client *elastic.Client) error {
 		Query(query).
 		Do(c.Request().Context())
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	if result.Error != nil {
-		return obsidian.HttpError(fmt.Errorf("Elastic Error Type: %s, Reason: %s", result.Error.Type, result.Error.Reason))
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Elastic Error Type: %s, Reason: %s", result.Error.Type, result.Error.Reason))
 	}
 	return c.JSON(http.StatusOK, result.Hits.Hits)
 }

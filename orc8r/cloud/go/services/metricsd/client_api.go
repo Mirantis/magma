@@ -18,29 +18,29 @@ import (
 
 	"github.com/golang/glog"
 
-	merrors "magma/orc8r/lib/go/errors"
+	"magma/orc8r/lib/go/merrors"
 	"magma/orc8r/lib/go/protos"
 	service_registry "magma/orc8r/lib/go/registry"
 )
 
 // PushMetrics pushes a set of metrics to the metricsd service.
-func PushMetrics(ctx context.Context, metrics protos.PushedMetricsContainer) error {
-	client, err := getMetricsdClient()
+func PushMetrics(ctx context.Context, metrics *protos.PushedMetricsContainer) error {
+	client, err := getCloudMetricsdClient()
 	if err != nil {
 		return err
 	}
-	_, err = client.Push(ctx, &metrics)
+	_, err = client.Push(ctx, metrics)
 	return err
 }
 
-// getMetricsdClient is a utility function to get a RPC connection to the
+// getCloudMetricsdClient is a utility function to get a RPC connection to the
 // metricsd service
-func getMetricsdClient() (protos.MetricsControllerClient, error) {
-	conn, err := service_registry.GetConnection(ServiceName)
+func getCloudMetricsdClient() (protos.CloudMetricsControllerClient, error) {
+	conn, err := service_registry.GetConnection(ServiceName, protos.ServiceType_PROTECTED)
 	if err != nil {
 		initErr := merrors.NewInitError(err, ServiceName)
 		glog.Error(initErr)
 		return nil, initErr
 	}
-	return protos.NewMetricsControllerClient(conn), err
+	return protos.NewCloudMetricsControllerClient(conn), err
 }

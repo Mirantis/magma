@@ -46,6 +46,9 @@ default_rule_tag: 0x1
 
 # Pipeline application level configs
 access_control:
+  # Blocks access to all AGW local IPs from UEs.
+  block_agw_local_ips: true
+
   # Traffic to ip blocks in the specified direction in the blocklist will be
   # dropped. Each entry in the blocklist should consist of an ip and a
   # direction('inbound' or 'outbound'). If direction is not specified, then
@@ -108,8 +111,8 @@ dp_router_enabled: true
 bridge_name: gtp_br0
 # Bridge ip comes from magma_ifaces_gtp
 bridge_ip_address: 192.168.128.1
-# For ipv6 router solicitation app
-ipv6_router_addr: 'd88d:aba4:472f:fc95:7e7d:8457:5301:ebce'
+# For ipv6 router solicitation app, default is to use S1 link local address.
+# ipv6_router_addr: 'd88d:aba4:472f:fc95:7e7d:8457:5301:ebce'
 
 # QoS parameters
 qos:
@@ -150,6 +153,10 @@ ovs_gtp_port_number: 32768
 # Internal port for monitoring service
 ovs_mtr_port_number: 15577
 
+# Internal port for processing internal sampling packets
+ovs_internal_sampling_port_number: 15578
+# # Table to forward packets from the internal sampling port
+ovs_internal_sampling_fwd_tbl_number: 201
 # Be careful changing these default values
 # enable_nat: True
 non_nat_gw_probe_frequency: 20
@@ -164,11 +171,21 @@ he_proxy_eth_mac: 'e6:8f:a2:80:80:80'
 
 ovs_gtp_stats_polling_interval: 180
 
+# Make as a True when gnb ip will support for uplink
+ovs_multi_tunnel: False
+# Paging timeout value for idle mode
+paging_timeout: 30
+# ID used for RYU controller identification
+classifier_controller_id: 5
+
 # Internal port for processing internal conntrack
 ovs_internal_conntrack_port_number: 15579
 
 # Table to forward packets from the internal conntrack
 ovs_internal_conntrack_fwd_tbl_number: 202
+
+# UPF node ID
+upf_node_identifier: 192.168.200.1
 
 dp_irq:
  enable: True
@@ -191,3 +208,6 @@ sgi_tunnel:
 # dp_tso:
 #   gtp_tso_enable: false
 #
+
+ebpf:
+  enabled: false

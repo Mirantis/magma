@@ -12,21 +12,16 @@ set(CMAKE_CXX_STANDARD 14)
 
 project(MagmaSctpd)
 
-message("Adding code coverage build and linker flags for BUILD_TESTS")
-set(CMAKE_CXX_FLAGS_DEBUG
-    "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -fprofile-arcs -ftest-coverage")
-set(CMAKE_LINKER_FLAGS_DEBUG
-    "${CMAKE_LINKER_FLAGS_DEBUG} -fprofile-arcs -ftest-coverage")
-
 # generate sctpd protos
 include($ENV{MAGMA_ROOT}/orc8r/gateway/c/common/CMakeProtoMacros.txt)
 
 create_proto_dir("lte" LTE_CPP_OUT_DIR)
+create_proto_dir("orc8r" ORC8R_CPP_OUT_DIR)
 
 list(APPEND PROTO_SRCS "")
 list(APPEND PROTO_HDRS "")
 
-set(SCTPD_LTE_CPP_PROTOS sctpd)
+set(SCTPD_LTE_CPP_PROTOS sctpd mconfig/mconfigs)
 generate_cpp_protos("${SCTPD_LTE_CPP_PROTOS}" "${PROTO_SRCS}"
     "${PROTO_HDRS}" ${LTE_PROTO_DIR} ${LTE_CPP_OUT_DIR})
 
@@ -34,7 +29,13 @@ set(SCTPD_GRPC_PROTOS sctpd)
 generate_grpc_protos("${SCTPD_GRPC_PROTOS}" "${PROTO_SRCS}"
     "${PROTO_HDRS}" ${LTE_PROTO_DIR} ${LTE_CPP_OUT_DIR})
 
+set(SCTPD_ORC8R_CPP_PROTOS common mconfig/mconfigs)
+generate_cpp_protos("${SCTPD_ORC8R_CPP_PROTOS}" "${PROTO_SRCS}"
+    "${PROTO_HDRS}" ${ORC8R_PROTO_DIR} ${ORC8R_CPP_OUT_DIR})
+
 find_package(MAGMA_LOGGING REQUIRED)
+find_package(MAGMA_SENTRY REQUIRED)
+find_package(MAGMA_CONFIG REQUIRED)
 
 add_library(SCTPD_LIB
     sctp_assoc.cpp
@@ -50,11 +51,12 @@ add_library(SCTPD_LIB
 
 target_compile_definitions(SCTPD_LIB PUBLIC LOG_WITH_GLOG)
 
-target_link_libraries(SCTPD_LIB
-    sctp pthread grpc++ grpc protobuf glog MAGMA_LOGGING
+target_link_libraries(SCTPD_LIB MAGMA_LOGGING MAGMA_CONFIG MAGMA_SENTRY
+    sctp pthread grpc++ grpc protobuf glog yaml-cpp systemd
     )
 
 target_include_directories(SCTPD_LIB PUBLIC
+    $ENV{MAGMA_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}
     $<TARGET_FILE_DIR:SCTPD_LIB>
     )

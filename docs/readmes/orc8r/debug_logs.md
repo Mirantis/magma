@@ -28,7 +28,7 @@ kubectl --namespace orc8r exec -it ${ORC_POD} -- /var/opt/magma/bin/service303_c
 
 ## Tail logs
 
-Prerequisite: install [`stern`](https://github.com/wercker/stern)
+Prerequisite: install [`stern`](https://github.com/stern/stern)
 
 ```sh
 brew install stern  # or alternative installer for your host machine
@@ -52,4 +52,4 @@ stern --namespace orc8r --selector app.kubernetes.io/name=nms --exclude-containe
 
 ## Kibana
 
-Orc8r can also forward its own logs, and aggregated gateway logs, to a configured [Elasticsearch](https://www.elastic.co/what-is/elasticsearch) endpoint. The logs can then be made available for consumption via [Kibana](https://www.elastic.co/what-is/kibana).
+Orc8r can also forward its own logs, and aggregated gateway logs, to a configured [Elasticsearch](https://www.elastic.co/what-is/elasticsearch) endpoint. The logs can then be made available for consumption via [Kibana](https://www.elastic.co/kibana).

@@ -11,11 +11,17 @@
  * limitations under the License.
  */
 #include <gtest/gtest.h>
-#include "bstrlib.h"
 
 extern "C" {
-#include "include/mme_config.h"
+#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
 }
+
+#include "lte/gateway/c/core/oai/include/amf_config.hpp"
+#include "lte/gateway/c/core/oai/include/mme_config.hpp"
+
+extern "C" void copy_amf_config_from_mme_config(amf_config_t* dest,
+                                                const mme_config_t* src);
+extern "C" void clear_amf_config(amf_config_t*);
 
 namespace magma {
 namespace lte {
@@ -155,7 +161,7 @@ const char* kHealthyConfig =
     {
       # outcome drop timer value (seconds)
       #  S1AP_OUTCOME_TIMER = 10;
-      AMF_NAME = "AMF_1"
+      AMF_NAME = "MAGMAAMF1"
     };
     # AMF served GUAMFIs
     # AMF code DEFAULT  size = 8 bits
@@ -355,10 +361,10 @@ constexpr std::array<int, 25> ncon_tac = {1,  2,  4,  6,  7,  8,  10,
 
 // Test partial list with 1 TAI
 TEST(MMEConfigTest, TestOneTai) {
-  mme_config_t config_pP        = {0};
-  config_pP.served_tai.nb_tai   = 1;
-  uint8_t itr                   = 0;
-  uint16_t tac                  = 0;
+  mme_config_t config_pP = {0};
+  config_pP.served_tai.nb_tai = 1;
+  uint8_t itr = 0;
+  uint16_t tac = 0;
   config_pP.served_tai.plmn_mcc = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   config_pP.served_tai.plmn_mnc = reinterpret_cast<uint16_t*>(
@@ -367,16 +373,15 @@ TEST(MMEConfigTest, TestOneTai) {
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   config_pP.served_tai.tac = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
-  config_pP.served_tai.plmn_mcc[itr]     = 1;
-  config_pP.served_tai.plmn_mnc[itr]     = 1;
+  config_pP.served_tai.plmn_mcc[itr] = 1;
+  config_pP.served_tai.plmn_mnc[itr] = 1;
   config_pP.served_tai.plmn_mnc_len[itr] = 2;
-  config_pP.served_tai.tac[itr]          = 1;
+  config_pP.served_tai.tac[itr] = 1;
   create_partial_lists(&config_pP);
   EXPECT_FALSE(config_pP.partial_list == nullptr);
   // Check if consecutive tacs partial list is created
-  ASSERT_EQ(
-      config_pP.partial_list->list_type,
-      TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
+  ASSERT_EQ(config_pP.partial_list->list_type,
+            TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
   ASSERT_EQ(config_pP.num_par_lists, 1);
   ASSERT_EQ(config_pP.partial_list->nb_elem, config_pP.served_tai.nb_tai);
 
@@ -401,10 +406,10 @@ TEST(MMEConfigTest, TestOneTai) {
 
 // Test 1 partial list with Consecutive Tacs
 TEST(MMEConfigTest, TestParTaiListWithConsecutiveTacs) {
-  mme_config_t config_pP        = {0};
-  config_pP.served_tai.nb_tai   = 16;
-  uint8_t itr                   = 0;
-  uint16_t tac                  = 0;
+  mme_config_t config_pP = {0};
+  config_pP.served_tai.nb_tai = 16;
+  uint8_t itr = 0;
+  uint16_t tac = 0;
   config_pP.served_tai.plmn_mcc = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   config_pP.served_tai.plmn_mnc = reinterpret_cast<uint16_t*>(
@@ -414,8 +419,8 @@ TEST(MMEConfigTest, TestParTaiListWithConsecutiveTacs) {
   config_pP.served_tai.tac = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   for (itr = 0; itr < config_pP.served_tai.nb_tai; itr++) {
-    config_pP.served_tai.plmn_mcc[itr]     = 1;
-    config_pP.served_tai.plmn_mnc[itr]     = 1;
+    config_pP.served_tai.plmn_mcc[itr] = 1;
+    config_pP.served_tai.plmn_mnc[itr] = 1;
     config_pP.served_tai.plmn_mnc_len[itr] = 2;
   }
   // Sorted consecutive TACs
@@ -425,9 +430,8 @@ TEST(MMEConfigTest, TestParTaiListWithConsecutiveTacs) {
   // Check if consecutive tacs partial list is created
   create_partial_lists(&config_pP);
   EXPECT_FALSE(config_pP.partial_list == nullptr);
-  ASSERT_EQ(
-      config_pP.partial_list->list_type,
-      TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
+  ASSERT_EQ(config_pP.partial_list->list_type,
+            TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
   ASSERT_EQ(config_pP.num_par_lists, 1);
   ASSERT_EQ(config_pP.partial_list->nb_elem, config_pP.served_tai.nb_tai);
 
@@ -455,9 +459,9 @@ TEST(MMEConfigTest, TestParTaiListWithConsecutiveTacs) {
 
 // Test 2 partial lists with Consecutive Tacs
 TEST(MMEConfigTest, TestTwoParTaiListsWithConsecutiveTacs) {
-  mme_config_t config_pP        = {0};
-  config_pP.served_tai.nb_tai   = 20;
-  uint8_t itr                   = 0;
+  mme_config_t config_pP = {0};
+  config_pP.served_tai.nb_tai = 20;
+  uint8_t itr = 0;
   config_pP.served_tai.plmn_mcc = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   config_pP.served_tai.plmn_mnc = reinterpret_cast<uint16_t*>(
@@ -467,8 +471,8 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithConsecutiveTacs) {
   config_pP.served_tai.tac = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   for (itr = 0; itr < config_pP.served_tai.nb_tai; itr++) {
-    config_pP.served_tai.plmn_mcc[itr]     = 1;
-    config_pP.served_tai.plmn_mnc[itr]     = 1;
+    config_pP.served_tai.plmn_mcc[itr] = 1;
+    config_pP.served_tai.plmn_mnc[itr] = 1;
     config_pP.served_tai.plmn_mnc_len[itr] = 2;
   }
   itr = 0;
@@ -484,9 +488,8 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithConsecutiveTacs) {
   ASSERT_EQ(config_pP.partial_list[1].nb_elem, 4);
 
   for (itr = 0; itr < config_pP.num_par_lists; itr++) {
-    ASSERT_EQ(
-        config_pP.partial_list[itr].list_type,
-        TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
+    ASSERT_EQ(config_pP.partial_list[itr].list_type,
+              TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
     EXPECT_FALSE(config_pP.partial_list[itr].plmn == nullptr);
     EXPECT_FALSE(config_pP.partial_list[itr].tac == nullptr);
     ASSERT_EQ(config_pP.partial_list[itr].plmn[0].mcc_digit1, 0);
@@ -499,9 +502,8 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithConsecutiveTacs) {
   itr = 0;
   for (uint8_t idx = 0; idx < config_pP.num_par_lists; idx++) {
     for (uint8_t idx2 = 0; idx2 < config_pP.partial_list[idx].nb_elem; idx2++) {
-      ASSERT_EQ(
-          config_pP.partial_list[idx].tac[idx2],
-          config_pP.served_tai.tac[itr++]);
+      ASSERT_EQ(config_pP.partial_list[idx].tac[idx2],
+                config_pP.served_tai.tac[itr++]);
     }
   }
   free(config_pP.served_tai.plmn_mcc);
@@ -517,10 +519,10 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithConsecutiveTacs) {
 
 // Test 1 partial list with Non-consecutive Tacs
 TEST(MMEConfigTest, TestParTaiListWithNonConsecutiveTacs) {
-  mme_config_t config_pP        = {0};
-  config_pP.served_tai.nb_tai   = 16;
-  uint8_t itr                   = 0;
-  uint16_t tac                  = 0;
+  mme_config_t config_pP = {0};
+  config_pP.served_tai.nb_tai = 16;
+  uint8_t itr = 0;
+  uint16_t tac = 0;
   config_pP.served_tai.plmn_mcc = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   config_pP.served_tai.plmn_mnc = reinterpret_cast<uint16_t*>(
@@ -530,8 +532,8 @@ TEST(MMEConfigTest, TestParTaiListWithNonConsecutiveTacs) {
   config_pP.served_tai.tac = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   for (itr = 0; itr < config_pP.served_tai.nb_tai; itr++) {
-    config_pP.served_tai.plmn_mcc[itr]     = 1;
-    config_pP.served_tai.plmn_mnc[itr]     = 1;
+    config_pP.served_tai.plmn_mcc[itr] = 1;
+    config_pP.served_tai.plmn_mnc[itr] = 1;
     config_pP.served_tai.plmn_mnc_len[itr] = 2;
   }
   // Sorted non-consecutive TACs
@@ -541,9 +543,8 @@ TEST(MMEConfigTest, TestParTaiListWithNonConsecutiveTacs) {
   // Check if non-consecutive tacs partial list is created
   create_partial_lists(&config_pP);
   EXPECT_FALSE(config_pP.partial_list == nullptr);
-  ASSERT_EQ(
-      config_pP.partial_list->list_type,
-      TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_NON_CONSECUTIVE_TACS);
+  ASSERT_EQ(config_pP.partial_list->list_type,
+            TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_NON_CONSECUTIVE_TACS);
   ASSERT_EQ(config_pP.num_par_lists, 1);
   ASSERT_EQ(config_pP.partial_list->nb_elem, config_pP.served_tai.nb_tai);
 
@@ -571,9 +572,9 @@ TEST(MMEConfigTest, TestParTaiListWithNonConsecutiveTacs) {
 
 // Test 2 partial lists with Non-consecutive Tacs
 TEST(MMEConfigTest, TestTwoParTaiListsWithNonConsecutiveTacs) {
-  mme_config_t config_pP        = {0};
-  config_pP.served_tai.nb_tai   = 20;
-  uint8_t itr                   = 0;
+  mme_config_t config_pP = {0};
+  config_pP.served_tai.nb_tai = 20;
+  uint8_t itr = 0;
   config_pP.served_tai.plmn_mcc = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   config_pP.served_tai.plmn_mnc = reinterpret_cast<uint16_t*>(
@@ -583,8 +584,8 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithNonConsecutiveTacs) {
   config_pP.served_tai.tac = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   for (itr = 0; itr < config_pP.served_tai.nb_tai; itr++) {
-    config_pP.served_tai.plmn_mcc[itr]     = 1;
-    config_pP.served_tai.plmn_mnc[itr]     = 1;
+    config_pP.served_tai.plmn_mcc[itr] = 1;
+    config_pP.served_tai.plmn_mnc[itr] = 1;
     config_pP.served_tai.plmn_mnc_len[itr] = 2;
   }
   itr = 0;
@@ -600,9 +601,8 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithNonConsecutiveTacs) {
   ASSERT_EQ(config_pP.partial_list[1].nb_elem, 4);
 
   for (itr = 0; itr < config_pP.num_par_lists; itr++) {
-    ASSERT_EQ(
-        config_pP.partial_list[itr].list_type,
-        TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_NON_CONSECUTIVE_TACS);
+    ASSERT_EQ(config_pP.partial_list[itr].list_type,
+              TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_NON_CONSECUTIVE_TACS);
     EXPECT_FALSE(config_pP.partial_list[itr].plmn == nullptr);
     EXPECT_FALSE(config_pP.partial_list[itr].tac == nullptr);
     ASSERT_EQ(config_pP.partial_list[itr].plmn[0].mcc_digit1, 0);
@@ -615,9 +615,8 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithNonConsecutiveTacs) {
   itr = 0;
   for (uint8_t idx = 0; idx < config_pP.num_par_lists; idx++) {
     for (uint8_t idx2 = 0; idx2 < config_pP.partial_list[idx].nb_elem; idx2++) {
-      ASSERT_EQ(
-          config_pP.partial_list[idx].tac[idx2],
-          config_pP.served_tai.tac[itr++]);
+      ASSERT_EQ(config_pP.partial_list[idx].tac[idx2],
+                config_pP.served_tai.tac[itr++]);
     }
   }
 
@@ -634,9 +633,9 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithNonConsecutiveTacs) {
 
 // Test 2 partial lists with 1-Consecutive tacs and 1-Non-consecutive Tacs
 TEST(MMEConfigTest, TestTwoParTaiListsWithConsAndNonConsecutiveTacs) {
-  mme_config_t config_pP        = {0};
-  config_pP.served_tai.nb_tai   = 24;
-  uint8_t itr                   = 0;
+  mme_config_t config_pP = {0};
+  config_pP.served_tai.nb_tai = 24;
+  uint8_t itr = 0;
   config_pP.served_tai.plmn_mcc = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   config_pP.served_tai.plmn_mnc = reinterpret_cast<uint16_t*>(
@@ -646,8 +645,8 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithConsAndNonConsecutiveTacs) {
   config_pP.served_tai.tac = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   for (itr = 0; itr < config_pP.served_tai.nb_tai; itr++) {
-    config_pP.served_tai.plmn_mcc[itr]     = 1;
-    config_pP.served_tai.plmn_mnc[itr]     = 1;
+    config_pP.served_tai.plmn_mcc[itr] = 1;
+    config_pP.served_tai.plmn_mnc[itr] = 1;
     config_pP.served_tai.plmn_mnc_len[itr] = 2;
   }
   // Sorted consecutive TACs
@@ -672,12 +671,10 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithConsAndNonConsecutiveTacs) {
   ASSERT_EQ(config_pP.num_par_lists, 2);
   ASSERT_EQ(config_pP.partial_list[0].nb_elem, 16);
   ASSERT_EQ(config_pP.partial_list[1].nb_elem, 8);
-  ASSERT_EQ(
-      config_pP.partial_list[0].list_type,
-      TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
-  ASSERT_EQ(
-      config_pP.partial_list[1].list_type,
-      TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_NON_CONSECUTIVE_TACS);
+  ASSERT_EQ(config_pP.partial_list[0].list_type,
+            TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
+  ASSERT_EQ(config_pP.partial_list[1].list_type,
+            TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_NON_CONSECUTIVE_TACS);
 
   for (itr = 0; itr < config_pP.num_par_lists; itr++) {
     EXPECT_FALSE(config_pP.partial_list[itr].plmn == nullptr);
@@ -692,9 +689,8 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithConsAndNonConsecutiveTacs) {
   uint8_t idx2 = 0;
   for (itr = 0; itr < config_pP.num_par_lists; itr++) {
     for (uint8_t idx = 0; idx < config_pP.partial_list[itr].nb_elem; idx++) {
-      ASSERT_EQ(
-          config_pP.partial_list[itr].tac[idx],
-          config_pP.served_tai.tac[idx2++]);
+      ASSERT_EQ(config_pP.partial_list[itr].tac[idx],
+                config_pP.served_tai.tac[idx2++]);
     }
   }
   free(config_pP.served_tai.plmn_mcc);
@@ -710,10 +706,10 @@ TEST(MMEConfigTest, TestTwoParTaiListsWithConsAndNonConsecutiveTacs) {
 
 // Test 1 partial list with many plmns
 TEST(MMEConfigTest, TestParTaiListWithManyPlmns) {
-  mme_config_t config_pP        = {0};
-  config_pP.served_tai.nb_tai   = 6;
-  uint8_t itr                   = 0;
-  uint16_t tac                  = 0;
+  mme_config_t config_pP = {0};
+  config_pP.served_tai.nb_tai = 6;
+  uint8_t itr = 0;
+  uint16_t tac = 0;
   config_pP.served_tai.plmn_mcc = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   config_pP.served_tai.plmn_mnc = reinterpret_cast<uint16_t*>(
@@ -723,17 +719,16 @@ TEST(MMEConfigTest, TestParTaiListWithManyPlmns) {
   config_pP.served_tai.tac = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   for (itr = 0; itr < config_pP.served_tai.nb_tai; itr++) {
-    config_pP.served_tai.plmn_mcc[itr]     = 1;
-    config_pP.served_tai.plmn_mnc[itr]     = itr + 1;
+    config_pP.served_tai.plmn_mcc[itr] = 1;
+    config_pP.served_tai.plmn_mnc[itr] = itr + 1;
     config_pP.served_tai.plmn_mnc_len[itr] = 2;
-    config_pP.served_tai.tac[itr]          = itr + 1;
+    config_pP.served_tai.tac[itr] = itr + 1;
   }
   create_partial_lists(&config_pP);
   EXPECT_FALSE(config_pP.partial_list == nullptr);
   // Check if partial list with many plmns is created
-  ASSERT_EQ(
-      config_pP.partial_list->list_type,
-      TRACKING_AREA_IDENTITY_LIST_TYPE_MANY_PLMNS);
+  ASSERT_EQ(config_pP.partial_list->list_type,
+            TRACKING_AREA_IDENTITY_LIST_TYPE_MANY_PLMNS);
   ASSERT_EQ(config_pP.num_par_lists, 1);
   ASSERT_EQ(config_pP.partial_list->nb_elem, config_pP.served_tai.nb_tai);
 
@@ -760,9 +755,9 @@ TEST(MMEConfigTest, TestParTaiListWithManyPlmns) {
 
 // Test 3 partial lists, 1-consecutive tacs, 1-non consecutive tacs,1-many plmns
 TEST(MMEConfigTest, TestMixedParTaiLists) {
-  mme_config_t config_pP        = {0};
-  config_pP.served_tai.nb_tai   = 35;
-  uint8_t itr                   = 0;
+  mme_config_t config_pP = {0};
+  config_pP.served_tai.nb_tai = 35;
+  uint8_t itr = 0;
   config_pP.served_tai.plmn_mcc = reinterpret_cast<uint16_t*>(
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   config_pP.served_tai.plmn_mnc = reinterpret_cast<uint16_t*>(
@@ -773,8 +768,8 @@ TEST(MMEConfigTest, TestMixedParTaiLists) {
       calloc(config_pP.served_tai.nb_tai, sizeof(uint16_t)));
   // Fill the same PLMN for consecutive and non-consecutive tacs (16+16)
   for (itr = 0; itr < 32; itr++) {
-    config_pP.served_tai.plmn_mcc[itr]     = 1;
-    config_pP.served_tai.plmn_mnc[itr]     = 1;
+    config_pP.served_tai.plmn_mcc[itr] = 1;
+    config_pP.served_tai.plmn_mnc[itr] = 1;
     config_pP.served_tai.plmn_mnc_len[itr] = 2;
   }
   // First 16 sorted consecutive TACs
@@ -787,10 +782,10 @@ TEST(MMEConfigTest, TestMixedParTaiLists) {
   }
   // Next 3 many plmns with tacs
   for (uint8_t idx = 0; itr < 35; itr++, idx++) {
-    config_pP.served_tai.plmn_mcc[itr]     = 1;
-    config_pP.served_tai.plmn_mnc[itr]     = idx + 1;
+    config_pP.served_tai.plmn_mcc[itr] = 1;
+    config_pP.served_tai.plmn_mnc[itr] = idx + 1;
     config_pP.served_tai.plmn_mnc_len[itr] = 2;
-    config_pP.served_tai.tac[itr]          = idx + 1;
+    config_pP.served_tai.tac[itr] = idx + 1;
   }
 
   // Check if 3 partial lists are created
@@ -801,15 +796,12 @@ TEST(MMEConfigTest, TestMixedParTaiLists) {
   ASSERT_EQ(config_pP.partial_list[1].nb_elem, 16);
   ASSERT_EQ(config_pP.partial_list[2].nb_elem, 3);
 
-  ASSERT_EQ(
-      config_pP.partial_list[0].list_type,
-      TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
-  ASSERT_EQ(
-      config_pP.partial_list[1].list_type,
-      TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_NON_CONSECUTIVE_TACS);
-  ASSERT_EQ(
-      config_pP.partial_list[2].list_type,
-      TRACKING_AREA_IDENTITY_LIST_TYPE_MANY_PLMNS);
+  ASSERT_EQ(config_pP.partial_list[0].list_type,
+            TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_CONSECUTIVE_TACS);
+  ASSERT_EQ(config_pP.partial_list[1].list_type,
+            TRACKING_AREA_IDENTITY_LIST_TYPE_ONE_PLMN_NON_CONSECUTIVE_TACS);
+  ASSERT_EQ(config_pP.partial_list[2].list_type,
+            TRACKING_AREA_IDENTITY_LIST_TYPE_MANY_PLMNS);
   // Verify plmn for consecutive and non-consecutive tacs
   for (itr = 0; itr < config_pP.num_par_lists - 1; itr++) {
     EXPECT_FALSE(config_pP.partial_list[itr].plmn == nullptr);
@@ -836,9 +828,8 @@ TEST(MMEConfigTest, TestMixedParTaiLists) {
   for (itr = 0; itr < config_pP.num_par_lists; itr++) {
     EXPECT_FALSE(config_pP.partial_list[itr].tac == nullptr);
     for (uint8_t idx = 0; idx < config_pP.partial_list[itr].nb_elem; idx++) {
-      ASSERT_EQ(
-          config_pP.partial_list[itr].tac[idx],
-          config_pP.served_tai.tac[idx2++]);
+      ASSERT_EQ(config_pP.partial_list[itr].tac[idx],
+                config_pP.served_tai.tac[idx2++]);
     }
   }
   free(config_pP.served_tai.plmn_mcc);
@@ -858,29 +849,32 @@ TEST(MMEConfigTest, TestParseHealthyConfig) {
   free_mme_config(&mme_config);
 }
 
+TEST(MMEConfigTest, TestParseHealthyConfigDisplay) {
+  mme_config_t mme_config = {0};
+  EXPECT_EQ(mme_config_parse_string(kHealthyConfig, &mme_config), 0);
+  mme_config_display(&mme_config);
+  free_mme_config(&mme_config);
+}
+
 TEST(MMEConfigTest, TestMissingSctpdConfig) {
   mme_config_t mme_config = {0};
   EXPECT_EQ(mme_config_parse_string(kEmptyConfig, &mme_config), 0);
-  EXPECT_EQ(
-      std::string(bdata(mme_config.sctp_config.upstream_sctp_sock)),
-      "unix:///tmp/sctpd_upstream.sock");
-  EXPECT_EQ(
-      std::string(bdata(mme_config.sctp_config.downstream_sctp_sock)),
-      "unix:///tmp/sctpd_downstream.sock");
+  EXPECT_EQ(std::string(bdata(mme_config.sctp_config.upstream_sctp_sock)),
+            "unix:///tmp/sctpd_upstream.sock");
+  EXPECT_EQ(std::string(bdata(mme_config.sctp_config.downstream_sctp_sock)),
+            "unix:///tmp/sctpd_downstream.sock");
 
   free_mme_config(&mme_config);
 }
 
 TEST(MMEConfigTest, TestMissingSctpdUpstreamSockConfig) {
   mme_config_t mme_config = {0};
-  EXPECT_EQ(
-      mme_config_parse_string(kConfigMissingUpstreamSock, &mme_config), 0);
-  EXPECT_EQ(
-      std::string(bdata(mme_config.sctp_config.upstream_sctp_sock)),
-      "unix:///tmp/sctpd_upstream.sock");
-  EXPECT_EQ(
-      std::string(bdata(mme_config.sctp_config.downstream_sctp_sock)),
-      "unix:///tmp/sctpd_downstream_test.sock");
+  EXPECT_EQ(mme_config_parse_string(kConfigMissingUpstreamSock, &mme_config),
+            0);
+  EXPECT_EQ(std::string(bdata(mme_config.sctp_config.upstream_sctp_sock)),
+            "unix:///tmp/sctpd_upstream.sock");
+  EXPECT_EQ(std::string(bdata(mme_config.sctp_config.downstream_sctp_sock)),
+            "unix:///tmp/sctpd_downstream_test.sock");
 
   free_mme_config(&mme_config);
 }
@@ -888,15 +882,84 @@ TEST(MMEConfigTest, TestMissingSctpdUpstreamSockConfig) {
 TEST(MMEConfigTest, TestHealthySctpdConfig) {
   mme_config_t mme_config = {0};
   EXPECT_EQ(mme_config_parse_string(kHealthyConfig, &mme_config), 0);
-  EXPECT_EQ(
-      std::string(bdata(mme_config.sctp_config.upstream_sctp_sock)),
-      "unix:///tmp/sctpd_upstream_test.sock");
-  EXPECT_EQ(
-      std::string(bdata(mme_config.sctp_config.downstream_sctp_sock)),
-      "unix:///tmp/sctpd_downstream_test.sock");
+  EXPECT_EQ(std::string(bdata(mme_config.sctp_config.upstream_sctp_sock)),
+            "unix:///tmp/sctpd_upstream_test.sock");
+  EXPECT_EQ(std::string(bdata(mme_config.sctp_config.downstream_sctp_sock)),
+            "unix:///tmp/sctpd_downstream_test.sock");
 
   free_mme_config(&mme_config);
 }
 
+TEST(MMEConfigTest, TestCopyAmfConfigFromMMEConfig) {
+  mme_config_t mme_config = {0};
+  amf_config_t amf_config = {0};
+
+  EXPECT_EQ(mme_config_parse_string(kHealthyConfig, &mme_config), 0);
+
+  copy_amf_config_from_mme_config(&amf_config, &mme_config);
+
+  if (mme_config.log_config.output)
+    EXPECT_EQ(0, strcmp((char*)mme_config.log_config.output->data,
+                        (char*)amf_config.log_config.output->data));
+  EXPECT_EQ(mme_config.log_config.is_output_thread_safe,
+            amf_config.log_config.is_output_thread_safe);
+  EXPECT_EQ(mme_config.log_config.mme_app_log_level,
+            amf_config.log_config.amf_app_log_level);
+
+  if (mme_config.realm)
+    EXPECT_EQ(0, strcmp((char*)mme_config.realm->data,
+                        (char*)amf_config.realm->data));
+
+  if (mme_config.full_network_name)
+    EXPECT_EQ(0, strcmp((char*)mme_config.full_network_name->data,
+                        (char*)amf_config.full_network_name->data));
+
+  if (mme_config.short_network_name)
+    EXPECT_EQ(0, strcmp((char*)mme_config.short_network_name->data,
+                        (char*)amf_config.short_network_name->data));
+
+  EXPECT_EQ(mme_config.daylight_saving_time, amf_config.daylight_saving_time);
+  if (mme_config.pid_dir)
+    EXPECT_EQ(0, strcmp((char*)mme_config.pid_dir->data,
+                        (char*)amf_config.pid_dir->data));
+  EXPECT_EQ(mme_config.max_enbs, amf_config.max_gnbs);
+  EXPECT_EQ(mme_config.relative_capacity, amf_config.relative_capacity);
+
+  EXPECT_EQ(mme_config.use_stateless, amf_config.use_stateless);
+  EXPECT_EQ(mme_config.unauthenticated_imsi_supported,
+            amf_config.unauthenticated_imsi_supported);
+
+  EXPECT_EQ(mme_config.num_par_lists, amf_config.num_par_lists);
+  for (uint8_t itr = 0;
+       itr < mme_config.num_par_lists && mme_config.partial_list; ++itr) {
+    EXPECT_EQ(mme_config.partial_list[itr].list_type,
+              amf_config.partial_list[itr].list_type);
+    EXPECT_EQ(mme_config.partial_list[itr].nb_elem,
+              amf_config.partial_list[itr].nb_elem);
+
+    for (uint8_t idx = 0; idx < mme_config.partial_list[itr].nb_elem; idx++) {
+      if (mme_config.partial_list[itr].plmn &&
+          mme_config.partial_list[itr].tac) {
+        EXPECT_EQ(mme_config.partial_list[itr].plmn[idx].mcc_digit2,
+                  amf_config.partial_list[itr].plmn[idx].mcc_digit2);
+        EXPECT_EQ(mme_config.partial_list[itr].plmn[idx].mcc_digit1,
+                  amf_config.partial_list[itr].plmn[idx].mcc_digit1);
+        EXPECT_EQ(mme_config.partial_list[itr].plmn[idx].mnc_digit3,
+                  amf_config.partial_list[itr].plmn[idx].mnc_digit3);
+        EXPECT_EQ(mme_config.partial_list[itr].plmn[idx].mcc_digit3,
+                  amf_config.partial_list[itr].plmn[idx].mcc_digit3);
+        EXPECT_EQ(mme_config.partial_list[itr].plmn[idx].mnc_digit2,
+                  amf_config.partial_list[itr].plmn[idx].mnc_digit2);
+        EXPECT_EQ(mme_config.partial_list[itr].plmn[idx].mnc_digit1,
+                  amf_config.partial_list[itr].plmn[idx].mnc_digit1);
+        EXPECT_EQ(mme_config.partial_list[itr].tac[idx],
+                  amf_config.partial_list[itr].tac[idx]);
+      }
+    }
+  }
+
+  clear_amf_config(&amf_config);
+  free_mme_config(&mme_config);
+}
 }  // namespace lte
 }  // namespace magma

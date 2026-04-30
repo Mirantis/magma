@@ -10,13 +10,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <chrono>
+#include "lte/gateway/c/sctpd/src/sctpd_uplink_client.hpp"
 
-#include "sctpd_uplink_client.h"
-#include "util.h"
+#include <assert.h>
+#include <glog/logging.h>
+#include <grpcpp/impl/codegen/client_context.h>
+#include <grpcpp/impl/codegen/status.h>
+#include <chrono>
+#include <ostream>
+
+#include "lte/gateway/c/sctpd/src/util.hpp"
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
+
+namespace grpc {
+class Channel;
+}  // namespace grpc
 
 namespace magma {
 namespace sctpd {
+class CloseAssocReq;
+class CloseAssocRes;
+class NewAssocReq;
+class NewAssocRes;
+class SendUlReq;
+class SendUlRes;
 
 using grpc::ClientContext;
 
@@ -60,8 +77,8 @@ int SctpdUplinkClient::newAssoc(const NewAssocReq& req, NewAssocRes* res) {
   return status.ok() ? 0 : -1;
 }
 
-int SctpdUplinkClient::closeAssoc(
-    const CloseAssocReq& req, CloseAssocRes* res) {
+int SctpdUplinkClient::closeAssoc(const CloseAssocReq& req,
+                                  CloseAssocRes* res) {
   assert(res != nullptr);
 
   ClientContext context;

@@ -1,16 +1,29 @@
+/*
+ * Copyright 2020 The Magma Authors.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package servicers
 
 import (
 	"context"
 	"net/http"
 
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	"github.com/thoas/go-funk"
 
 	lteHandlers "magma/lte/cloud/go/services/lte/obsidian/handlers"
 	"magma/lte/cloud/go/services/smsd/obsidian/models"
 	"magma/lte/cloud/go/services/smsd/storage"
-	"magma/orc8r/cloud/go/obsidian"
+	"magma/orc8r/cloud/go/services/obsidian"
 )
 
 const (
@@ -43,7 +56,7 @@ func (s *SMSDRestServicer) listMessages(c echo.Context) error {
 
 	messages, err := s.store.GetSMSs(networkID, nil, nil, false, nil, nil)
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	out := make([]*models.SmsMessage, 0, len(messages))
@@ -61,7 +74,7 @@ func (s *SMSDRestServicer) getMessage(c echo.Context) error {
 
 	msgs, err := s.store.GetSMSs(networkID, []string{pk}, nil, false, nil, nil)
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	if funk.IsEmpty(msgs) {
 		return echo.ErrNotFound
@@ -78,15 +91,15 @@ func (s *SMSDRestServicer) createMessage(c echo.Context) error {
 
 	payload := &models.MutableSmsMessage{}
 	if err := c.Bind(payload); err != nil {
-		return obsidian.HttpError(err, http.StatusBadRequest)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	if err := payload.ValidateModel(context.Background()); err != nil {
-		return obsidian.HttpError(err, http.StatusBadRequest)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	pk, err := s.store.CreateSMS(networkID, payload.ToProto())
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(http.StatusCreated, pk)
 }
@@ -99,7 +112,7 @@ func (s *SMSDRestServicer) deleteMessage(c echo.Context) error {
 
 	err := s.store.DeleteSMSs(networkID, []string{pk})
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.NoContent(http.StatusNoContent)
 

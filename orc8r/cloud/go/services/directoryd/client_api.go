@@ -18,18 +18,18 @@ import (
 	"fmt"
 
 	"github.com/golang/glog"
-	"github.com/pkg/errors"
 
 	"magma/orc8r/cloud/go/orc8r"
 	"magma/orc8r/cloud/go/serdes"
+	"magma/orc8r/cloud/go/services/directoryd/protos"
 	"magma/orc8r/cloud/go/services/directoryd/types"
 	"magma/orc8r/cloud/go/services/state"
-	merrors "magma/orc8r/lib/go/errors"
-	"magma/orc8r/lib/go/protos"
+	"magma/orc8r/lib/go/merrors"
+	lib_protos "magma/orc8r/lib/go/protos"
 	"magma/orc8r/lib/go/registry"
 )
 
-const ServiceName = "DIRECTORYD"
+const ServiceName = "directoryd"
 
 //-------------------------------
 // Directoryd service client APIs
@@ -37,7 +37,7 @@ const ServiceName = "DIRECTORYD"
 
 // getDirectorydClient returns an RPC connection to the directoryd service.
 func getDirectorydClient() (protos.DirectoryLookupClient, error) {
-	conn, err := registry.GetConnection(ServiceName)
+	conn, err := registry.GetConnection(ServiceName, lib_protos.ServiceType_PROTECTED)
 	if err != nil {
 		initErr := merrors.NewInitError(err, ServiceName)
 		glog.Error(initErr)
@@ -51,7 +51,7 @@ func getDirectorydClient() (protos.DirectoryLookupClient, error) {
 func GetHostnameForHWID(ctx context.Context, hwid string) (string, error) {
 	client, err := getDirectorydClient()
 	if err != nil {
-		return "", errors.Wrap(err, "failed to get directoryd client")
+		return "", fmt.Errorf("failed to get directoryd client: %w", err)
 	}
 
 	res, err := client.GetHostnameForHWID(ctx, &protos.GetHostnameForHWIDRequest{Hwid: hwid})
@@ -73,7 +73,7 @@ func MapHWIDToHostname(ctx context.Context, hwid, hostname string) error {
 func MapHWIDsToHostnames(ctx context.Context, hwidToHostname map[string]string) error {
 	client, err := getDirectorydClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to get directoryd client")
+		return fmt.Errorf("failed to get directoryd client: %w", err)
 	}
 
 	_, err = client.MapHWIDsToHostnames(ctx, &protos.MapHWIDToHostnameRequest{HwidToHostname: hwidToHostname})
@@ -84,15 +84,30 @@ func MapHWIDsToHostnames(ctx context.Context, hwidToHostname map[string]string) 
 	return nil
 }
 
+// UnmapHWIDsToHostnames removes the {hwid -> hostname} map
+// Derived state, stored in directoryd service.
+func UnmapHWIDsToHostnames(ctx context.Context, hwids []string) error {
+	client, err := getDirectorydClient()
+	if err != nil {
+		return fmt.Errorf("failed to get directoryd client: %w", err)
+	}
+
+	_, err = client.UnmapHWIDsToHostnames(ctx, &protos.UnmapHWIDToHostnameRequest{Hwids: hwids})
+	if err != nil {
+		return fmt.Errorf("failed to ummap hwids to hostnames %v: %s", hwids, err)
+	}
+	return nil
+}
+
 // GetIMSIForSessionID returns the IMSI mapped to by session ID.
 // Derived state, stored in directoryd service.
 // NOTE: this mapping is provided on a best-effort basis, meaning
-//	- a {session ID -> IMSI} mapping may be missing even though the IMSI has a session ID record
-//	- a {session ID -> IMSI} mapping may be stale
+//   - a {session ID -> IMSI} mapping may be missing even though the IMSI has a session ID record
+//   - a {session ID -> IMSI} mapping may be stale
 func GetIMSIForSessionID(ctx context.Context, networkID, sessionID string) (string, error) {
 	client, err := getDirectorydClient()
 	if err != nil {
-		return "", errors.Wrap(err, "failed to get directoryd client")
+		return "", fmt.Errorf("failed to get directoryd client: %w", err)
 	}
 
 	res, err := client.GetIMSIForSessionID(ctx, &protos.GetIMSIForSessionIDRequest{
@@ -111,7 +126,7 @@ func GetIMSIForSessionID(ctx context.Context, networkID, sessionID string) (stri
 func MapSessionIDsToIMSIs(ctx context.Context, networkID string, sessionIDToIMSI map[string]string) error {
 	client, err := getDirectorydClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to get directoryd client")
+		return fmt.Errorf("failed to get directoryd client: %w", err)
 	}
 
 	_, err = client.MapSessionIDsToIMSIs(ctx, &protos.MapSessionIDToIMSIRequest{
@@ -125,15 +140,34 @@ func MapSessionIDsToIMSIs(ctx context.Context, networkID string, sessionIDToIMSI
 	return nil
 }
 
-// GetHWIDForSgwCTeid returns the HwID mapped to by teid
+// MapSessionIDsToIMSIs removes {session ID -> IMSI} mapping
+// Derived state, stored in directoryd service.
+func UnmapSessionIDsToIMSIs(ctx context.Context, networkID string, sessionIDs []string) error {
+	client, err := getDirectorydClient()
+	if err != nil {
+		return fmt.Errorf("failed to get directoryd client: %w", err)
+	}
+
+	_, err = client.UnmapSessionIDsToIMSIs(ctx, &protos.UnmapSessionIDToIMSIRequest{
+		NetworkID:  networkID,
+		SessionIDs: sessionIDs,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to unmap session IDs %v under network ID %s: %s", sessionIDs, networkID, err)
+	}
+
+	return nil
+}
+
+// GetHWIDForSgwCTeid returns the HwID mapped to by Control teid
 // Derived state, stored in directoryd service.
 // NOTE: this mapping is provided on a best-effort basis, meaning
-//	- a {teid -> HwId} mapping may be missing even though the IMSI has a session ID record
-//	- a {teid -> HwId} mapping may be stale
+//   - a {teid -> HwId} mapping may be missing even though the IMSI has a session ID record
+//   - a {teid -> HwId} mapping may be stale
 func GetHWIDForSgwCTeid(ctx context.Context, networkID, teid string) (string, error) {
 	client, err := getDirectorydClient()
 	if err != nil {
-		return "", errors.Wrap(err, "failed to get directoryd client")
+		return "", fmt.Errorf("failed to get directoryd client: %w", err)
 	}
 
 	res, err := client.GetHWIDForSgwCTeid(ctx, &protos.GetHWIDForSgwCTeidRequest{
@@ -151,7 +185,7 @@ func GetHWIDForSgwCTeid(ctx context.Context, networkID, teid string) (string, er
 func MapSgwCTeidToHWID(ctx context.Context, networkID string, teidToHWID map[string]string) error {
 	client, err := getDirectorydClient()
 	if err != nil {
-		return errors.Wrap(err, "failed to get directoryd client")
+		return fmt.Errorf("failed to get directoryd client: %w", err)
 	}
 
 	_, err = client.MapSgwCTeidToHWID(ctx, &protos.MapSgwCTeidToHWIDRequest{
@@ -163,6 +197,108 @@ func MapSgwCTeidToHWID(ctx context.Context, networkID string, teidToHWID map[str
 	}
 
 	return nil
+}
+
+// UnmapSgwCTeidToHWID removes {Teid -> HwId} mapping
+func UnmapSgwCTeidToHWID(ctx context.Context, networkID string, teids []string) error {
+	client, err := getDirectorydClient()
+	if err != nil {
+		return fmt.Errorf("failed to get directoryd client: %w", err)
+	}
+
+	_, err = client.UnmapSgwCTeidToHWID(ctx, &protos.UnmapSgwCTeidToHWIDRequest{
+		NetworkID: networkID,
+		Teids:     teids,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to ummap sgw c teid %v under network ID %s: %s", teids, networkID, err)
+	}
+
+	return nil
+}
+
+// GetNewSgwCTeid get an available teid
+func GetNewSgwCTeid(ctx context.Context, networkID string) (string, error) {
+	client, err := getDirectorydClient()
+	if err != nil {
+		return "", fmt.Errorf("failed to get directoryd client: %w", err)
+	}
+	res, err := client.GetNewSgwCTeid(ctx, &protos.GetNewSgwCTeidRequest{NetworkID: networkID})
+	if err != nil {
+		return "", fmt.Errorf("failed to get new sgw c teid under network ID %s: %s", networkID, err)
+	}
+	return res.Teid, nil
+}
+
+// GetHWIDForSgwUTeid returns the HwID mapped to by User teid
+// Derived state, stored in directoryd service.
+// NOTE: this mapping is provided on a best-effort basis, meaning
+//   - a {teid -> HwId} mapping may be missing even though the IMSI has a session ID record
+//   - a {teid -> HwId} mapping may be stale
+func GetHWIDForSgwUTeid(ctx context.Context, networkID, teid string) (string, error) {
+	client, err := getDirectorydClient()
+	if err != nil {
+		return "", fmt.Errorf("failed to get directoryd client: %w", err)
+	}
+
+	res, err := client.GetHWIDForSgwUTeid(ctx, &protos.GetHWIDForSgwUTeidRequest{
+		NetworkID: networkID,
+		Teid:      teid,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get HwID for sgw c teid %s under network ID %s: %s", teid, networkID, err)
+	}
+
+	return res.GetHwid(), nil
+}
+
+// MapSgwUTeidToHWID maps {Teid -> HwId}
+func MapSgwUTeidToHWID(ctx context.Context, networkID string, teidToHWID map[string]string) error {
+	client, err := getDirectorydClient()
+	if err != nil {
+		return fmt.Errorf("failed to get directoryd client: %w", err)
+	}
+
+	_, err = client.MapSgwUTeidToHWID(ctx, &protos.MapSgwUTeidToHWIDRequest{
+		NetworkID:  networkID,
+		TeidToHwid: teidToHWID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to map sgw c teid to HwId %v under network ID %s: %s", teidToHWID, networkID, err)
+	}
+
+	return nil
+}
+
+// UnmapSgwUTeidToHWID removes {Teid -> HwId} mapping
+func UnmapSgwUTeidToHWID(ctx context.Context, networkID string, teids []string) error {
+	client, err := getDirectorydClient()
+	if err != nil {
+		return fmt.Errorf("failed to get directoryd client: %w", err)
+	}
+
+	_, err = client.UnmapSgwUTeidToHWID(ctx, &protos.UnmapSgwUTeidToHWIDRequest{
+		NetworkID: networkID,
+		Teids:     teids,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to ummap sgw c teid %v under network ID %s: %s", teids, networkID, err)
+	}
+
+	return nil
+}
+
+// GetNewSgwUTeid get an available teid
+func GetNewSgwUTeid(ctx context.Context, networkID string) (string, error) {
+	client, err := getDirectorydClient()
+	if err != nil {
+		return "", fmt.Errorf("failed to get directoryd client: %w", err)
+	}
+	res, err := client.GetNewSgwUTeid(ctx, &protos.GetNewSgwUTeidRequest{NetworkID: networkID})
+	if err != nil {
+		return "", fmt.Errorf("failed to get new sgw c teid under network ID %s: %s", networkID, err)
+	}
+	return res.Teid, nil
 }
 
 //--------------------------

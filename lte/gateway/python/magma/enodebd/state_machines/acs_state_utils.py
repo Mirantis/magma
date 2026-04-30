@@ -49,6 +49,14 @@ def process_inform_message(
     for name, val in name_to_val.items():
         device_cfg.set_parameter(name, val)
 
+    # In case the SerialNumber does not come in the inform ParameterList
+    # it can still be present in the Inform structure, fill it in.
+    if (
+        hasattr(inform, 'DeviceId')
+        and hasattr(inform.DeviceId, 'SerialNumber')
+    ):
+        device_cfg.set_parameter(ParameterName.SERIAL_NUMBER, inform.DeviceId.SerialNumber)
+
 
 def get_device_name_from_inform(
     inform: models.Inform,
@@ -76,12 +84,21 @@ def get_device_name_from_inform(
             path_list,
             param_values_by_path,
         )
+    if hasattr(inform, 'DeviceId') and hasattr(inform.DeviceId, 'ProductClass'):
+        product_class = inform.DeviceId.ProductClass
+    else:
+        product_class = ''
     sw_version = _get_param_value_from_path_suffix(
         'DeviceInfo.SoftwareVersion',
         path_list,
         param_values_by_path,
     )
-    return get_device_name(device_oui, sw_version)
+    hw_version = _get_param_value_from_path_suffix(
+        'DeviceInfo.HardwareVersion',
+        path_list,
+        param_values_by_path,
+    )
+    return get_device_name(device_oui, sw_version, hw_version, product_class)
 
 
 def does_inform_have_event(
@@ -185,10 +202,14 @@ def get_object_params_to_get(
     desired_cfg: Optional[EnodebConfiguration],
     device_cfg: EnodebConfiguration,
     data_model: DataModel,
+    request_all_params: bool = False,
 ) -> List[ParameterName]:
     """
     Returns a list of parameter names for object parameters we don't know the
     current value of
+
+    If `request_all_params` is set to True, the function will return a list
+    of all device model param names, including already known ones.
     """
     names = []
     # TODO: This might a string for some strange reason, investigate why
@@ -200,11 +221,14 @@ def get_object_params_to_get(
             device_cfg.add_object(obj_name)
         obj_to_params = data_model.get_numbered_param_names()
         desired = obj_to_params[obj_name]
-        current = []
-        if desired_cfg is not None:
-            current = desired_cfg.get_parameter_names_for_object(obj_name)
-        names_to_add = list(set(desired) - set(current))
-        names = names + names_to_add
+        if request_all_params:
+            names += desired
+        else:
+            current = []
+            if desired_cfg is not None:
+                current = desired_cfg.get_parameter_names_for_object(obj_name)
+            names_to_add = list(set(desired) - set(current))
+            names += names_to_add
     return names
 
 
@@ -256,7 +280,7 @@ def get_obj_param_values_to_set(
     data_model: DataModel,
 ) -> Dict[ParameterName, Dict[ParameterName, Any]]:
     """ Returns a map from object name to (a map of param name to value) """
-    param_values = {}
+    param_values: Dict[ParameterName, Dict[ParameterName, Any]] = {}
     objs = desired_cfg.get_object_names()
     for obj_name in objs:
         param_values[obj_name] = {}
@@ -326,3 +350,108 @@ def get_optional_param_to_check(
         except KeyError:
             return param
     return None
+
+
+def should_transition_to_firmware_upgrade_download(acs):
+    device_sw_version = ""
+    device_serial_number = ""
+    if acs.device_cfg.has_parameter(ParameterName.SW_VERSION):
+        device_sw_version = acs.device_cfg.get_parameter(
+            ParameterName.SW_VERSION,
+        )
+    if acs.device_cfg.has_parameter(ParameterName.SERIAL_NUMBER):
+        device_serial_number = acs.device_cfg.get_parameter(
+            ParameterName.SERIAL_NUMBER,
+        )
+    if not device_sw_version or not device_serial_number:
+        logger.debug(
+            f'Skipping FW Download for eNB, missing device config: {device_sw_version=}, {device_serial_number=}.',
+        )
+        return False
+    if acs.is_fw_upgrade_in_progress():
+        logger.debug(
+            'Skipping FW Download for eNB [%s], firmware upgrade in progress.',
+            device_serial_number,
+        )
+        return False
+    fw_upgrade_config = get_firmware_upgrade_download_config(acs)
+    if not fw_upgrade_config:
+        logger.debug(
+            'Skipping FW Download for eNB [%s], missing firmware upgrade config in enodebd.yml.',
+            device_serial_number,
+        )
+        return False
+    target_software_version = fw_upgrade_config.get('version', '')
+    if device_sw_version == target_software_version:
+        logger.debug(
+            'Skipping FW Download for eNB [%s], eNB Software Version [%s] up to date with firmware upgrade config.',
+            device_serial_number,
+            target_software_version,
+        )
+        acs.stop_fw_upgrade_timeout()
+        return False
+    logger.info(
+        'Initiate FW Download for eNB [%s], eNB SW Version [%s], target SW Version [%s]',
+        device_serial_number, device_sw_version, target_software_version,
+    )
+    return True
+
+
+def get_firmware_upgrade_download_config(acs):
+    device_serial_number = ''
+    if acs.device_cfg.has_parameter(ParameterName.SERIAL_NUMBER):
+        device_serial_number = acs.device_cfg.get_parameter(
+            ParameterName.SERIAL_NUMBER,
+        )
+    fw_upgrade_config = _get_firmware_upgrade_download_config_for_serial(
+        acs, device_serial_number,
+    )
+    if fw_upgrade_config:
+        logger.debug(f'Found {fw_upgrade_config=} for {device_serial_number=}')
+        return fw_upgrade_config
+    device_model = acs.device_name
+    fw_upgrade_config = _get_firmware_upgrade_download_config_for_model(
+        acs, device_model,
+    )
+    if fw_upgrade_config:
+        logger.debug(f'Found {fw_upgrade_config=} for {device_model=}')
+    return fw_upgrade_config
+
+
+def _get_firmware_upgrade_download_config_for_serial(acs, serial: str):
+    enbs = acs.service_config.get(
+        'firmware_upgrade_download', {},
+    ).get('enbs', {})
+    fw_version = enbs.get(serial, '')
+    return _get_firmware_upgrade_download_config(acs, fw_version)
+
+
+def _get_firmware_upgrade_download_config_for_model(acs, model: str):
+    ouis = acs.service_config.get(
+        'firmware_upgrade_download', {},
+    ).get('models', {})
+    fw_version = ouis.get(model, '')
+    return _get_firmware_upgrade_download_config(acs, fw_version)
+
+
+def _get_firmware_upgrade_download_config(acs, fw_version: str):
+    if not fw_version:
+        return {}
+    firmware_cfg = acs.service_config.get('firmware_upgrade_download', {}).get(
+        'firmwares', {},
+    ).get(fw_version, {})
+    if not firmware_cfg:
+        logger.debug(
+            f'Could not find Firmware Upgrade download version {fw_version} in config.',
+        )
+        return {}
+
+    if not firmware_cfg.get('url', ''):
+        logger.debug(
+            f'Firmware Upgrade download config for {fw_version} does not have a valid url.',
+        )
+        return {}
+
+    # add a 'version' key for easy extraction later
+    firmware_cfg['version'] = fw_version
+    return firmware_cfg

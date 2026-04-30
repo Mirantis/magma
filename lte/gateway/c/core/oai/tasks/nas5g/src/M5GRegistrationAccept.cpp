@@ -10,20 +10,28 @@
  */
 
 #include <sstream>
-#include "M5GRegistrationAccept.h"
-#include "M5GCommonDefs.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "lte/gateway/c/core/oai/common/log.h"
+#ifdef __cplusplus
+}
+#endif
+#include "lte/gateway/c/core/oai/tasks/nas5g/include/M5GRegistrationAccept.hpp"
+#include "lte/gateway/c/core/oai/tasks/nas5g/include/M5GCommonDefs.h"
+#include "lte/gateway/c/core/oai/tasks/nas5g/include/M5gNasMessage.h"
 
 namespace magma5g {
-RegistrationAcceptMsg::RegistrationAcceptMsg(){};
-RegistrationAcceptMsg::~RegistrationAcceptMsg(){};
+RegistrationAcceptMsg::RegistrationAcceptMsg() {};
+RegistrationAcceptMsg::~RegistrationAcceptMsg() {};
 
 // Decoding Registration Accept Message and its IEs
 int RegistrationAcceptMsg::DecodeRegistrationAcceptMsg(
     RegistrationAcceptMsg* reg_accept, uint8_t* buffer, uint32_t len) {
-  uint32_t decoded   = 0;
+  uint32_t decoded = 0;
   int decoded_result = 0;
-  CHECK_PDU_POINTER_AND_LENGTH_DECODER(
-      buffer, REGISTRATION_ACCEPT_MINIMUM_LENGTH, len);
+  CHECK_PDU_POINTER_AND_LENGTH_DECODER(buffer,
+                                       REGISTRATION_ACCEPT_MINIMUM_LENGTH, len);
 
   if ((decoded_result = reg_accept->extended_protocol_discriminator
                             .DecodeExtendedProtocolDiscriminatorMsg(
@@ -63,10 +71,10 @@ int RegistrationAcceptMsg::DecodeRegistrationAcceptMsg(
 // Encoding Registration Accept Message and its IEs
 int RegistrationAcceptMsg::EncodeRegistrationAcceptMsg(
     RegistrationAcceptMsg* reg_accept, uint8_t* buffer, uint32_t len) {
-  uint32_t encoded   = 0;
+  uint32_t encoded = 0;
   int encoded_result = 0;
-  CHECK_PDU_POINTER_AND_LENGTH_ENCODER(
-      buffer, REGISTRATION_ACCEPT_MINIMUM_LENGTH, len);
+  CHECK_PDU_POINTER_AND_LENGTH_ENCODER(buffer,
+                                       REGISTRATION_ACCEPT_MINIMUM_LENGTH, len);
 
   if ((encoded_result = reg_accept->extended_protocol_discriminator
                             .EncodeExtendedProtocolDiscriminatorMsg(
@@ -109,8 +117,16 @@ int RegistrationAcceptMsg::EncodeRegistrationAcceptMsg(
     return encoded_result;
   else
     encoded += encoded_result;
-  if ((encoded_result = reg_accept->nssai.EncodeNSSAIMsg(
-           &reg_accept->nssai, 0x15, buffer + encoded, len - encoded)) < 0)
+  if ((encoded_result = reg_accept->allowed_nssai.EncodeNSSAIMsgList(
+           &reg_accept->allowed_nssai, ALLOWED_NSSAI, buffer + encoded,
+           len - encoded)) < 0)
+    return encoded_result;
+  else
+    encoded += encoded_result;
+  if ((encoded_result =
+           reg_accept->network_feature.EncodeNetworkFeatureSupportMsg(
+               &reg_accept->network_feature, 0x21, buffer + encoded,
+               len - encoded)) < 0)
     return encoded_result;
   else
     encoded += encoded_result;

@@ -23,25 +23,26 @@ import (
 	"github.com/golang/glog"
 
 	"magma/feg/cloud/go/protos"
-	"magma/orc8r/lib/go/errors"
+	"magma/orc8r/lib/go/merrors"
+	lib_protos "magma/orc8r/lib/go/protos"
 	"magma/orc8r/lib/go/registry"
 )
 
-// getHealthClient is a utility function to get an RPC connection to the
+// getCloudHealthClient is a utility function to get an RPC connection to the
 // Health service
-func getHealthClient() (protos.HealthClient, error) {
-	conn, err := registry.GetConnection(ServiceName)
+func getCloudHealthClient() (protos.CloudHealthClient, error) {
+	conn, err := registry.GetConnection(ServiceName, lib_protos.ServiceType_PROTECTED)
 	if err != nil {
-		initErr := errors.NewInitError(err, ServiceName)
+		initErr := merrors.NewInitError(err, ServiceName)
 		glog.Error(initErr)
 		return nil, initErr
 	}
-	return protos.NewHealthClient(conn), nil
+	return protos.NewCloudHealthClient(conn), nil
 }
 
 // GetActiveGateway returns the active federated gateway in the network specified by networkID
 func GetActiveGateway(ctx context.Context, networkID string) (string, error) {
-	client, err := getHealthClient()
+	client, err := getCloudHealthClient()
 	if err != nil {
 		return "", err
 	}
@@ -66,7 +67,7 @@ func GetHealth(ctx context.Context, networkID string, logicalID string) (*protos
 	if len(logicalID) == 0 {
 		return nil, fmt.Errorf("Empty logicalId provided")
 	}
-	client, err := getHealthClient()
+	client, err := getCloudHealthClient()
 	if err != nil {
 		return nil, err
 	}

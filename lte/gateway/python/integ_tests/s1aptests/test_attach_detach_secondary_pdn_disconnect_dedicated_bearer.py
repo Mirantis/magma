@@ -20,8 +20,8 @@ import s1ap_wrapper
 from integ_tests.s1aptests.s1ap_utils import SpgwUtil
 
 
-class TestSecondaryPdnDisConnDedBearerReq(unittest.TestCase):
-    """Test secondary pdn connection and disconnection"""
+class TestAttachDetachSecondaryPdnDisconnectDedicatedBearer(unittest.TestCase):
+    """Integration Test: TestAttachDetachSecondaryPdnDisconnectDedicatedBearer"""
 
     def setUp(self):
         """Initialize"""
@@ -32,7 +32,7 @@ class TestSecondaryPdnDisConnDedBearerReq(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_secondary_pdn_disconn_ded_bearer(self):
+    def test_attach_detach_secondary_pdn_disconnect_dedicated_bearer(self):
         """Attach a single UE and send standalone PDN Connectivity
         Request + add dedicated bearer to each default bearer + disconnect
         dedicated bearer
@@ -42,7 +42,7 @@ class TestSecondaryPdnDisConnDedBearerReq(unittest.TestCase):
         self._s1ap_wrapper.configUEDevice(num_ues)
         req = self._s1ap_wrapper.ue_req
 
-        for i in range(num_ues):
+        for _ in range(num_ues):
             ue_id = req.ue_id
             # APN of the secondary PDN
             ims = {
@@ -92,8 +92,8 @@ class TestSecondaryPdnDisConnDedBearerReq(unittest.TestCase):
                 flow_list1,
             )
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
+            assert (
+                response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             )
             act_ded_ber_ctxt_req = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
@@ -109,8 +109,9 @@ class TestSecondaryPdnDisConnDedBearerReq(unittest.TestCase):
             self._s1ap_wrapper.sendPdnConnectivityReq(ue_id, apn)
             # Receive PDN CONN RSP/Activate default EPS bearer context request
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value,
+            assert (
+                response.msg_type
+                == s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value
             )
             act_def_bearer_req = response.cast(s1ap_types.uePdnConRsp_t)
             addr = act_def_bearer_req.m.pdnInfo.pAddr.addrInfo
@@ -135,8 +136,8 @@ class TestSecondaryPdnDisConnDedBearerReq(unittest.TestCase):
                 flow_list2,
             )
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
+            assert (
+                response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             )
             act_ded_ber_ctxt_req = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
@@ -173,10 +174,7 @@ class TestSecondaryPdnDisConnDedBearerReq(unittest.TestCase):
 
             # Receive PDN Disconnect reject
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_PDN_DISCONNECT_REJ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_PDN_DISCONNECT_REJ.value
 
             print(
                 "******************** Received PDN Disconnect Reject for "

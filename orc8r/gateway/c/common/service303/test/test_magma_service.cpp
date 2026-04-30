@@ -10,19 +10,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <google/protobuf/stubs/common.h>
 #include <gtest/gtest.h>
+#include <orc8r/protos/service303.pb.h>
+#include <algorithm>
+#include <string>
 
-#include "includes/MagmaService.h"
+#include "orc8r/gateway/c/common/service303/MagmaService.hpp"
 
 using ::testing::Test;
 
 namespace magma {
 namespace service303 {
 
-const std::string SERVICE_NAME    = "test_service";
+const std::string SERVICE_NAME = "test_service";
 const std::string SERVICE_VERSION = "0.0.0";
-const std::string META_KEY        = "key";
-const std::string META_VALUE      = "value";
+const std::string META_KEY = "key";
+const std::string META_VALUE = "value";
 
 TEST(test_magma_service, test_GetServiceInfo) {
   MagmaService magma_service(SERVICE_NAME, SERVICE_VERSION);
@@ -77,13 +81,9 @@ TEST(test_magma_service, test_GetServiceInfo_with_callback) {
   EXPECT_TRUE(response.status().meta().empty());
 }
 
-bool reload_succeeded() {
-  return true;
-}
+bool reload_succeeded() { return true; }
 
-bool reload_failed() {
-  return false;
-}
+bool reload_failed() { return false; }
 
 TEST(test_magma_service, test_ReloadServiceConfig) {
   MagmaService magma_service(SERVICE_NAME, SERVICE_VERSION);
@@ -109,11 +109,6 @@ TEST(test_magma_service, test_ReloadServiceConfig) {
   magma_service.ClearConfigReloadCallback();
   magma_service.ReloadServiceConfig(nullptr, nullptr, &response);
   EXPECT_EQ(response.result(), ReloadConfigResponse::RELOAD_UNSUPPORTED);
-}
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 }  // namespace service303
 }  // namespace magma

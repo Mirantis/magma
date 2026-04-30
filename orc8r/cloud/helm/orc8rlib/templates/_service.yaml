@@ -18,6 +18,9 @@ metadata:
   labels:
     app.kubernetes.io/component: controller
 {{ include "default-labels" . | indent 4 }}
+{{ include "controller-image-version-label" . | indent 4 }}
+  annotations:
+{{ include "release-name-annotation" . | indent 4 }}
 spec:
   selector:
 {{ include "default-selector-labels" . | indent 4 }}
@@ -27,6 +30,9 @@ spec:
     - name: grpc
       port: 9180
       targetPort: 9180
+    - name: grpc-internal
+      port: 9190
+      targetPort: 9190
     - name: http
       port: 8080
       targetPort:  8080

@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/go-openapi/strfmt"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
 	"magma/lte/cloud/go/lte"
@@ -27,10 +27,10 @@ import (
 	"magma/lte/cloud/go/services/nprobe/obsidian/handlers"
 	"magma/lte/cloud/go/services/nprobe/obsidian/models"
 	"magma/lte/cloud/go/services/nprobe/storage"
-	"magma/orc8r/cloud/go/obsidian"
-	"magma/orc8r/cloud/go/obsidian/tests"
 	"magma/orc8r/cloud/go/services/configurator"
 	configuratorTestInit "magma/orc8r/cloud/go/services/configurator/test_init"
+	"magma/orc8r/cloud/go/services/obsidian"
+	"magma/orc8r/cloud/go/services/obsidian/tests"
 	"magma/orc8r/cloud/go/test_utils"
 )
 
@@ -39,7 +39,7 @@ var (
 )
 
 func init() {
-	//_ = flag.Set("alsologtostderr", "true") // uncomment to view logs during test
+	//_ = flag.Set("logtostderr", "true") // uncomment to view logs during test
 }
 
 func getNProbeBlobstore(t *testing.T) storage.NProbeStorage {

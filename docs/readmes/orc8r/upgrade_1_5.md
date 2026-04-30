@@ -20,7 +20,7 @@ Current Terraform scripts are *not* compatible with Terraform `0.15.0`.
 
 Have all application containers, and Helm charts built and published.
 These should be from the head of the release branch.
-You can follow the [Build Orchestrator](https://docs.magmacore.org/docs/orc8r/deploy_build)
+You can follow the [Build Orchestrator](https://magma.github.io/magma/docs/orc8r/deploy_build)
 guide for instructions on this process.
 
 ### Terraform State
@@ -65,7 +65,7 @@ This process prepares your cluster for Orc8r-NMS DB unification. (In release 1.5
 *Paste in shell prompt:*
 
 ```bash
-wget https://raw.githubusercontent.com/magma/magma/master/nms/packages/magmalte/scripts/fuji-upgrade/pre-upgrade-migration.sh && chmod +x pre-upgrade-migration.sh && ./pre-upgrade-migration.sh
+wget https://raw.githubusercontent.com/magma/magma/v1.5/nms/app/packages/magmalte/scripts/fuji-upgrade/pre-upgrade-migration.sh && chmod +x pre-upgrade-migration.sh && ./pre-upgrade-migration.sh
 ```
 
 The defaults options should likely work, unless the script cannot find the
@@ -141,7 +141,7 @@ successfully upgraded.
 A new `Duplicate Request Alert` has been added, which triggers when more than
 100 alerts within the last 5 minutes have been raised.
 
-To enable this alert, you must "Sync Pre-Defined Alerts" for _*every*_ network
+To enable this alert, you must "Sync Pre-Defined Alerts" for **every** network
 defined in the Orc8r.
 See the [NMS Alerts Guide](../nms/alerts#predefined-alerts) for guidance
 on this process.
@@ -178,7 +178,7 @@ If you would like to customize this alert, refer to
 [NMS alerts guide - custom alert rules](../nms/alerts#custom-alert-rules).
 
 In order to start receiving these alarms, it is necessary to click on the
-“Sync Pre-Defined alerts” in the NMS window for _*every*_ network defined in
+“Sync Pre-Defined alerts” in the NMS window for **every** network defined in
 the Orc8r. For more details on this process, see the [NMS alerts guide](../nms/alerts#predefined-alerts)
 Syncing the alerts once on the NMS does not replicate the behavior to other
 networks managed by the same NMS.

@@ -19,8 +19,11 @@ PKGVERSION=0.5.1
 ITERATION=2
 VERSION="$PKGVERSION-$ITERATION"
 PKGNAME=python3-aioeventlet
-REPO="https://github.com/openstack-archive/deb-python-aioeventlet.git"
+REPO="https://github.com/magma/deb-python-aioeventlet.git"
+COMMIT_HASH="86130360db113430370ed6c64d42aee3b47cd619"
 WORK_DIR=/tmp/build-${PKGNAME}
+
+if_subcommand_exec
 
 if [ -z "$1" ]; then
   OUTPUT_DIR=$(pwd)
@@ -41,7 +44,7 @@ cd ${WORK_DIR}
 
 git clone ${REPO}
 cd deb-python-aioeventlet
-git apply ${PATCH_DIR}/*.patch
+git checkout ${COMMIT_HASH}
 
 # packaging
 PKGFILE="$(pkgfilename)"

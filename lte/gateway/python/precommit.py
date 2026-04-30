@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Note: Python version >= 3.7 is needed to run this script
 """
 Copyright 2020 The Magma Authors.
 
@@ -16,7 +17,11 @@ import os
 import subprocess  # noqa: S404 ignore security warning about subprocess
 from typing import List
 
-MAGMA_ROOT = os.getenv('MAGMA_ROOT')
+if os.getenv('MAGMA_ROOT'):
+    MAGMA_ROOT = os.environ["MAGMA_ROOT"]
+else:
+    raise KeyError("'MAGMA_ROOT' needs to be set and point to the Magma root directory!")
+
 LINT_DOCKER_PATH = os.path.join(
     MAGMA_ROOT,
     'lte/gateway/docker/python-precommit/',
@@ -24,19 +29,16 @@ LINT_DOCKER_PATH = os.path.join(
 IMAGE_NAME = 'magma/py-lint'
 ORC8R_PYTHON_PATH = 'orc8r/gateway/python/magma'
 LTE_PYTHON_PATH = 'lte/gateway/python/magma'
+GITHUB_IMAGE_NAME = 'ghcr.io/magma/magma/python-precommit:latest'
 
 
 def main() -> None:
     """Provide command-line options to format/lint Magma's Python codebase"""
-    if MAGMA_ROOT is None:
-        print("Please set the 'MAGMA_ROOT' environment variable to point to the root directory")
-        return
     print("Magma root is " + MAGMA_ROOT)
     args = _parse_args()
-    if args.build_image:
-        _build_docker_image()
 
-        return
+    _build_docker_image()
+
     # If no paths are specified, default to magma services
     if args.diff:
         args.paths = _get_diff_against_master()
@@ -65,7 +67,8 @@ def _format_diff(paths: List[str]):
         # make sure to change the corresponding github action
         _run_docker_cmd(['isort', path])
         _run_add_trailing_comma(path)
-        autopep8_checks = 'W191,W291,W292,W293,W391,E131,E2,E3'
+        # This should be consistent with .github/workflows/python-workflow.yml
+        autopep8_checks = 'W191,W291,W292,W293,W391,E131,E1,E2,E3'
         _run_docker_cmd(['autopep8', '--select', autopep8_checks, '-r', '--in-place', path])
 
 
@@ -73,10 +76,12 @@ def _run_add_trailing_comma(path: str):
     abs_path = os.path.join(os.path.abspath(MAGMA_ROOT), path)
     if os.path.isfile(abs_path):
         # TODO upgrade to --py36-plus eventually
-        _run_docker_cmd([
-            'add-trailing-comma', '--py35-plus',
-            '--exit-zero-even-if-changed', path,
-        ])
+        _run_docker_cmd(
+            [
+                'add-trailing-comma', '--py35-plus',
+                '--exit-zero-even-if-changed', path,
+            ],
+        )
 
 
 def _run_flake8(paths: List[str]):
@@ -120,11 +125,6 @@ def _parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description='Python lint/format tool')
 
-    parser.add_argument(
-        '--build_image', '-b',
-        action='store_true',
-        help='Build the linting Docker image',
-    )
     parser.add_argument(
         '--format', '-f',
         action='store_true',

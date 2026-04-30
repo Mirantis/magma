@@ -15,17 +15,17 @@ package configurator
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/golang/glog"
 	"github.com/golang/protobuf/ptypes/wrappers"
-	"github.com/pkg/errors"
 	"github.com/thoas/go-funk"
 
 	"magma/orc8r/cloud/go/serde"
 	"magma/orc8r/cloud/go/services/configurator/protos"
 	"magma/orc8r/cloud/go/services/configurator/storage"
 	storage2 "magma/orc8r/cloud/go/storage"
-	merrors "magma/orc8r/lib/go/errors"
+	"magma/orc8r/lib/go/merrors"
 	commonProtos "magma/orc8r/lib/go/protos"
 	"magma/orc8r/lib/go/registry"
 )
@@ -218,7 +218,7 @@ func LoadNetworksOfType(ctx context.Context, typeVal string, loadMetadata bool, 
 }
 
 // LoadNetwork loads the network identified by the network ID.
-// If not found, returns ErrNotFound from magma/orc8r/lib/go/errors.
+// If not found, returns ErrNotFound from magma/orc8r/lib/go/merrors.
 func LoadNetwork(ctx context.Context, networkID string, loadMetadata bool, loadConfigs bool, serdes serde.Registry) (Network, error) {
 	networks, _, err := LoadNetworks(ctx, []string{networkID}, loadMetadata, loadConfigs, serdes)
 	if err != nil {
@@ -231,7 +231,7 @@ func LoadNetwork(ctx context.Context, networkID string, loadMetadata bool, loadC
 }
 
 // LoadNetworkConfig loads network config of type configType registered under the network ID.
-// If not found, returns ErrNotFound from magma/orc8r/lib/go/errors.
+// If not found, returns ErrNotFound from magma/orc8r/lib/go/merrors.
 func LoadNetworkConfig(ctx context.Context, networkID, configType string, serdes serde.Registry) (interface{}, error) {
 	network, err := LoadNetwork(ctx, networkID, false, true, serdes)
 	if err != nil {
@@ -280,7 +280,7 @@ func WriteEntities(ctx context.Context, networkID string, writes []EntityWriteOp
 			}
 			req.Writes = append(req.Writes, &protos.WriteEntityRequest{Request: &protos.WriteEntityRequest_Update{Update: protoEuc}})
 		default:
-			return errors.Errorf("unrecognized entity write operation %T", op)
+			return fmt.Errorf("unrecognized entity write operation %T", op)
 		}
 	}
 
@@ -413,7 +413,7 @@ func DeleteInternalEntity(ctx context.Context, entityType, entityKey string) err
 }
 
 // GetPhysicalIDOfEntity gets the physicalID associated with the entity identified by (networkID, entityType, entityKey)
-// If not found, returns ErrNotFound from magma/orc8r/lib/go/errors.
+// If not found, returns ErrNotFound from magma/orc8r/lib/go/merrors.
 func GetPhysicalIDOfEntity(ctx context.Context, networkID, entityType, entityKey string) (string, error) {
 	entity, err := LoadSerializedEntity(ctx, networkID, entityType, entityKey, EntityLoadCriteria{})
 	if err != nil {
@@ -457,7 +457,7 @@ func ListInternalEntityKeys(ctx context.Context, entityType string) ([]string, e
 }
 
 // LoadEntity loads the network entity identified by (network ID, entity type, entity key).
-// If not found, returns ErrNotFound from magma/orc8r/lib/go/errors.
+// If not found, returns ErrNotFound from magma/orc8r/lib/go/merrors.
 func LoadEntity(ctx context.Context, networkID string, entityType string, entityKey string, criteria EntityLoadCriteria, serdes serde.Registry) (NetworkEntity, error) {
 	ret := NetworkEntity{}
 	loaded, notFound, err := LoadEntities(
@@ -478,7 +478,7 @@ func LoadEntity(ctx context.Context, networkID string, entityType string, entity
 }
 
 // LoadEntityConfig loads the config for the entity identified by (network ID, entity type, entity key).
-// If not found, returns ErrNotFound from magma/orc8r/lib/go/errors.
+// If not found, returns ErrNotFound from magma/orc8r/lib/go/merrors.
 func LoadEntityConfig(ctx context.Context, networkID, entityType, entityKey string, serdes serde.Registry) (interface{}, error) {
 	entity, err := LoadEntity(ctx, networkID, entityType, entityKey, EntityLoadCriteria{LoadConfig: true}, serdes)
 	if err != nil {
@@ -491,7 +491,7 @@ func LoadEntityConfig(ctx context.Context, networkID, entityType, entityKey stri
 }
 
 // LoadEntityForPhysicalID loads the network entity identified by the physical ID.
-// If not found, returns ErrNotFound from magma/orc8r/lib/go/errors.
+// If not found, returns ErrNotFound from magma/orc8r/lib/go/merrors.
 func LoadEntityForPhysicalID(ctx context.Context, physicalID string, criteria EntityLoadCriteria, serdes serde.Registry) (NetworkEntity, error) {
 	ret := NetworkEntity{}
 	loaded, _, err := LoadEntities(
@@ -509,7 +509,7 @@ func LoadEntityForPhysicalID(ctx context.Context, physicalID string, criteria En
 		return ret, merrors.ErrNotFound
 	}
 	if len(loaded) > 1 {
-		return ret, errors.Errorf("expected one entity from query, found %d", len(loaded))
+		return ret, fmt.Errorf("expected one entity from query, found %d", len(loaded))
 	}
 	return loaded[0], nil
 }
@@ -525,14 +525,14 @@ func LoadEntities(ctx context.Context, networkID string, typeFilter *string, key
 	}
 	ret, err := (NetworkEntities{}).fromProtos(protoEnts, serdes)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "request succeeded but deserialization failed")
+		return nil, nil, fmt.Errorf("request succeeded but deserialization failed: %w", err)
 	}
 	return ret, entIDsToTKs(notFound), nil
 }
 
 // LoadSerializedEntity is same as LoadEntity, but doesn't deserialize the
 // loaded entity.
-// If not found, returns ErrNotFound from magma/orc8r/lib/go/errors.
+// If not found, returns ErrNotFound from magma/orc8r/lib/go/merrors.
 func LoadSerializedEntity(ctx context.Context, networkID string, entityType string, entityKey string, criteria EntityLoadCriteria) (NetworkEntity, error) {
 	ret := NetworkEntity{}
 	loaded, notFound, err := LoadSerializedEntities(
@@ -605,7 +605,7 @@ func loadEntities(
 }
 
 // LoadInternalEntity calls LoadEntity with the internal network ID.
-// If not found, returns ErrNotFound from magma/orc8r/lib/go/errors.
+// If not found, returns ErrNotFound from magma/orc8r/lib/go/merrors.
 func LoadInternalEntity(ctx context.Context, entityType string, entityKey string, criteria EntityLoadCriteria, serdes serde.Registry) (NetworkEntity, error) {
 	return LoadEntity(ctx, storage.InternalNetworkID, entityType, entityKey, criteria, serdes)
 }
@@ -682,7 +682,7 @@ func LoadAllEntitiesOfType(ctx context.Context, networkID string, entityType str
 
 	ret, err := (NetworkEntities{}).fromProtos(res.Entities, serdes)
 	if err != nil {
-		return nil, "", errors.Wrap(err, "request succeeded but deserialization failed")
+		return nil, "", fmt.Errorf("request succeeded but deserialization failed: %w", err)
 	}
 
 	return ret, res.NextPageToken, nil
@@ -710,7 +710,7 @@ func CountEntitiesOfType(ctx context.Context, networkID string, entityType strin
 }
 
 func getNBConfiguratorClient() (protos.NorthboundConfiguratorClient, error) {
-	conn, err := registry.GetConnection(ServiceName)
+	conn, err := registry.GetConnection(ServiceName, commonProtos.ServiceType_PROTECTED)
 	if err != nil {
 		initErr := merrors.NewInitError(err, ServiceName)
 		glog.Error(initErr)
@@ -728,7 +728,7 @@ func GetMconfigFor(ctx context.Context, hardwareID string) (*protos.GetMconfigRe
 }
 
 func getSBConfiguratorClient() (protos.SouthboundConfiguratorClient, error) {
-	conn, err := registry.GetConnection(ServiceName)
+	conn, err := registry.GetConnection(ServiceName, commonProtos.ServiceType_SOUTHBOUND)
 	if err != nil {
 		initErr := merrors.NewInitError(err, ServiceName)
 		glog.Error(initErr)

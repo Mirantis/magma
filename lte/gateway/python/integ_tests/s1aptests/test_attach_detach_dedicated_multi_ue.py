@@ -32,7 +32,7 @@ class TestAttachDetachDedicatedMultiUe(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_detach(self):
+    def test_attach_detach_dedicated_multi_ue(self):
         """attach/detach + dedicated bearer test with 4 UEs"""
         num_ues = 4
         ue_ids = []
@@ -78,9 +78,7 @@ class TestAttachDetachDedicatedMultiUe(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             print(
                 "********************** Received activate dedicated EPS"
                 " bearer context request",
@@ -120,10 +118,7 @@ class TestAttachDetachDedicatedMultiUe(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value
 
             print(
                 "********************** Received deactivate EPS bearer"

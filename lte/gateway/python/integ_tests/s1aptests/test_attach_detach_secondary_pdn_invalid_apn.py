@@ -19,7 +19,7 @@ import s1ap_types
 import s1ap_wrapper
 
 
-class TestSecondaryPdnConnReqInvalidAPN(unittest.TestCase):
+class TestAttachDetachSecondaryPdnInvalidAPN(unittest.TestCase):
     """Test secondary pdn creation with invalid apn"""
 
     def setUp(self):
@@ -30,7 +30,7 @@ class TestSecondaryPdnConnReqInvalidAPN(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_secondary_pdn_conn_req_invalid_apn(self):
+    def test_attach_detach_secondary_pdn_invalid_apn(self):
         """Attach a single UE and send standalone PDN Connectivity
         Request with invalid APN
         """
@@ -60,15 +60,10 @@ class TestSecondaryPdnConnReqInvalidAPN(unittest.TestCase):
         self._s1ap_wrapper.sendPdnConnectivityReq(ue_id, apn)
         # Receive PDN CONN REJ
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value
         # Verify cause
         pdn_con_rsp = response.cast(s1ap_types.uePdnConRsp_t)
-        self.assertEqual(
-            pdn_con_rsp.m.conRejInfo.cause,
-            s1ap_types.TFW_ESM_CAUSE_MISSING_OR_UNKNOWN_APN,
-        )
+        assert pdn_con_rsp.m.conRejInfo.cause == s1ap_types.TFW_ESM_CAUSE_MISSING_OR_UNKNOWN_APN
 
         print("Sleeping for 5 seconds")
         time.sleep(5)

@@ -10,13 +10,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "state_creators.h"
+#include "lte/gateway/c/core/oai/test/spgw_task/state_creators.hpp"
+
+#include <gtest/gtest.h>
+
+extern "C" {
+#include "lte/gateway/c/core/oai/common/conversions.h"
+}
+
+#include "lte/gateway/c/core/oai/include/sgw_context_manager.hpp"
+#include "lte/gateway/c/core/oai/include/state_converter.hpp"
 
 namespace magma {
 
 gtpv1u_data_t make_gtpv1u_data(int fd0, int fd1u) {
   gtpv1u_data_t data;
-  data.fd0  = fd0;
+  data.fd0 = fd0;
   data.fd1u = fd1u;
   return data;
 }

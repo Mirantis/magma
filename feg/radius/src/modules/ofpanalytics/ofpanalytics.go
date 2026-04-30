@@ -17,18 +17,18 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"fbc/cwf/radius/modules"
-	"fbc/lib/go/radius"
-	"fbc/lib/go/radius/rfc2865"
 
 	"github.com/mitchellh/mapstructure"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"layeh.com/radius"
+	"layeh.com/radius/rfc2865"
 )
 
 type (
@@ -106,7 +106,6 @@ func Handle(m modules.Context, rc *modules.RequestContext, r *radius.Request, _ 
 		"Called-Station-Id":  {"type": "string", "value": []string{normalize(rfc2865.CalledStationID_GetString(r.Packet))}},
 		"Calling-Station-Id": {"type": "string", "value": []string{normalize(rfc2865.CallingStationID_GetString(r.Packet))}},
 		"NAS-Identifier":     {"type": "string", "value": []string{rfc2865.NASIdentifier_GetString(r.Packet)}},
-		"XWF-C-Version":      {"type": "string", "value": []string{analyticsVersion}},
 	}
 	// If no nas ip address is specified then no field will be sent
 	if rfc2865.NASIPAddress_Get(r.Packet) != nil {
@@ -115,7 +114,7 @@ func Handle(m modules.Context, rc *modules.RequestContext, r *radius.Request, _ 
 	}
 	encodedMsg, err := json.Marshal(jsonPacket)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to marshal radius packet")
+		return nil, fmt.Errorf("unable to marshal radius packet: %w", err)
 	}
 	req, err := http.NewRequest(http.MethodPost, ctx.URI, bytes.NewReader(encodedMsg))
 	if err != nil {
@@ -126,7 +125,7 @@ func Handle(m modules.Context, rc *modules.RequestContext, r *radius.Request, _ 
 
 	resp, err := ctx.HTTPClient.Do(req)
 	if err != nil {
-		return nil, errors.Wrap(err, "error sending response to endpoint")
+		return nil, fmt.Errorf("error sending response to endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 	rc.Logger.Debug("got response", zap.String("status", resp.Status),
@@ -134,8 +133,7 @@ func Handle(m modules.Context, rc *modules.RequestContext, r *radius.Request, _ 
 		zap.Any("request", r.Packet.Attributes),
 		zap.String("Called-Station-Id", rfc2865.CalledStationID_GetString(r.Packet)),
 		zap.String("Calling-Station-Id", rfc2865.CallingStationID_GetString(r.Packet)),
-		zap.String("NAS-Identifier", rfc2865.NASIdentifier_GetString(r.Packet)),
-		zap.String("XWF-C-Version", analyticsVersion))
+		zap.String("NAS-Identifier", rfc2865.NASIdentifier_GetString(r.Packet)))
 
 	if resp.StatusCode != http.StatusOK {
 		rc.Logger.Error("bad status code",
@@ -145,7 +143,7 @@ func Handle(m modules.Context, rc *modules.RequestContext, r *radius.Request, _ 
 	}
 	var endPointResponse EndpointResponse
 	if err := json.NewDecoder(resp.Body).Decode(&endPointResponse); err != nil {
-		return nil, errors.Wrap(err, "unable to decode endpoint response")
+		return nil, fmt.Errorf("unable to decode endpoint response: %w", err)
 	}
 
 	if len(endPointResponse.Auth) == 0 {

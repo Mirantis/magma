@@ -39,13 +39,12 @@
 //------------------------------------------------------------------------------
 // Table 9.8.1: Message types for EPS mobility management
 /* Message identifiers for EPS Mobility Management Registration  REGISTRATION */
-//#define REGISTRATION_REQUEST   0b01000001                  /* 65 = 0x41 */
-//#define REGISTRATION_ACCEPT    0b01000010                  /* 66 = 0x42 */
-//#define REGISTRATION_COMPLETE  0b01000011                  /* 67 = 0x43 */
-//#define REGISTRATION_REJECT    0b01000100                  /* 68 = 0x44 */
-//#define DEREGISTRATION_REQUEST_UE_INIT 0b01000101                  /* 69 =
-// 0x45 */ #define DEREGISTRATION_ACCEPT_UE_INIT  0b01000110                  /*
-// 70 = 0x46 */
+// #define REGISTRATION_REQUEST   0b01000001                  /* 65 = 0x41 */
+// #define REGISTRATION_ACCEPT    0b01000010                  /* 66 = 0x42 */
+// #define REGISTRATION_COMPLETE  0b01000011                  /* 67 = 0x43 */
+// #define REGISTRATION_REJECT    0b01000100                  /* 68 = 0x44 */
+// #define DEREGISTRATION_REQUEST_UE_INIT 0b01000101                  /* 69 =
+//  0x45 */ #define DEREGISTRATION_ACCEPT_UE_INIT  0b01000110 /* 70 = 0x46 */
 #define DEREGISTRATION_REQUEST_NW_INIT 0b01000111 /* 71 = 0x47 */
 #define DEREGISTRATION_ACCEPT_NW_INIT 0b01001000  /* 72 = 0x48 */
 #define DEREGISTRATION_ACCEPT_UE_INIT 0b01000110  /* 70 = 0x46 */
@@ -74,6 +73,7 @@
 #define T3586_DEFAULT_VALUE 0  // TODO-RECHECK
 #define T3589_DEFAULT_VALUE 0  // TODO-RECHECK
 #define T3595_DEFAULT_VALUE 0
+#define IMPLICIT_DEREG_TIMER_VALUE 30
 
 /*
  Registration request
@@ -95,7 +95,7 @@ Deregistration accept (UE terminated) */
 #define AMF_CAUSE_CONGESTION 22
 #define AMF_CAUSE_NGKSI_ALREADY_INUSE 71
 #define AMF_CAUSE_CONDITIONAL_IE_MISSING 101
-#define AMF_UE_SECURITY_CAPABILITIES_MISMATCH                                  \
+#define AMF_UE_SECURITY_CAPABILITIES_MISMATCH \
   23  // UE security capabilities mismatch
 #define AMF_SECURITY_MODE_REJECT 24
 
@@ -105,6 +105,6 @@ Deregistration accept (UE terminated) */
 
 /* 5G Timer structure */
 typedef struct nas5g_timer_s {
-  long int id;  /* The timer identifier                 */
-  uint32_t sec; /* The timer interval value in seconds  */
+  long int id;   /* The timer identifier                 */
+  uint32_t msec; /* The timer interval value in milliseconds  */
 } nas5g_timer_t;

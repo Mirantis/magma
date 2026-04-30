@@ -1,3 +1,16 @@
+/*
+ * Copyright 2020 The Magma Authors.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package storage
 
 import (
@@ -10,16 +23,19 @@ import (
 	"magma/orc8r/cloud/go/blobstore"
 	"magma/orc8r/cloud/go/blobstore/mocks"
 	"magma/orc8r/cloud/go/services/tenants"
+	tenant_protos "magma/orc8r/cloud/go/services/tenants/protos"
+	"magma/orc8r/cloud/go/sqorc"
 	"magma/orc8r/cloud/go/storage"
+	"magma/orc8r/cloud/go/test_utils"
 	"magma/orc8r/lib/go/protos"
 )
 
 var (
-	sampleTenant0        = protos.Tenant{Name: "tenant0", Networks: []string{"net1", "net2"}}
-	sampleTenant0Blob, _ = tenantToBlob(0, sampleTenant0)
+	sampleTenant0        = tenant_protos.Tenant{Name: "tenant0", Networks: []string{"net1", "net2"}}
+	sampleTenant0Blob, _ = tenantToBlob(0, &sampleTenant0)
 
-	sampleTenant1        = protos.Tenant{Name: "tenant1", Networks: []string{"net3", "net4"}}
-	sampleTenant1Blob, _ = tenantToBlob(1, sampleTenant1)
+	sampleTenant1        = tenant_protos.Tenant{Name: "tenant1", Networks: []string{"net3", "net4"}}
+	sampleTenant1Blob, _ = tenantToBlob(1, &sampleTenant1)
 
 	marshaledTenant0, _ = protos.Marshal(&sampleTenant0)
 	invalidBlob         = blobstore.Blob{
@@ -27,14 +43,19 @@ var (
 		Key:   "word",
 		Value: marshaledTenant0,
 	}
+
+	sampleTenantID      int64 = 0
+	sampleTenantID2     int64 = 3
+	sampleControlProxy        = "{ info }"
+	sampleControlProxy2       = "{ info2 }"
 )
 
-func setupTestStore() (*mocks.TransactionalBlobStorage, Store) {
-	store := &mocks.TransactionalBlobStorage{}
+func setupTestStore() (*mocks.Store, Store) {
+	store := &mocks.Store{}
 	store.On("Rollback").Return(nil)
 	store.On("Commit").Return(nil)
 
-	factory := &mocks.BlobStorageFactory{}
+	factory := &mocks.StoreFactory{}
 	factory.On("StartTransaction", mock.Anything).Return(store, nil)
 
 	return store, NewBlobstoreStore(factory)
@@ -42,13 +63,13 @@ func setupTestStore() (*mocks.TransactionalBlobStorage, Store) {
 
 func TestBlobstoreStore_CreateTenant(t *testing.T) {
 	txStore, s := setupTestStore()
-	txStore.On("CreateOrUpdate", networkWildcard, blobstore.Blobs{sampleTenant0Blob}).Return(nil)
-	err := s.CreateTenant(0, sampleTenant0)
+	txStore.On("Write", networkWildcard, blobstore.Blobs{sampleTenant0Blob}).Return(nil)
+	err := s.CreateTenant(0, &sampleTenant0)
 	assert.NoError(t, err)
 
 	txStore, s = setupTestStore()
-	txStore.On("CreateOrUpdate", networkWildcard, blobstore.Blobs{sampleTenant0Blob}).Return(errors.New("error"))
-	err = s.CreateTenant(0, sampleTenant0)
+	txStore.On("Write", networkWildcard, blobstore.Blobs{sampleTenant0Blob}).Return(errors.New("error"))
+	err = s.CreateTenant(0, &sampleTenant0)
 	assert.EqualError(t, err, "error")
 }
 
@@ -57,7 +78,7 @@ func TestBlobstoreStore_GetTenant(t *testing.T) {
 	txStore.On("Get", networkWildcard, storage.TK{Type: tenants.TenantInfoType, Key: "0"}).Return(sampleTenant0Blob, nil)
 	tenant, err := s.GetTenant(0)
 	assert.NoError(t, err)
-	assert.Equal(t, sampleTenant0, *tenant)
+	test_utils.AssertMessagesEqual(t, &sampleTenant0, tenant)
 
 	txStore, s = setupTestStore()
 	txStore.On("Get", networkWildcard, storage.TK{Type: tenants.TenantInfoType, Key: "0"}).Return(blobstore.Blob{}, errors.New("error"))
@@ -90,7 +111,7 @@ func TestBlobstoreStore_GetAllTenants(t *testing.T) {
 
 	retTenants, err := s.GetAllTenants()
 	assert.NoError(t, err)
-	assert.Equal(t, &protos.TenantList{Tenants: []*protos.IDAndTenant{
+	test_utils.AssertMessagesEqual(t, &tenant_protos.TenantList{Tenants: []*tenant_protos.IDAndTenant{
 		{Id: 0, Tenant: &sampleTenant0},
 		{Id: 1, Tenant: &sampleTenant1},
 	}}, retTenants)
@@ -140,13 +161,13 @@ func TestBlobstoreStore_GetAllTenants(t *testing.T) {
 
 func TestBlobstoreStore_SetTenant(t *testing.T) {
 	txStore, s := setupTestStore()
-	txStore.On("CreateOrUpdate", networkWildcard, blobstore.Blobs{sampleTenant0Blob}).Return(nil)
-	err := s.SetTenant(0, sampleTenant0)
+	txStore.On("Write", networkWildcard, blobstore.Blobs{sampleTenant0Blob}).Return(nil)
+	err := s.SetTenant(0, &sampleTenant0)
 	assert.NoError(t, err)
 
 	txStore, s = setupTestStore()
-	txStore.On("CreateOrUpdate", networkWildcard, blobstore.Blobs{sampleTenant0Blob}).Return(errors.New("error"))
-	err = s.SetTenant(0, sampleTenant0)
+	txStore.On("Write", networkWildcard, blobstore.Blobs{sampleTenant0Blob}).Return(errors.New("error"))
+	err = s.SetTenant(0, &sampleTenant0)
 	assert.EqualError(t, err, "error")
 }
 
@@ -160,4 +181,35 @@ func TestBlobstoreStore_DeleteTenant(t *testing.T) {
 	txStore.On("Delete", networkWildcard, storage.TKs{{Type: tenants.TenantInfoType, Key: "0"}}).Return(errors.New("error"))
 	err = s.DeleteTenant(0)
 	assert.EqualError(t, err, "error")
+}
+
+func TestBlobstoreStore_ControlProxy(t *testing.T) {
+	db, err := sqorc.Open("sqlite3", ":memory:")
+	assert.NoError(t, err)
+	factory := blobstore.NewSQLStoreFactory(tenants.DBTableName, db, sqorc.GetSqlBuilder())
+	assert.NoError(t, factory.InitializeFactory())
+	s := NewBlobstoreStore(factory)
+
+	_, err = s.GetControlProxy(sampleTenantID)
+	assert.EqualError(t, err, "Not found")
+
+	_, err = s.GetControlProxy(sampleTenantID2)
+	assert.EqualError(t, err, "Not found")
+
+	err = s.CreateOrUpdateControlProxy(sampleTenantID2, sampleControlProxy)
+	assert.NoError(t, err)
+
+	controlProxy, err := s.GetControlProxy(sampleTenantID2)
+	assert.NoError(t, err)
+	assert.Equal(t, sampleControlProxy, controlProxy)
+
+	_, err = s.GetControlProxy(sampleTenantID)
+	assert.EqualError(t, err, "Not found")
+
+	err = s.CreateOrUpdateControlProxy(sampleTenantID, sampleControlProxy2)
+	assert.NoError(t, err)
+
+	controlProxy, err = s.GetControlProxy(sampleTenantID)
+	assert.NoError(t, err)
+	assert.Equal(t, sampleControlProxy2, controlProxy)
 }

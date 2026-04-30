@@ -4,9 +4,9 @@ title: Magma Proposals
 hide_title: true
 ---
 
-# Magma Proposals
+# Magma Proposals (Design Document)
 
-> **NOTE**: you actually want [How to Open a Proposal](../contributing/contribute_proposals.md) for the current process. This document describes the process as it was originally proposed.
+> **NOTE**: If you are looking for the current process on how to propose a new feature or idea, please check out the [How to Open a Proposal](https://github.com/magma/magma/wiki/Adding-and-Tracking-Proposals) section in the Contributor Guide.
 
 As an open source project, it is important that all contributors are able to
 observe substantitive Proposals, comment on them, and be able to discover
@@ -99,9 +99,9 @@ document.
   the directory and `short-name` is a short name (a few dash-separated words
   at most).
   Follow the Magma Github contribution process from the
-  [Magma Contributing Conventions](https://docs.magmacore.org/docs/next/contributing/contribute_conventions).
+  [Magma Contributing Conventions](https://github.com/magma/magma/wiki/Contributing-Code-Conventions).
 
-- The design doc should follow [the template](TEMPLATE.md).
+- The design doc should follow [the template](https://github.com/magma/magma/tree/master/.github/ISSUE_TEMPLATE/proposal.md).
 
 - The design doc should address any specific concerns raised during the
   initial issue discussion.
@@ -139,11 +139,6 @@ The proposal review meetings also identify issues where
 consensus has been reached and the process can be
 advanced to the next step (by marking the proposal accepted
 or declined or by asking for a design doc).
-
-Minutes are posted to [0_proposal-minutes.md](0_proposal-minutes.md)
-after the conclusion of the weekly meeting, so that anyone
-interested in which proposals are under active consideration
-can follow that issue.
 
 The state of Proposal issues are tracked by Github label:
 

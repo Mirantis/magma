@@ -1,3 +1,16 @@
+/*
+ * Copyright 2020 The Magma Authors.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package exporters
 
 import (
@@ -7,7 +20,8 @@ import (
 	"github.com/golang/glog"
 
 	"magma/orc8r/cloud/go/services/metricsd/protos"
-	merrors "magma/orc8r/lib/go/errors"
+	"magma/orc8r/lib/go/merrors"
+	lib_protos "magma/orc8r/lib/go/protos"
 	"magma/orc8r/lib/go/registry"
 )
 
@@ -32,7 +46,7 @@ func (r *remoteExporter) Submit(metrics []MetricAndContext) error {
 }
 
 func (r *remoteExporter) getExporterClient() (protos.MetricsExporterClient, error) {
-	conn, err := registry.GetConnection(r.service)
+	conn, err := registry.GetConnection(r.service, lib_protos.ServiceType_PROTECTED)
 	if err != nil {
 		initErr := merrors.NewInitError(err, r.service)
 		glog.Error(initErr)

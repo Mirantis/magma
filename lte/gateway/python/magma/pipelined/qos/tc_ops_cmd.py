@@ -16,7 +16,7 @@ import logging
 import os
 import shlex
 import subprocess
-from typing import List  # noqa
+from typing import List, Optional  # noqa
 
 from .tc_ops import TcOpsBase
 
@@ -52,14 +52,14 @@ class TcOpsCmd(TcOpsBase):
         LOG.info("initialized")
 
     def create_htb(
-        self, iface: str, qid: str, max_bw: str, rate: str,
-        parent_qid: str = None,
+        self, iface: str, qid: str, max_bw: int, rate: str,
+        units: str, parent_qid: Optional[str] = None,
     ) -> int:
         tc_cmd = "tc class add dev {intf} parent {parent_qid} "
-        tc_cmd += "classid 1:{qid} htb rate {rate} ceil {maxbw} prio 2"
+        tc_cmd += "classid 1:{qid} htb rate {rate} ceil {maxbw}{units} prio 2"
         tc_cmd = tc_cmd.format(
             intf=iface, parent_qid=parent_qid,
-            qid=qid, rate=rate, maxbw=max_bw,
+            qid=qid, rate=rate, maxbw=max_bw, units=units,
         )
 
         return run_cmd([tc_cmd], True)

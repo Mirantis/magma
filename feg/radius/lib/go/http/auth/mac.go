@@ -19,6 +19,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -29,8 +30,6 @@ import (
 	"time"
 
 	"fbc/lib/go/http/httputil"
-
-	"github.com/pkg/errors"
 )
 
 const (
@@ -122,13 +121,13 @@ func NewMACMiddleware(c MACConfig) func(http.Handler) http.Handler {
 }
 
 // verify decided if we pass or reject the request. Here's an example flow of the authentication:
-// 1. Client calculates a checksum for the concatenation of the given values: method (POST/PUT/),
-//    resource (/resource/1?a=1), unix timestamp (1353832234) and request payload.
-// 2. Then, takes the hash created in #1 calculate the signature using RSASSA-PKCS1-V1_5-SIGN (with his private key),
-//    encode it into a base64, store it in the Authorization header and the timestamp used in the X-Authorization-Timestamp header.
-// 3. Client exposes its public key (it will be resolved using the `KeyGetter` function).
-// 4. When the server gets the request, it first makes sure that the time skew is not over the limit (avoid replays).
-// 5. Decodes the Authorization header and verifies the signature using the public key and SHA1 digest.
+//  1. Client calculates a checksum for the concatenation of the given values: method (POST/PUT/),
+//     resource (/resource/1?a=1), unix timestamp (1353832234) and request payload.
+//  2. Then, takes the hash created in #1 calculate the signature using RSASSA-PKCS1-V1_5-SIGN (with his private key),
+//     encode it into a base64, store it in the Authorization header and the timestamp used in the X-Authorization-Timestamp header.
+//  3. Client exposes its public key (it will be resolved using the `KeyGetter` function).
+//  4. When the server gets the request, it first makes sure that the time skew is not over the limit (avoid replays).
+//  5. Decodes the Authorization header and verifies the signature using the public key and SHA1 digest.
 func (m *MACMiddleware) verify(r *http.Request) error {
 	var (
 		ts = r.Header.Get(TimestampHeader)
@@ -142,10 +141,10 @@ func (m *MACMiddleware) verify(r *http.Request) error {
 	}
 	n, err := strconv.ParseInt(ts, 10, 64)
 	if err != nil {
-		return errors.Wrapf(err, "parse timestamp: %v", ts)
+		return fmt.Errorf("parse timestamp: %v: %w", ts, err)
 	}
 	if ts := time.Unix(n, 0); abs(time.Since(ts)) > m.TimeSkew {
-		return errors.Errorf("stable timestamp: %v", ts)
+		return fmt.Errorf("stable timestamp: %v", ts)
 	}
 	h := m.Hash.New()
 	if err := hashRequest(h, r, ts); err != nil {
@@ -153,11 +152,11 @@ func (m *MACMiddleware) verify(r *http.Request) error {
 	}
 	pk, err := m.KeyGetter()
 	if err != nil {
-		return errors.Wrap(err, "failed to get public key")
+		return fmt.Errorf("failed to get public key: %w", err)
 	}
 	sig, err := base64.StdEncoding.DecodeString(sg)
 	if err != nil {
-		return errors.Wrap(err, "failed to decode signature header")
+		return fmt.Errorf("failed to decode signature header: %w", err)
 	}
 	if err := rsa.VerifyPKCS1v15(pk, m.Hash, h.Sum(nil), sig); err != nil {
 		return errors.New("unauthorized")
@@ -198,12 +197,12 @@ func hashRequest(h hash.Hash, r *http.Request, ts string) error {
 	b.WriteString(r.URL.RequestURI())
 	b.WriteString(ts)
 	if _, err := io.Copy(h, b); err != nil {
-		return errors.Wrap(err, "failed to copy request info")
+		return fmt.Errorf("failed to copy request info: %w", err)
 	}
 	if r.Body != nil {
 		b.Reset()
 		if _, err := io.Copy(io.MultiWriter(h, b), r.Body); err != nil {
-			return errors.Wrap(err, "failed to copy request body")
+			return fmt.Errorf("failed to copy request body: %w", err)
 		}
 		r.Body = ioutil.NopCloser(b)
 	}

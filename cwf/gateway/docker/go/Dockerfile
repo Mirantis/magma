@@ -1,12 +1,32 @@
-ARG baseImage="ubuntu:bionic"
-FROM ${baseImage} as base
+# Copyright 2023 The Magma Authors.
+
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+ARG baseImage="ubuntu:focal"
+FROM ${baseImage} AS base
 
 # Add the magma apt repo
 RUN apt-get update && \
     apt-get install -y apt-utils software-properties-common apt-transport-https
-COPY orc8r/tools/ansible/roles/pkgrepo/files/jfrog.pub /tmp/jfrog.pub
-RUN apt-key add /tmp/jfrog.pub && \
-    apt-add-repository "deb https://facebookconnectivity.jfrog.io/artifactory/list/dev/ bionic main"
+
+# Add the magma apt repo
+COPY keys/linux_foundation_registry_key.asc /etc/apt/trusted.gpg.d/magma.asc
+
+#[TODO_GPG_KEY_WORKAROUND]Temporary steps to be removed once GPG public key issue has been fixed.
+#RUN add-apt-repository "deb https://linuxfoundation.jfrog.io/artifactory/magma-packages-test focal-ci main"
+RUN echo "deb [trusted=yes] https://linuxfoundation.jfrog.io/artifactory/magma-packages-test focal-ci main" \
+    > /etc/apt/sources.list.d/magma.list
+
+#[TODO_GPG_KEY_WORKAROUND]Temporary steps to be removed once GPG public key issue has been fixed.
+RUN echo "Acquire::AllowInsecureRepositories true;" > /etc/apt/apt.conf.d/99AllowInsecureRepositories && \
+    echo "APT::Get::AllowUnauthenticated true;" >> /etc/apt/apt.conf.d/99AllowInsecureRepositories
 
 # Install the runtime deps.
 RUN apt-get update && apt-get install -y \
@@ -36,11 +56,15 @@ RUN apt-get update && apt-get install -y \
     vim \
     virtualenv
 
-# Install Golang 1.13.
+# Golang
 WORKDIR /usr/local
-RUN curl https://facebookconnectivity.jfrog.io/artifactory/generic/go1.13.4.linux-amd64.tar.gz -O && \
-    tar xf go1.13.4.linux-amd64.tar.gz && \
-    cp -r go/bin/* /usr/local/bin/
+ARG GOLANG_VERSION="1.21.12"
+RUN GO_TARBALL="go${GOLANG_VERSION}.linux-amd64.tar.gz" \
+    && curl https://golang.org/dl/${GO_TARBALL} --remote-name --location \
+    && tar -xzf ${GO_TARBALL} \
+    && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+    && rm ${GO_TARBALL}
 
 # Install protobuf compiler.
 RUN curl -Lfs https://github.com/protocolbuffers/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip -o protoc3.zip && \
@@ -79,13 +103,18 @@ COPY orc8r/lib/go/protos/go.* $MAGMA_ROOT/orc8r/lib/go/protos/
 COPY orc8r/cloud/go/go.* $MAGMA_ROOT/orc8r/cloud/go/
 COPY orc8r/gateway/go/go.* $MAGMA_ROOT/orc8r/gateway/go/
 WORKDIR $MAGMA_ROOT/cwf/gateway
-RUN go mod download; exit 0
+RUN go mod tidy
 # Install protoc-gen-go
-RUN go install github.com/golang/protobuf/protoc-gen-go; exit 0
+RUN go get github.com/golang/protobuf/protoc-gen-go
 
 # Symlink python scripts.
 RUN ln -s /build/python/bin/generate_service_config.py /usr/local/bin/generate_service_config.py
 RUN ln -s /build/python/bin/generate_nghttpx_config.py /usr/local/bin/generate_nghttpx_config.py
+
+# -----------------------------------------------------------------------------
+# Builder image with binary
+# -----------------------------------------------------------------------------
+FROM base AS builder
 
 # Build the code.
 COPY cwf $MAGMA_ROOT/cwf
@@ -95,10 +124,6 @@ COPY orc8r/lib/go $MAGMA_ROOT/orc8r/lib/go
 COPY orc8r/cloud $MAGMA_ROOT/orc8r/cloud
 COPY orc8r/gateway/go $MAGMA_ROOT/orc8r/gateway/go
 
-# -----------------------------------------------------------------------------
-# Builder image with binary
-# -----------------------------------------------------------------------------
-FROM base as builder
 # Enable make gen if proto gen is required
 # RUN make -C $MAGMA_ROOT/cwf/gateway gen
 RUN make -C $MAGMA_ROOT/cwf/gateway build
@@ -106,7 +131,7 @@ RUN make -C $MAGMA_ROOT/cwf/gateway build
 # -----------------------------------------------------------------------------
 # Production image
 # -----------------------------------------------------------------------------
-FROM ubuntu:bionic AS cwag_go
+FROM ${baseImage} AS cwag_go
 
 # Install envdir.
 RUN apt-get -y update && apt-get -y install daemontools curl arping

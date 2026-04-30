@@ -18,7 +18,7 @@ import s1ap_wrapper
 from s1ap_utils import MagmadUtil
 
 
-class TestAttachDetachMobilitydRestart(unittest.TestCase):
+class TestAttachDetachWithMobilitydRestart(unittest.TestCase):
 
     def setUp(self):
         self._s1ap_wrapper = s1ap_wrapper.TestWrapper(
@@ -28,7 +28,7 @@ class TestAttachDetachMobilitydRestart(unittest.TestCase):
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_detach_mobility_restart(self):
+    def test_attach_detach_with_mobilityd_restart(self):
         """ Basic attach/detach test with a single UE and mobilityd restart """
         num_ues = 2
         detach_type = [
@@ -56,11 +56,10 @@ class TestAttachDetachMobilitydRestart(unittest.TestCase):
             self._s1ap_wrapper._s1_util.receive_emm_info()
 
             print('************************* Restarting mobilityd')
-            self._s1ap_wrapper.magmad_util.restart_services(['mobilityd'])
-            # Timeout for mobilityd restart
-            for j in range(30):
-                print("Waiting for", j, "seconds")
-                sleep(1)
+            wait_for_restart = 30
+            self._s1ap_wrapper.magmad_util.restart_services(
+                ["mobilityd"], wait_for_restart,
+            )
 
             print(
                 "************************* Running UE detach for UE id ",

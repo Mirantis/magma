@@ -12,7 +12,7 @@ cmake_minimum_required(VERSION 3.7.2)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
+ 
 include_directories("/usr/src/googletest/googlemock/include/")
 link_directories(/usr/src/googletest/googlemock/lib/)
 
@@ -26,8 +26,12 @@ add_library(MOCK_TASKS
     sgw_s8_mock.cpp
     spgw_mock.cpp
     sms_orc8r_mock.cpp
+    mme_app_mock.cpp
+    sctp_mock.cpp
+    grpc_mock.cpp
 )
 
 target_link_libraries(MOCK_TASKS
     LIB_ITTI gmock_main gtest gtest_main gmock
+    TASK_GRPC_SERVICE
 )

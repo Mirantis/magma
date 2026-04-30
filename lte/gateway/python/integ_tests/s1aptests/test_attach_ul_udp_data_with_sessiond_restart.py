@@ -29,7 +29,7 @@ class TestAttachUlUdpDataWithSessiondRestart(unittest.TestCase):
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_ul_udp_data(self):
+    def test_attach_ul_udp_data_with_sessiond_restart(self):
         """
         Attach, send UL UDP data, restart Sessiond and
         send UL UDP data again
@@ -63,11 +63,10 @@ class TestAttachUlUdpDataWithSessiondRestart(unittest.TestCase):
             "************************* Restarting Sessiond service",
             "on gateway",
         )
-        self._s1ap_wrapper.magmad_util.restart_services(["sessiond"])
-
-        for j in range(30):
-            print("Waiting for", j, "seconds")
-            time.sleep(1)
+        wait_for_restart = 30
+        self._s1ap_wrapper.magmad_util.restart_services(
+            ["sessiond"], wait_for_restart,
+        )
 
         print(
             "************************* Running UE uplink (UDP) for UE id ",

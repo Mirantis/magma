@@ -9,55 +9,50 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * @format
  */
 
 module.exports = {
   collectCoverageFrom: [
-    '**/packages/**/*.js',
+    '**/*.js',
     '!**/__mocks__/**',
     '!**/__tests__/**',
     '!**/node_modules/**',
   ],
-
   coverageReporters: ['json', 'html'],
-  modulePathIgnorePatterns: [],
+  testTimeout: 10000,
   projects: [
     {
-      name: 'server',
+      displayName: 'server',
       testEnvironment: 'node',
       testMatch: [
-        '<rootDir>/__tests__/*.js',
-        '<rootDir>/packages/**/server/**/__tests__/*.js',
-        // run app/server shared tests in both node and jsdom environments
-        '<rootDir>/packages/**/shared/**/__tests__/*.js',
+        '<rootDir>/server/**/__tests__/*.[jt]s?(x)',
+        '<rootDir>/shared/**/__tests__/*.[jt]s?(x)',
       ],
       transform: {
-        '^.+\\.js$': 'babel-jest',
+        '^.+\\.(js|ts|tsx)$': 'babel-jest',
       },
-      transformIgnorePatterns: ['/node_modules/(?!@fbcnms)'],
+      resetMocks: true,
+      restoreMocks: true,
+      moduleNameMapper: {
+        // https://github.com/uuidjs/uuid/issues/451
+        uuid: require.resolve('uuid'),
+      },
     },
     {
-      moduleNameMapper: {
-        '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':
-          '<rootDir>/__mocks__/fileMock.js',
-        '\\.(css|less)$': 'identity-obj-proxy',
-      },
-      name: 'app',
-      setupFiles: [require.resolve('@fbcnms/babel-register/polyfill')],
+      displayName: 'app',
       testEnvironment: 'jsdom',
-      testMatch: [
-        '<rootDir>/packages/**/app/**/__tests__/*.js',
-        // run app/server shared tests in both node and jsdom environments
-        '<rootDir>/packages/**/shared/**/__tests__/*.js',
-      ],
+      testMatch: ['<rootDir>/app/**/__tests__/*.[jt]s?(x)'],
       transform: {
-        '^.+\\.js$': 'babel-jest',
+        '^.+\\.(js|ts|tsx)$': 'babel-jest',
       },
-      transformIgnorePatterns: ['/node_modules/(?!@fbcnms)'],
+      setupFilesAfterEnv: ['./jest.setup.app.ts'],
+      resetMocks: true,
+      restoreMocks: true,
+      moduleNameMapper: {
+        // https://github.com/uuidjs/uuid/issues/451
+        uuid: require.resolve('uuid'),
+      },
     },
   ],
   testEnvironment: 'jsdom',
-  testPathIgnorePatterns: ['/node_modules/'],
 };

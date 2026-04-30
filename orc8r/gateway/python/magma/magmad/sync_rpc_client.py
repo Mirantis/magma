@@ -16,12 +16,13 @@ import queue
 import random
 import threading
 import time
-from typing import List
+from typing import Dict, Iterator
 
 import grpc
 import magma.magmad.events as magmad_events
 from google.protobuf.json_format import MessageToJson
 from magma.common.rpc_utils import is_grpc_error_retryable
+from magma.common.sentry import EXCLUDE_FROM_ERROR_MONITORING
 from magma.common.service_registry import ServiceRegistry
 from magma.magmad.proxy_client import ControlProxyHttpClient
 from orc8r.protos.sync_rpc_service_pb2 import SyncRPCRequest, SyncRPCResponse
@@ -42,7 +43,7 @@ class SyncRPCClient(threading.Thread):
     ):
         threading.Thread.__init__(self)
         # a synchronized queue
-        self._response_queue = queue.Queue()
+        self._response_queue: queue.Queue = queue.Queue()
         self._loop = loop
         asyncio.set_event_loop(self._loop)
         # seconds to wait for an actual SyncRPCResponse to become available
@@ -51,8 +52,8 @@ class SyncRPCClient(threading.Thread):
         self._proxy_client = ControlProxyHttpClient()
         self.daemon = True
         self._current_delay = 0
-        self._last_conn_time = 0
-        self._conn_closed_table = {}  # mapping of req id -> conn closed
+        self._last_conn_time = 0.0
+        self._conn_closed_table: Dict[int, bool] = {}  # mapping of req id -> conn closed
         self._print_grpc_payload = print_grpc_payload
 
     def run(self):
@@ -64,8 +65,8 @@ class SyncRPCClient(threading.Thread):
         will be attempted after RETRY_DELAY_SECS seconds.
         """
         while True:
+            start_time = time.time()
             try:
-                start_time = time.time()
                 chan = ServiceRegistry.get_rpc_channel(
                     'dispatcher',
                     ServiceRegistry.CLOUD,
@@ -75,7 +76,7 @@ class SyncRPCClient(threading.Thread):
                 self.process_streams(client)
             except grpc.RpcError as err:
                 if is_grpc_error_retryable(err):
-                    logging.error(
+                    logging.warning(
                         "[SyncRPC] Transient gRPC error, retrying: %s",
                         err.details(),
                     )
@@ -83,13 +84,19 @@ class SyncRPCClient(threading.Thread):
                     continue
                 else:
                     logging.error(
-                        "[SyncRPC] gRPC error: %s, reconnecting to "
-                        "cloud.", err.details(),
+                        "[SyncRPC] gRPC error: %s, reconnecting to cloud.",
+                        err.details(),
+                        extra=EXCLUDE_FROM_ERROR_MONITORING,
                     )
                     self._cleanup_and_reconnect()
             except Exception as exp:  # pylint: disable=broad-except
                 conn_time = time.time() - start_time
-                logging.error("[SyncRPC] Error after %ds: %s", conn_time, exp)
+                logging.error(
+                    "[SyncRPC] Error after %ds: %s",
+                    conn_time,
+                    exp,
+                    extra=EXCLUDE_FROM_ERROR_MONITORING,
+                )
                 self._cleanup_and_reconnect()
 
     def process_streams(self, client: SyncRPCServiceStub) -> None:
@@ -136,7 +143,7 @@ class SyncRPCClient(threading.Thread):
 
     def forward_requests(
         self,
-        sync_rpc_requests: List[SyncRPCRequest],
+        sync_rpc_requests: Iterator[SyncRPCRequest],
     ) -> None:
         """
         Send requests in the sync_rpc_requests iterator.
@@ -156,6 +163,7 @@ class SyncRPCClient(threading.Thread):
                 logging.error(
                     "[SyncRPC] Failing to forward request, err: %s",
                     err.details(),
+                    extra=EXCLUDE_FROM_ERROR_MONITORING,
                 )
                 raise err
 

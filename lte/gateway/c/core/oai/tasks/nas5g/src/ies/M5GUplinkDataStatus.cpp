@@ -13,12 +13,12 @@ limitations under the License.
 #include <sstream>
 #include <cstdint>
 #include <cstring>
-#include "M5GCommonDefs.h"
-#include "M5GUplinkDataStatus.h"
+#include "lte/gateway/c/core/oai/tasks/nas5g/include/M5GCommonDefs.h"
+#include "lte/gateway/c/core/oai/tasks/nas5g/include/ies/M5GUplinkDataStatus.hpp"
 
 namespace magma5g {
-M5GUplinkDataStatus::M5GUplinkDataStatus(){};
-M5GUplinkDataStatus::~M5GUplinkDataStatus(){};
+M5GUplinkDataStatus::M5GUplinkDataStatus() {};
+M5GUplinkDataStatus::~M5GUplinkDataStatus() {};
 
 int M5GUplinkDataStatus::EncodeUplinkDataStatus(
     M5GUplinkDataStatus* uplinkDataStatus, uint8_t iei, uint8_t* buffer,
@@ -46,20 +46,14 @@ int M5GUplinkDataStatus::DecodeUplinkDataStatus(
 
   if (iei > 0) {
     uplinkDataStatus->iei = *buffer;
-    MLOG(MDEBUG) << "DecodeUplinkDataStatus: iei = " << std::hex
-                 << int(uplinkDataStatus->iei);
     decoded++;
 
     uplinkDataStatus->len = *(buffer + decoded);
-    MLOG(MDEBUG) << "In DecodeUplinkDataStatus: len = " << std::hex
-                 << int(uplinkDataStatus->len);
     decoded++;
 
     uplinkDataStatus->uplinkDataStatus = *(buffer + decoded);
     decoded++;
     uplinkDataStatus->uplinkDataStatus |= (*(buffer + decoded) << 8);
-    MLOG(MDEBUG) << "In DecodeUplinkDataStatus: uplinkDataStatus = " << std::hex
-                 << int(uplinkDataStatus->uplinkDataStatus);
     decoded++;
   }
 

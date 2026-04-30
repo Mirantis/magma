@@ -15,14 +15,13 @@
  *      contact@openairinterface.org
  */
 
-extern "C" {
-#include "sctpd_downlink_client.h"
+#include "lte/gateway/c/core/oai/tasks/sctp/sctpd_downlink_client.hpp"
 
+extern "C" {
 #include <arpa/inet.h>
 
-#include "assertions.h"
-#include "log.h"
-#include "mme_config.h"
+#include "lte/gateway/c/core/common/assertions.h"
+#include "lte/gateway/c/core/oai/common/log.h"
 }
 
 #include <memory>  // for make_unique<>
@@ -31,6 +30,9 @@ extern "C" {
 #include <grpcpp/grpcpp.h>
 
 #include <lte/protos/sctpd.grpc.pb.h>
+
+#include "lte/gateway/c/core/oai/include/mme_config.hpp"
+#include "lte/gateway/c/core/common/dynamic_memory_check.h"
 
 namespace magma {
 namespace lte {
@@ -46,8 +48,8 @@ using magma::sctpd::SendDlRes;
 
 class SctpdDownlinkClient {
  public:
-  explicit SctpdDownlinkClient(
-      const std::shared_ptr<Channel>& channel, bool force_restart);
+  explicit SctpdDownlinkClient(const std::shared_ptr<Channel>& channel,
+                               bool force_restart);
 
   int init(InitReq& req, InitRes* res);
   int sendDl(SendDlReq& req, SendDlRes* res);
@@ -60,7 +62,7 @@ class SctpdDownlinkClient {
 
 SctpdDownlinkClient::SctpdDownlinkClient(
     const std::shared_ptr<Channel>& channel, bool force_restart) {
-  _stub                = SctpdDownlink::NewStub(channel);
+  _stub = SctpdDownlink::NewStub(channel);
   should_force_restart = force_restart;
 }
 
@@ -72,8 +74,8 @@ int SctpdDownlinkClient::init(InitReq& req, InitRes* res) {
   auto status = _stub->Init(&context, req, res);
 
   if (!status.ok()) {
-    OAILOG_ERROR(
-        LOG_SCTP, "sctpdl.init error = %s\n", status.error_message().c_str());
+    OAILOG_ERROR(LOG_SCTP, "sctpdl.init error = %s\n",
+                 status.error_message().c_str());
   }
 
   return status.ok() ? 0 : -1;
@@ -87,8 +89,8 @@ int SctpdDownlinkClient::sendDl(SendDlReq& req, SendDlRes* res) {
   auto status = _stub->SendDl(&context, req, res);
 
   if (!status.ok()) {
-    OAILOG_ERROR(
-        LOG_SCTP, "sctpdl.senddl error = %s\n", status.error_message().c_str());
+    OAILOG_ERROR(LOG_SCTP, "sctpdl.senddl error = %s\n",
+                 status.error_message().c_str());
   }
 
   return status.ok() ? 0 : -1;
@@ -111,8 +113,8 @@ std::unique_ptr<SctpdDownlinkClient> client = nullptr;
 int init_sctpd_downlink_client(bool force_restart) {
   std::string downstream_sctp_sock(
       bdata(mme_config.sctp_config.downstream_sctp_sock));
-  auto channel = grpc::CreateChannel(
-      downstream_sctp_sock, grpc::InsecureChannelCredentials());
+  auto channel = grpc::CreateChannel(downstream_sctp_sock,
+                                     grpc::InsecureChannelCredentials());
   client = std::make_unique<SctpdDownlinkClient>(channel, force_restart);
   return 0;
 }
@@ -157,7 +159,7 @@ int sctpd_init(sctp_init_t* init) {
   req.set_force_restart(client->should_force_restart);
 
 #define MAX_SCTPD_INIT_ATTEMPTS 50
-  int num_inits      = 0;
+  int num_inits = 0;
   int sctpd_init_res = -1;
   while (sctpd_init_res != 0) {
     if (num_inits >= MAX_SCTPD_INIT_ATTEMPTS) {
@@ -166,7 +168,7 @@ int sctpd_init(sctp_init_t* init) {
     }
     ++num_inits;
     OAILOG_DEBUG(LOG_SCTP, "Sctpd Init attempt %d", num_inits);
-    auto rc      = client->init(req, &res);
+    auto rc = client->init(req, &res);
     auto init_ok = res.result() == InitRes::INIT_OK;
     if ((rc == 0) && init_ok) {
       sctpd_init_res = 0;
@@ -183,8 +185,8 @@ int sctpd_init(sctp_init_t* init) {
 }
 
 // sendDl
-int sctpd_send_dl(
-    uint32_t ppid, uint32_t assoc_id, uint16_t stream, bstring payload) {
+int sctpd_send_dl(uint32_t ppid, uint32_t assoc_id, uint16_t stream,
+                  bstring payload) {
   SendDlReq req;
   SendDlRes res;
 
@@ -196,9 +198,8 @@ int sctpd_send_dl(
   auto rc = client->sendDl(req, &res);
 
   if (rc != 0) {
-    OAILOG_ERROR(
-        LOG_SCTP, "assoc_id %u stream %u rc = %d\n", assoc_id,
-        (uint32_t) stream, rc);
+    OAILOG_ERROR(LOG_SCTP, "assoc_id %u stream %u rc = %d\n", assoc_id,
+                 (uint32_t)stream, rc);
   }
 
   return rc == 0 && res.result() == SendDlRes::SEND_DL_OK ? 0 : -1;

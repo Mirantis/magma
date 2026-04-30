@@ -25,9 +25,15 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-from google.protobuf.duration_pb2 import Duration
-from magma.common.rpc_utils import grpc_async_wrapper
+from google.protobuf.duration_pb2 import (  # pylint: disable=no-name-in-module
+    Duration,
+)
+from magma.common.rpc_utils import (
+    grpc_async_wrapper,
+    indicates_connection_error,
+)
 from magma.common.sdwatchdog import SDWatchdogTask
+from magma.common.sentry import EXCLUDE_FROM_ERROR_MONITORING
 from magma.common.service_registry import ServiceRegistry
 from magma.configuration.service_configs import load_service_config
 from magma.magmad.metrics import BOOTSTRAP_EXCEPTION
@@ -115,6 +121,7 @@ class BootstrapManager(SDWatchdogTask):
         """
         if self._state is BootstrapState.BOOTSTRAPPING:
             return
+        self._state = BootstrapState.SCHEDULED_BOOTSTRAP
         await self.wake_up()
 
     def _maybe_create_challenge_key(self):
@@ -180,7 +187,7 @@ class BootstrapManager(SDWatchdogTask):
         try:
             chan = ServiceRegistry.get_bootstrap_rpc_channel()
         except ValueError as exp:
-            logging.error('Failed to get rpc channel: %s', exp)
+            logging.error('Failed to get rpc channel: %s', exp, extra=EXCLUDE_FROM_ERROR_MONITORING)
             self._schedule_next_bootstrap(hard_failure=False)
             return
 
@@ -238,8 +245,12 @@ class BootstrapManager(SDWatchdogTask):
         await self._request_sign(response)
 
     def _get_challenge_done_fail(self, err):
-        err = 'GetChallenge error! [%s] %s' % (err.code(), err.details())
-        logging.error(err)
+        logging.error(
+            "GetChallenge error! [%s] %s",
+            err.code(),
+            err.details(),
+            extra=EXCLUDE_FROM_ERROR_MONITORING if indicates_connection_error(err) else None,
+        )
         BOOTSTRAP_EXCEPTION.labels(cause='GetChallengeResp').inc()
         self._schedule_next_bootstrap(hard_failure=False)
 
@@ -254,7 +265,7 @@ class BootstrapManager(SDWatchdogTask):
         try:
             chan = ServiceRegistry.get_bootstrap_rpc_channel()
         except ValueError as exp:
-            logging.error('Failed to get rpc channel: %s', exp)
+            logging.error('Failed to get rpc channel: %s', exp, extra=EXCLUDE_FROM_ERROR_MONITORING)
             BOOTSTRAP_EXCEPTION.labels(cause='RequestSignGetRPC').inc()
             self._schedule_next_bootstrap(hard_failure=False)
             return
@@ -383,15 +394,22 @@ class BootstrapManager(SDWatchdogTask):
         """
         now = datetime.datetime.utcnow()
         not_before = cert.not_before.ToDatetime()
+        not_after = cert.not_after.ToDatetime()
+        valid_time = not_after - now
+
+        # False if pre-valid
         if now < not_before:
             logging.error(
                 'Current system time indicates certificate received is not yet valid (notBefore: %s). Consider checking NTP.', not_before,
             )
             return False
 
-        not_after = cert.not_after.ToDatetime()
-        valid_time = not_after - now
-        # log a warning if the cert is short-lived
+        # False if expired
+        if valid_time < datetime.timedelta(seconds=0):
+            logging.error('Received expired certificate')
+            return False
+
+        # Just a warning if short-lived
         if valid_time < self.PREEXPIRY_BOOTSTRAP_INTERVAL:
             valid_hours = valid_time.total_seconds() / 3600
             logging.warning('Received a %.1f-hour certificate', valid_hours)

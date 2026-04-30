@@ -1,5 +1,4 @@
 add_list1_option(NGAP_VERSION R16 "NGAP Asn.1 grammar version" R16)
-add_definitions(-DASN1_MINIMUM_VERSION=923)
 set(ASN1RELDIR r16)
 set(NGAP_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(asn1_generated_dir ${CMAKE_CURRENT_BINARY_DIR})
@@ -17,16 +16,24 @@ set(ngap_generate_code_done_flag ${GENERATED_FULL_DIR}/NGAP_GENERATE_CODE_DONE)
 file(MAKE_DIRECTORY ${GENERATED_FULL_DIR})
 set(ngap_generate_code_done_flag ${GENERATED_FULL_DIR}/NGAP_GENERATE_CODE_DONE)
 
+# TODO: GH13021 this is a mitigation for excessive logging that should be handled more clean
+set(ASN1_ERR_FILTER "2> >(grep -v \"Parameterized type\" | grep -v \"Compiled \" | grep -v \"Copied \" >&2)")
+
 if( ${ASN1_SOURCE_DIR} IS_NEWER_THAN ${ngap_generate_code_done_flag})
    file(REMOVE ${GENERATED_FULL_DIR}/${ASN1C_PREFIX}*.c ${GENERATED_FULL_DIR}/${ASN1C_PREFIX}*.h)
    file(MAKE_DIRECTORY ${GENERATED_FULL_DIR})
 
-#Create NGAP_PDU structure without pointer references
- execute_process(COMMAND asn1c -pdu=all -fcompound-names -fno-include-deps -gen-PER -D ${GENERATED_FULL_DIR} ${ASN1_SOURCE_DIR} RESULT_VARIABLE ret)
-   if (NOT ${ret} STREQUAL 0)
-      message(FATAL_ERROR "${ret}")
-   endif (NOT ${ret} STREQUAL 0)
-   execute_process(COMMAND bash "-c" "egrep -lRZ \"18446744073709551615\" ${GENERATED_FULL_DIR} | xargs -0 -l sed -i -e \"s/18446744073709551615/18446744073709551615u/g\"")
+    #Create NGAP_PDU structure without pointer references
+    execute_process(
+        COMMAND bash "-c" "asn1c -pdu=all -fcompound-names -fno-include-deps -D ${GENERATED_FULL_DIR} ${ASN1_SOURCE_DIR} ${ASN1_ERR_FILTER}"
+        RESULT_VARIABLE ret
+    )
+    if (NOT ${ret} STREQUAL 0)
+        message(FATAL_ERROR "${ret}")
+    endif (NOT ${ret} STREQUAL 0)
+    execute_process(
+        COMMAND bash "-c" "egrep -lRZ \"18446744073709551615\" ${GENERATED_FULL_DIR} | xargs -0 -l sed -i -e \"s/18446744073709551615/18446744073709551615u/g\""
+    )
 endif()
 # TOUCH not in cmake 3.10
 file(WRITE ${ngap_generate_code_done_flag})
@@ -61,6 +68,7 @@ generate_cpp_protos("${NGAP_STATE_CPP_PROTOS}" "${PROTO_SRCS}" "${PROTO_HDRS}"
 add_library(TASK_NGAP
     "${PROTO_SRCS}"
     "${PROTO_HDRS}"
+    ${NGAP_DIR}/ngap_client_servicer.cpp
     ${NGAP_DIR}/ngap_amf.c
     ${NGAP_DIR}/ngap_amf_encoder.c
     ${NGAP_DIR}/ngap_amf_decoder.c

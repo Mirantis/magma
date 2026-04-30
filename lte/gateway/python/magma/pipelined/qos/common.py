@@ -15,9 +15,10 @@ import logging
 import threading
 import traceback
 from enum import Enum
-from typing import Dict, List  # noqa
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from lte.protos.policydb_pb2 import FlowMatch
+from magma.common.redis.client import get_default_client
 from magma.configuration.service_configs import load_service_config
 from magma.pipelined.qos.qos_meter_impl import MeterManager
 from magma.pipelined.qos.qos_tc_impl import TCManager, TrafficClass
@@ -31,6 +32,7 @@ from magma.pipelined.qos.types import (
     get_subscriber_key,
 )
 from magma.pipelined.qos.utils import QosStore
+from redis import ConnectionError  # pylint: disable=redefined-builtin
 
 LOG = logging.getLogger("pipelined.qos.common")
 # LOG.setLevel(logging.DEBUG)
@@ -60,7 +62,7 @@ class SubscriberSession(object):
         self.ambr_dl = 0
         self.ambr_dl_leaf = 0
 
-        self.rules = set()
+        self.rules: Set = set()
 
     def set_ambr(self, d: FlowMatch.Direction, root: int, leaf: int) -> None:
         if d == FlowMatch.UPLINK:
@@ -88,8 +90,8 @@ class SubscriberState(object):
 
     def __init__(self, imsi: str, qos_store: Dict):
         self.imsi = imsi
-        self.rules = {}  # rule -> qos handle
-        self.sessions = {}  # IP -> [sessions(ip, qos_argumets, rule_no), ...]
+        self.rules: Dict = {}  # rule -> qos handle
+        self.sessions: Dict = {}  # IP -> [sessions(ip, qos_argumets, rule_no), ...]
         self._redis_store = qos_store
 
     def check_empty(self) -> bool:
@@ -105,13 +107,11 @@ class SubscriberState(object):
     def remove_session(self, ip_addr: str) -> None:
         del self.sessions[ip_addr]
 
-    def find_session_with_rule(self, rule_num: int) -> SubscriberSession:
-        session_with_rule = None
+    def find_session_with_rule(self, rule_num: int) -> Optional[SubscriberSession]:
         for session in self.sessions.values():
             if rule_num in session.rules:
-                session_with_rule = session
-                break
-        return session_with_rule
+                return session
+        return None
 
     def _update_rules_map(
         self, ip_addr: str, rule_num: int, d: FlowMatch.Direction,
@@ -146,14 +146,14 @@ class SubscriberState(object):
                 )
                 if get_key_json(k) in self._redis_store:
                     del self._redis_store[get_key_json(k)]
+            session_with_rule.rules.remove(rule_num)
 
         del self.rules[rule_num]
-        session_with_rule.rules.remove(rule_num)
 
     def find_rule(self, rule_num: int):
         return self.rules.get(rule_num)
 
-    def get_all_rules(self) -> List:
+    def get_all_rules(self) -> Dict[int, List[Tuple[Any, str]]]:
         return self.rules
 
     def get_all_empty_sessions(self) -> List:
@@ -170,38 +170,36 @@ class SubscriberState(object):
 
 
 class QosManager(object):
-    # TODO: convert QosManager to singleton class.
-    qos_mgr = None
-    # protect QoS object create and delete across all QoSManager Objects.
-    lock = threading.Lock()
+    """
+    Qos Manager -> add/remove subscriber qos
+    """
 
-    @staticmethod
-    def get_qos_manager(datapath, loop, config):
-        if QosManager.qos_mgr:
-            LOG.debug("Got QosManager instance")
-            return QosManager.qos_mgr
-        QosManager.qos_mgr = QosManager(datapath, loop, config)
-        QosManager.qos_mgr.setup()
-        return QosManager.qos_mgr
+    def init_impl(self, datapath):
+        """
+        Takese in datapath, and initializes appropriate QoS manager based on config
+        """
+        if not self._qos_enabled:
+            return
+        if self._initialized:
+            return
 
-    @staticmethod
-    def get_impl(datapath, loop, config):
         try:
-            impl_type = QosImplType(config["qos"]["impl"])
+            impl_type = QosImplType(self._config["qos"]["impl"])
+
+            if impl_type == QosImplType.OVS_METER:
+                self.impl = MeterManager(datapath, self._loop, self._config)
+            else:
+                self.impl = TCManager(datapath, self._config)
+            self.setup()
         except ValueError:
             LOG.error("%s is not a valid qos impl type", impl_type)
             raise
-
-        if impl_type == QosImplType.OVS_METER:
-            return MeterManager(datapath, loop, config)
-        else:
-            return TCManager(datapath, loop, config)
 
     @classmethod
     def debug(cls, _, __, ___):
         config = load_service_config('pipelined')
         qos_impl_type = QosImplType(config["qos"]["impl"])
-        qos_store = QosStore(cls.__name__)
+        qos_store = QosStore(cls.__name__, client=get_default_client())
         for k, v in qos_store.items():
             _, imsi, ip_addr, rule_num, d = get_key(k)
             _, qid, ambr, leaf = get_data(v)
@@ -215,21 +213,21 @@ class QosManager(object):
             if qos_impl_type == QosImplType.OVS_METER:
                 MeterManager.dump_meter_state(v)
             else:
-                intf = 'nat_iface' if d == FlowMatch.UPLINK else 'enodeb_iface'
-                print("Dev: ", config[intf])
-                TrafficClass.dump_class_state(config[intf], qid)
+                dev = config['nat_iface'] if d == FlowMatch.UPLINK else 'gtpu_sys_2152'
+                print("Dev: ", dev)
+                TrafficClass.dump_class_state(dev, qid)
                 if leaf and leaf != qid:
                     print("Leaf:")
-                    TrafficClass.dump_class_state(config[intf], leaf)
+                    TrafficClass.dump_class_state(dev, leaf)
                 if ambr:
                     print("AMBR (parent):")
-                    TrafficClass.dump_class_state(config[intf], ambr)
+                    TrafficClass.dump_class_state(dev, ambr)
 
         if qos_impl_type == QosImplType.LINUX_TC:
             dev = config['nat_iface']
             print("Root stats for: ", dev)
             TrafficClass.dump_root_class_stats(dev)
-            dev = config['enodeb_iface']
+            dev = 'gtpu_sys_2152'
             print("Root stats for: ", dev)
             TrafficClass.dump_root_class_stats(dev)
 
@@ -240,27 +238,33 @@ class QosManager(object):
             return False
         return True
 
-    def __init__(self, datapath, loop, config):
+    def __init__(self, loop, config, client=get_default_client()):
+        self._initialized = False
+        self._clean_restart = config["clean_restart"]
+        self._subscriber_state = {}
+        self._loop = loop
+        self._redis_conn_retry_secs = 1
+        self._config = config
+        # protect QoS object create and delete across a QoSManager Object.
+        self._lock = threading.Lock()
+        if 'qos' not in config.keys():
+            LOG.error("qos field not provided in config")
+            return
         self._qos_enabled = config["qos"]["enable"]
         if not self._qos_enabled:
             return
         self._apn_ambr_enabled = config["qos"].get("apn_ambr_enabled", True)
         LOG.info("QoS: apn_ambr_enabled: %s", self._apn_ambr_enabled)
-        self._clean_restart = config["clean_restart"]
-        self._subscriber_state = {}
-        self._loop = loop
-        self.impl = QosManager.get_impl(datapath, loop, config)
-        self._redis_store = QosStore(self.__class__.__name__)
-        self._initialized = False
-        self._redis_conn_retry_secs = 1
+        self._redis_store = QosStore(self.__class__.__name__, client)
+        self.impl = None
 
     def setup(self):
-        with QosManager.lock:
+        with self._lock:
             if not self._qos_enabled:
                 return
 
             if self._is_redis_available():
-                return self._setupInternal()
+                self._setupInternal()
             else:
                 LOG.info(
                     "failed to connect to redis..retrying in %d secs",
@@ -273,9 +277,9 @@ class QosManager(object):
             return
         if self._clean_restart:
             LOG.info("Qos Setup: clean start")
+            self.impl.setup()
             self.impl.destroy()
             self._redis_store.clear()
-            self.impl.setup()
             self._initialized = True
         else:
             # read existing state from qos_impl
@@ -380,15 +384,16 @@ class QosManager(object):
             imsi: str,
             ip_addr: str,
             apn_ambr: int,
+            units: str,
             rule_num: int,
             direction: FlowMatch.Direction,
             qos_info: QosInfo,
             cleanup_rule=None,
     ):
-        with QosManager.lock:
+        with self._lock:
             if not self._qos_enabled or not self._initialized:
                 LOG.debug("add_subscriber_qos: not enabled or initialized")
-                return None, None
+                return None, None, None
 
             LOG.debug(
                 "adding qos for imsi %s rule_num %d direction %d apn_ambr %d, %s",
@@ -424,7 +429,7 @@ class QosManager(object):
                 if not ambr_qos_handle_root:
                     ambr_qos_handle_root = self.impl.add_qos(
                         direction, QosInfo(gbr=None, mbr=apn_ambr),
-                        cleanup_rule,
+                        cleanup_rule, units=units,
                         skip_filter=True,
                     )
                     if not ambr_qos_handle_root:
@@ -432,7 +437,7 @@ class QosManager(object):
                             'Failed adding root ambr qos mbr %u direction %d',
                             apn_ambr, direction,
                         )
-                        return None, None
+                        return None, None, None
                     else:
                         LOG.debug(
                             'Added root ambr qos mbr %u direction %d qos_handle %d ',
@@ -446,7 +451,7 @@ class QosManager(object):
                     ambr_qos_handle_leaf = self.impl.add_qos(
                         direction,
                         QosInfo(gbr=None, mbr=apn_ambr),
-                        cleanup_rule,
+                        cleanup_rule, units=units,
                         parent=ambr_qos_handle_root,
                     )
                     if ambr_qos_handle_leaf:
@@ -461,12 +466,12 @@ class QosManager(object):
                             apn_ambr, direction,
                         )
                         self.impl.remove_qos(ambr_qos_handle_root, direction, skip_filter=True)
-                        return None, None
+                        return None, None, None
                 qos_handle = ambr_qos_handle_leaf
 
             if qos_info:
                 qos_handle = self.impl.add_qos(
-                    direction, qos_info, cleanup_rule,
+                    direction, qos_info, cleanup_rule, units=units,
                     parent=ambr_qos_handle_root,
                 )
                 LOG.debug("Added ded brr handle: %d", qos_handle)
@@ -477,7 +482,7 @@ class QosManager(object):
                     )
                 else:
                     LOG.error('Failed adding qos %s direction %d', qos_info, direction)
-                    return None, None
+                    return None, None, None
 
             if qos_handle:
                 subscriber_state.update_rule(
@@ -485,10 +490,10 @@ class QosManager(object):
                     qos_handle, ambr_qos_handle_root, ambr_qos_handle_leaf,
                 )
                 return self.impl.get_action_instruction(qos_handle)
-            return None, None
+            return None, None, None
 
     def remove_subscriber_qos(self, imsi: str = "", del_rule_num: int = -1):
-        with QosManager.lock:
+        with self._lock:
             if not self._qos_enabled or not self._initialized:
                 LOG.debug("remove_subscriber_qos: not enabled or initialized")
                 return

@@ -21,7 +21,8 @@ import (
 	"github.com/thoas/go-funk"
 
 	"magma/lte/cloud/go/services/subscriberdb/protos"
-	merrors "magma/orc8r/lib/go/errors"
+	"magma/orc8r/lib/go/merrors"
+	lib_protos "magma/orc8r/lib/go/protos"
 	"magma/orc8r/lib/go/registry"
 )
 
@@ -49,7 +50,7 @@ func ListMSISDNs(ctx context.Context, networkID string) (map[string]string, erro
 }
 
 // GetIMSIForMSISDN returns the IMSI associated with the passed MSISDN.
-// If not found, returns ErrNotFound from magma/orc8r/lib/go/errors.
+// If not found, returns ErrNotFound from magma/orc8r/lib/go/merrors.
 func GetIMSIForMSISDN(ctx context.Context, networkID, msisdn string) (string, error) {
 	client, err := getClient()
 	if err != nil {
@@ -168,7 +169,7 @@ func SetIMSIsForIPs(ctx context.Context, networkID string, mappings []*protos.IP
 }
 
 func getClient() (protos.SubscriberLookupClient, error) {
-	conn, err := registry.GetConnection(ServiceName)
+	conn, err := registry.GetConnection(ServiceName, lib_protos.ServiceType_PROTECTED)
 	if err != nil {
 		initErr := merrors.NewInitError(err, ServiceName)
 		glog.Error(initErr)

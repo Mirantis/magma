@@ -15,7 +15,9 @@ import warnings
 from concurrent.futures import Future
 
 from lte.protos.mconfig.mconfigs_pb2 import PipelineD
-from magma.pipelined.app.inout import EGRESS, INGRESS
+from magma.pipelined.app import arp, egress
+from magma.pipelined.app.egress import EGRESS
+from magma.pipelined.app.ingress import INGRESS
 from magma.pipelined.app.ue_mac import UEMacAddressController
 from magma.pipelined.bridge_util import BridgeTools
 from magma.pipelined.openflow.magma_match import MagmaMatch
@@ -36,13 +38,26 @@ from magma.pipelined.tests.pipelined_test_util import (
     FlowVerifier,
     SnapshotVerifier,
     create_service_manager,
-    fake_inout_setup,
+    fake_mandatory_controller_setup,
     start_ryu_app_thread,
     stop_ryu_app_thread,
     wait_after_send,
 )
 from ryu.lib import hub
 from ryu.ofproto.ofproto_v1_4 import OFPP_LOCAL
+
+_mock_called_once = False
+
+
+def mocked_get_mac_address_from_iface(_: str) -> str:
+    global _mock_called_once
+    if not _mock_called_once:
+        # On the first call in egress.py, use this return value.
+        _mock_called_once = True
+        return 'bb:bb:b2:76:37:5d'
+    else:
+        # On second and third call in arp.py, use this return value.
+        return '00:aa:bb:cc:dd:ee'
 
 
 class UEMacAddressTest(unittest.TestCase):
@@ -55,11 +70,6 @@ class UEMacAddressTest(unittest.TestCase):
     DPI_IP = '1.1.1.1'
 
     @classmethod
-    @unittest.mock.patch(
-        'netifaces.ifaddresses',
-        return_value=[[{'addr': '00:aa:bb:cc:dd:ee'}]],
-    )
-    @unittest.mock.patch('netifaces.AF_LINK', 0)
     def setUpClass(cls, *_):
         """
         Starts the thread which launches ryu apps
@@ -69,6 +79,8 @@ class UEMacAddressTest(unittest.TestCase):
         to apps launched by using futures.
         """
         super(UEMacAddressTest, cls).setUpClass()
+        arp.get_mac_address_from_iface = mocked_get_mac_address_from_iface
+        egress.get_mac_address_from_iface = mocked_get_mac_address_from_iface
         warnings.simplefilter('ignore')
         cls.service_manager = create_service_manager([], ['ue_mac', 'arpd'])
         cls._tbl_num = cls.service_manager.get_table_num(
@@ -77,20 +89,28 @@ class UEMacAddressTest(unittest.TestCase):
         cls._ingress_tbl_num = cls.service_manager.get_table_num(INGRESS)
         cls._egress_tbl_num = cls.service_manager.get_table_num(EGRESS)
 
-        inout_controller_reference = Future()
+        ingress_controller_reference = Future()
+        middle_controller_reference = Future()
+        egress_controller_reference = Future()
         ue_mac_controller_reference = Future()
         testing_controller_reference = Future()
         test_setup = TestSetup(
             apps=[
-                PipelinedController.InOut,
+                PipelinedController.Ingress,
+                PipelinedController.Middle,
+                PipelinedController.Egress,
                 PipelinedController.Arp,
                 PipelinedController.UEMac,
                 PipelinedController.Testing,
                 PipelinedController.StartupFlows,
             ],
             references={
-                PipelinedController.InOut:
-                    inout_controller_reference,
+                PipelinedController.Ingress:
+                    ingress_controller_reference,
+                PipelinedController.Middle:
+                    middle_controller_reference,
+                PipelinedController.Egress:
+                    egress_controller_reference,
                 PipelinedController.Arp:
                     Future(),
                 PipelinedController.UEMac:
@@ -135,7 +155,9 @@ class UEMacAddressTest(unittest.TestCase):
 
         cls.thread = start_ryu_app_thread(test_setup)
         cls.ue_mac_controller = ue_mac_controller_reference.result()
-        cls.inout_controller = inout_controller_reference.result()
+        cls.ingress_controller = ingress_controller_reference.result()
+        cls.middle_controller = middle_controller_reference.result()
+        cls.egress_controller = egress_controller_reference.result()
         cls.testing_controller = testing_controller_reference.result()
 
     @classmethod
@@ -152,7 +174,9 @@ class UEMacAddressTest(unittest.TestCase):
         cli_ip = '1.1.1.1'
         server_ip = '151.42.41.122'
 
-        fake_inout_setup(self.inout_controller)
+        fake_mandatory_controller_setup(self.ingress_controller)
+        fake_mandatory_controller_setup(self.middle_controller)
+        fake_mandatory_controller_setup(self.egress_controller)
         # Add subscriber with UE MAC address """
         self.ue_mac_controller.add_ue_mac_flow(imsi_1, self.UE_MAC_1)
 
@@ -191,9 +215,9 @@ class UEMacAddressTest(unittest.TestCase):
         ]
 
         # =========================== Verification ===========================
-        # Verify 3 flows installed for ue_mac table (3 pkts matched)
-        #        4 flows installed for inout (3 pkts matched)
-        #        2 flows installed (2 pkts matches)
+        # Verify 3 flows installed for ue_mac table (4 pkts matched)
+        #        2 flows installed for ingress (4 pkts matched)
+        #        2 flows installed for egress(3 pkts matches)
         flow_verifier = FlowVerifier(
             [
                 FlowTest(
@@ -231,7 +255,3 @@ class UEMacAddressTest(unittest.TestCase):
             pkt_sender.send(arp_packet)
 
         flow_verifier.verify()
-
-
-if __name__ == "__main__":
-    unittest.main()

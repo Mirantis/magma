@@ -20,7 +20,7 @@ from integ_tests.s1aptests import s1ap_wrapper
 from integ_tests.s1aptests.s1ap_utils import SpgwUtil
 
 
-class TestAttachDetachDedicatedInvalidImsi(unittest.TestCase):
+class TestAttachDetachDedicatedBearerActivationInvalidImsi(unittest.TestCase):
     """Invalid IMSI in dedicated bearer test with a
     single UE
     """
@@ -34,7 +34,7 @@ class TestAttachDetachDedicatedInvalidImsi(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_detach(self):
+    def test_attach_detach_dedicated_bearer_activation_invalid_imsi(self):
         """attach/detach + invalid IMSI in dedicated bearer test with a
         single UE
         """

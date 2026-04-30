@@ -20,12 +20,19 @@ include(FindClangFormat)
 
 include($ENV{MAGMA_ROOT}/orc8r/gateway/c/common/CMakeProtoMacros.txt)
 
-if (NOT BUILD_TESTS)
-  # Add AddressSanitizer (asan) support for debug builds of SessionD
+# Add AddressSanitizer (asan) support for debug builds of SessionD. Disable adding
+# DISABLE_ASAN flag
+if (DISABLE_ASAN)
+  message("-- ASAN DISABLED")
+else()
+  message("++ ASAN ENABLED")
   set (CMAKE_CXX_FLAGS_DEBUG
-      "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+          "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
   set (CMAKE_LINKER_FLAGS_DEBUG
-      "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+          "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+endif ()
+
+if (NOT BUILD_TESTS)
   # Add LeakSanitizer (lsan) support to the release build of SessionD so that
   # we can find memory leaks in production.
   # Disabling LSAN on Prod until we figure out how to get gcore to work
@@ -35,12 +42,6 @@ if (NOT BUILD_TESTS)
   #   "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} -fsanitize=leak")
 else() # BUILD_TESTS
 endif ()
-
-message("Adding code coverage build and linker flags for BUILD_TESTS")
-set (CMAKE_CXX_FLAGS_DEBUG
-  "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -fprofile-arcs -ftest-coverage")
-set(CMAKE_LINKER_FLAGS_DEBUG
-  "${CMAKE_LINKER_FLAGS_DEBUG} -fprofile-arcs -ftest-coverage")
 
 set(OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
@@ -52,14 +53,14 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-unused-function")
 endif ()
 
-include_directories("${OUTPUT_DIR}")
 include_directories("${MAGMA_ROOT}/orc8r/gateway/c/common/logging")
-
-include_directories(${MAGMA_LIB_DIR}/service303)
-include_directories(${MAGMA_LIB_DIR}/service_registry)
-include_directories(${MAGMA_LIB_DIR}/async_grpc)
-include_directories(${MAGMA_LIB_DIR}/config)
-include_directories(${MAGMA_LIB_DIR}/eventd)
+include_directories(${MAGMA_ROOT}/orc8r/gateway/c/common/service303)
+include_directories(${MAGMA_ROOT}/orc8r/gateway/c/common/service_registry)
+include_directories(${MAGMA_ROOT}/orc8r/gateway/c/common/async_grpc)
+include_directories(${MAGMA_ROOT}/orc8r/gateway/c/common/async_grpc/includes)
+include_directories(${MAGMA_ROOT}/orc8r/gateway/c/common/config)
+include_directories(${MAGMA_ROOT}/orc8r/gateway/c/common/eventd)
+include_directories("${OUTPUT_DIR}")
 
 # TODO: Temp workaround until packages are imported by these cmakefile
 # Will be removed in subsequent patch
@@ -76,7 +77,7 @@ create_proto_dir("feg/gateway/services/aaa" CWF_CPP_OUT_DIR)
 list(APPEND PROTO_SRCS "")
 list(APPEND PROTO_HDRS "")
 
-set(SMGR_ORC8R_CPP_PROTOS digest directoryd redis)
+set(SMGR_ORC8R_CPP_PROTOS common digest directoryd eventd metricsd redis service303 mconfig/mconfigs)
 generate_cpp_protos("${SMGR_ORC8R_CPP_PROTOS}" "${PROTO_SRCS}"
   "${PROTO_HDRS}" ${ORC8R_PROTO_DIR} ${ORC8R_CPP_OUT_DIR})
 
@@ -89,7 +90,7 @@ set(SMGR_CWF_CPP_PROTOS accounting context)
 generate_cwf_cpp_protos("${SMGR_CWF_CPP_PROTOS}" "${PROTO_SRCS}"
   "${PROTO_HDRS}" ${CWF_PROTO_DIR} ${CWF_CPP_OUT_DIR})
 
-set(SMGR_ORC8R_GRPC_PROTOS directoryd)
+set(SMGR_ORC8R_GRPC_PROTOS directoryd eventd service303)
 generate_grpc_protos("${SMGR_ORC8R_GRPC_PROTOS}" "${PROTO_SRCS}"
   "${PROTO_HDRS}" ${ORC8R_PROTO_DIR} ${ORC8R_CPP_OUT_DIR})
 
@@ -112,92 +113,93 @@ link_directories(
 
 add_library(SESSION_MANAGER
     AAAClient.cpp
-    AAAClient.h
+    AAAClient.hpp
     ChargingGrant.cpp
-    ChargingGrant.h
+    ChargingGrant.hpp
     EnumToString.cpp
-    EnumToString.h
+    EnumToString.hpp
     SessionManagerServer.cpp
-    SessionManagerServer.h
+    SessionManagerServer.hpp
     LocalSessionManagerHandler.cpp
-    LocalSessionManagerHandler.h
+    LocalSessionManagerHandler.hpp
     LocalEnforcer.cpp
-    LocalEnforcer.h
+    LocalEnforcer.hpp
     SessionState.cpp
-    SessionState.h
+    SessionState.hpp
     SessionCredit.cpp
-    SessionCredit.h
+    SessionCredit.hpp
     RestartHandler.cpp
-    RestartHandler.h
+    RestartHandler.hpp
     RuleStore.cpp
-    RuleStore.h
+    RuleStore.hpp
     SessionReporter.cpp
-    SessionReporter.h
+    SessionReporter.hpp
     SessionID.cpp
-    SessionID.h
-    ServiceAction.h
+    SessionID.hpp
+    ServiceAction.hpp
     SpgwServiceClient.cpp
-    SpgwServiceClient.h
+    SpgwServiceClient.hpp
     PipelinedClient.cpp
-    PipelinedClient.h
+    PipelinedClient.hpp
     DirectorydClient.cpp
-    DirectorydClient.h
+    DirectorydClient.hpp
     SessionEvents.cpp
-    SessionEvents.h
+    SessionEvents.hpp
     DiameterCodes.cpp
-    DiameterCodes.h
-    CreditKey.h
+    DiameterCodes.hpp
+    CreditKey.hpp
     StatsPoller.cpp
-    StatsPoller.h
+    StatsPoller.hpp
     ShardTracker.cpp
-    ShardTracker.h
+    ShardTracker.hpp
     SessionProxyResponderHandler.cpp
-    SessionProxyResponderHandler.h
+    SessionProxyResponderHandler.hpp
     StoredState.cpp
-    StoredState.h
+    StoredState.hpp
     SessionStore.cpp
-    SessionStore.h
+    SessionStore.hpp
     MemoryStoreClient.cpp
-    MemoryStoreClient.h
-    Monitor.h
+    MemoryStoreClient.hpp
+    Monitor.hpp
     RedisStoreClient.cpp
-    RedisStoreClient.h
-    StoreClient.h
+    RedisStoreClient.hpp
+    StoreClient.hpp
     MeteringReporter.cpp
-    MeteringReporter.h
+    MeteringReporter.hpp
     GrpcMagmaUtils.cpp
-    GrpcMagmaUtils.h
-    SetMessageManagerHandler.h
+    GrpcMagmaUtils.hpp
+    SetMessageManagerHandler.hpp
     SetMessageManagerHandler.cpp
-    UpfMsgManageHandler.h
+    UpfMsgManageHandler.hpp
     UpfMsgManageHandler.cpp
-    SessionStateEnforcer.h
+    SessionStateEnforcer.hpp
     SessionStateEnforcer.cpp
-    AmfServiceClient.h
+    AmfServiceClient.hpp
     AmfServiceClient.cpp
     Utilities.cpp
-    Utilities.h
+    Utilities.hpp
     OperationalStatesHandler.cpp
-    OperationalStatesHandler.h
-    Types.h
+    OperationalStatesHandler.hpp
+    Types.hpp
     MobilitydClient.cpp
-    MobilitydClient.h
-    ObjectMap.h
+    MobilitydClient.hpp
+    ObjectMap.hpp
     PolicyLoader.cpp
-    PolicyLoader.h
-    ObjectMap.h
+    PolicyLoader.hpp
+    ObjectMap.hpp
     RedisMap.hpp
     Serializers.cpp
-    Serializers.h
+    Serializers.hpp
     ${PROTO_SRCS}
     ${PROTO_HDRS})
 
+find_package(MAGMA_LOGGING REQUIRED)
 find_package(MAGMA_SENTRY REQUIRED)
 
 target_link_libraries(SESSION_MANAGER
-  SERVICE303_LIB SERVICE_REGISTRY ASYNC_GRPC MAGMA_CONFIG EVENTD MAGMA_SENTRY
+  SERVICE303_LIB SERVICE_REGISTRY ASYNC_GRPC MAGMA_CONFIG MAGMA_LOGGING EVENTD MAGMA_SENTRY
   glog gflags folly pthread ${GCOV_LIB} gpr grpc++ grpc yaml-cpp protobuf cpp_redis
-  prometheus-cpp tacopie
+  prometheus-cpp tacopie systemd
   )
 
 if (CLANG_FORMAT)

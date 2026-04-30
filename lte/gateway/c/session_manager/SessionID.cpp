@@ -10,16 +10,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <time.h>
+#include "lte/gateway/c/session_manager/SessionID.hpp"
 
 #include <sstream>
 #include <string>
 
-#include "SessionID.h"
-
 SessionIDGenerator::SessionIDGenerator() {
   std::random_device rseed;
-  rgen_  = std::mt19937(rseed());  // mersenne_twister
+  rgen_ = std::mt19937(rseed());  // mersenne_twister
   idist_ = std::uniform_int_distribution<int>(0, 999999);
 }
 
@@ -28,8 +26,8 @@ std::string SessionIDGenerator::gen_session_id(const std::string& imsi) {
   return imsi + "-" + std::to_string(idist_(rgen_));
 }
 
-bool SessionIDGenerator::get_imsi_from_session_id(
-    const std::string& session_id, std::string& imsi_out) {
+bool SessionIDGenerator::get_imsi_from_session_id(const std::string& session_id,
+                                                  std::string& imsi_out) {
   std::istringstream ss(session_id);
   if (std::getline(ss, imsi_out, '-')) {
     return true;

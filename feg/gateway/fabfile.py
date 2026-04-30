@@ -14,32 +14,75 @@ import sys
 from typing import Dict, List
 
 import urllib3
-from fabric.api import hide, lcd, local
 
 sys.path.append('../../orc8r')
 import tools.fab.dev_utils as dev_utils  # NOQA
 import tools.fab.types as types
+from fabric import Connection, task
+from tools.fab.hosts import vagrant_connection
 
+SNOWFLAKE_FEG_FILE = '../../.cache/feg/snowflake'
 NETWORK_ID = 'feg_test'
+FEG_DOCKER_LOCATION = 'docker/'
+FEG_INTEG_DOCKER = "$MAGMA_ROOT/lte/gateway/python/integ_tests/federated_tests/docker"
+AGW_ROOT = '../../lte/gateway'
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-def register_feg():
+@task
+def register_feg_gw(c, location_docker_compose=FEG_DOCKER_LOCATION):
+    """
+    Add FEG gateway to orc8r
+    Args:
+        c: fabric Connection
+        location_docker_compose: location of docker compose. Default set to
+            FEG_DOCKER_LOCATION.
+    """
     _register_federation_network()
-    _register_feg()
+    _register_feg(c, location_docker_compose)
+
+
+@task
+def deregister_feg_gw(c, location_docker_compose=FEG_DOCKER_LOCATION):
+    """
+    Remove FEG gateway from orc8r and remove certs from FEG gateway
+    Args:
+        c: fabric Connection
+        location_docker_compose: location of docker compose. Default set to
+            FEG_DOCKER_LOCATION.
+    """
+    _deregister_feg_gw(c, location_docker_compose)
+    dev_utils.delete_gateway_certs_from_docker(c, location_docker_compose)
+
+
+@task
+def check_feg_cloud_connectivity(c, timeout=5):
+    """
+    Check connectivity of FEG with the cloud using checkin_cli.py
+    Args:
+        c: fabric connection
+        timeout: amount of time the command will retry
+    """
+    with c.cd(AGW_ROOT):
+        with vagrant_connection(c, 'magma') as c_gw:
+            with c_gw.cd(FEG_INTEG_DOCKER):
+                c_gw.run("pwd")
+                dev_utils.run_remote_command_with_repetition(
+                    c_gw, "docker compose exec magmad checkin_cli.py", timeout,
+                )
 
 
 class RadiusConfig:
     def __init__(
         self,
-        DAE_addr: str = '127.0.0.1:3799',
+        dae_addr: str = '127.0.0.1:3799',
         acct_addr: str = '127.0.0.1:1813',
         auth_addr: str = '127.0.0.1:1812',
         network: str = 'udp',
         secret: str = 'MTIzNDU2',
     ):
-        self.DAE_addr = DAE_addr
+        self.dae_addr = dae_addr
         self.acct_addr = acct_addr
         self.auth_addr = auth_addr
         self.network = network
@@ -121,10 +164,10 @@ class DiamServerConfig:
 class GxConfig:
     def __init__(
         self,
-        disableGx: bool = False,
+        disable_gx: bool = False,
         servers: List[DiamServerConfig] = None,
     ):
-        self.disableGx = disableGx
+        self.disable_gx = disable_gx
         if servers is None:
             servers = [DiamServerConfig()]
         self.servers = servers
@@ -133,11 +176,11 @@ class GxConfig:
 class GyConfig:
     def __init__(
         self,
-        disableGy: bool = False,
+        disable_gy: bool = False,
         init_method: int = 2,
         servers: List[DiamServerConfig] = None,
     ):
-        self.disableGy = disableGy
+        self.disable_gy = disable_gy
         self.init_method = init_method
         if servers is None:
             servers = [DiamServerConfig()]
@@ -231,14 +274,14 @@ class S6aConfigs:
 class SwxConfigs:
     def __init__(
         self,
-        cache_TTL_seconds: int = 10800,
+        cache_ttl_seconds: int = 10800,
         derive_unregister_realm: bool = False,
         hlr_plmn_ids: List[str] = None,
         register_on_auth: bool = False,
         servers: List[DiamServerConfig] = None,
         verify_authorization: bool = False,
     ):
-        self.cache_TTL_seconds = cache_TTL_seconds
+        self.cache_ttl_seconds = cache_ttl_seconds
         self.derive_unregister_realm = derive_unregister_realm
         if hlr_plmn_ids is None:
             hlr_plmn_ids = ['00101']
@@ -293,14 +336,14 @@ class FederationNetworkConfigs:
 class FederationNetwork:
     def __init__(
         self,
-        id: str = NETWORK_ID,
+        network_id: str = NETWORK_ID,
         name: str = 'Testing',
         description: str = 'Test federation network',
         federation: FederationNetworkConfigs = FederationNetworkConfigs(),
         dns: types.NetworkDNSConfig = types.NetworkDNSConfig(),
         subscriber_config: SubConfig = SubConfig(),
     ):
-        self.id = id
+        self.id = network_id
         self.name = name
         self.description = description
         self.dns = dns
@@ -311,13 +354,13 @@ class FederationNetwork:
 class FederationGateway:
     def __init__(
         self,
-        id: str, name: str, description: str,
+        network_id: str, name: str, description: str,
         device: types.GatewayDevice,
         magmad: types.MagmadGatewayConfigs,
         tier: str = 'default',
         federation: FederationNetworkConfigs = FederationNetworkConfigs(),
     ):
-        self.id = id
+        self.id = network_id
         self.name = name
         self.description = description
         self.device = device
@@ -334,31 +377,94 @@ def _register_federation_network(payload: FederationNetwork = FederationNetwork(
     dev_utils.create_tier_if_not_exists(nid, 'default')
 
 
-def _register_feg():
-    with lcd('docker'), hide('output', 'running', 'warnings'):
-        hw_id = local(
-            'docker-compose exec magmad bash -c "cat /etc/snowflake"',
-            capture=True,
+def _register_feg(c: Connection, location_docker_compose: str):
+    with open(SNOWFLAKE_FEG_FILE) as f:
+        hw_id = f.read().rstrip('\n')
+    if not hw_id:
+        print(f'Could not open test feg snowflake {SNOWFLAKE_FEG_FILE}')
+        hw_id = dev_utils.get_gateway_hardware_id_from_docker(
+            c, location_docker_compose=location_docker_compose,
         )
+
     already_registered, registered_as = dev_utils.is_hw_id_registered(
         NETWORK_ID, hw_id,
     )
     if already_registered:
         print()
-        print(f'============================================')
+        print('============================================')
         print(f'Feg is already registered as {registered_as}')
-        print(f'============================================')
+        print('============================================')
         return
 
     gw_id = dev_utils.get_next_available_gateway_id(NETWORK_ID)
     md_gw = dev_utils.construct_magmad_gateway_payload(gw_id, hw_id)
     gw_payload = FederationGateway(
-        id=md_gw.id, name=md_gw.name, description=md_gw.description,
+        network_id=md_gw.id,
+        name=md_gw.name,
+        description=md_gw.description,
         device=md_gw.device,
-        magmad=md_gw.magmad, tier=md_gw.tier,
+        magmad=md_gw.magmad,
+        tier=md_gw.tier,
+        federation=FederationNetworkConfigs(
+            hss=HssConfigs(
+                server=HssServer(
+                    local_address='localhost:3767',
+                    address='localhost:3768',
+                ),
+            ),
+            s6a=S6aConfigs(
+                plmn_ids=[],
+                server=DiamServerConfig(
+                    local_address='localhost:3767',
+                    address='localhost:3768',
+                ),
+            ),
+            gx=GxConfig(
+                servers=[
+                    DiamServerConfig(
+                        address='localhost:3868',
+                    ),
+                ],
+            ),
+            gy=GyConfig(
+                servers=[
+                    DiamServerConfig(
+                        address='localhost:3968',
+                    ),
+                ],
+            ),
+        ),
+
     )
     dev_utils.cloud_post(f'feg/{NETWORK_ID}/gateways', gw_payload)
     print()
-    print(f'=====================================')
+    print('=====================================')
     print(f'Feg {gw_id} successfully provisioned!')
-    print(f'=====================================')
+    print('=====================================')
+
+
+def _deregister_feg_gw(c: Connection, location_docker_compose: str):
+    with open(SNOWFLAKE_FEG_FILE) as f:
+        hw_id = f.read().rstrip('\n')
+    if not hw_id:
+        print(f'Could not open test feg snowflake {SNOWFLAKE_FEG_FILE}')
+        hw_id = dev_utils.get_gateway_hardware_id_from_docker(
+            c, location_docker_compose=location_docker_compose,
+        )
+
+    already_registered, registered_as = dev_utils.is_hw_id_registered(
+        NETWORK_ID, hw_id,
+    )
+
+    if not already_registered:
+        print()
+        print('===========================================')
+        print('VM is not registered')
+        print('===========================================')
+        return
+
+    dev_utils.cloud_delete(f'feg/{NETWORK_ID}/gateways/{registered_as}')
+    print()
+    print('=========================================')
+    print(f'Feg Gateway {registered_as} successfully removed!')
+    print('=========================================')

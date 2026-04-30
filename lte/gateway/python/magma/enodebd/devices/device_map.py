@@ -17,10 +17,11 @@ from magma.enodebd.devices.baicells import BaicellsHandler
 from magma.enodebd.devices.baicells_old import BaicellsOldHandler
 from magma.enodebd.devices.baicells_qafa import BaicellsQAFAHandler
 from magma.enodebd.devices.baicells_qafb import BaicellsQAFBHandler
+from magma.enodebd.devices.baicells_qrtb.impl import BaicellsQRTBHandler
 from magma.enodebd.devices.baicells_rts import BaicellsRTSHandler
 from magma.enodebd.devices.device_utils import EnodebDeviceName
 from magma.enodebd.devices.experimental.cavium import CaviumHandler
-from magma.enodebd.devices.freedomfi_one import FreedomFiOneHandler
+from magma.enodebd.devices.freedomfi_one.impl import FreedomFiOneHandler
 from magma.enodebd.state_machines.enb_acs import EnodebAcsStateMachine
 
 # This exists only to break a circular dependency. Otherwise there's no
@@ -33,6 +34,7 @@ DEVICE_HANDLER_BY_NAME = {
     EnodebDeviceName.BAICELLS_QAFA: BaicellsQAFAHandler,
     EnodebDeviceName.BAICELLS_QAFB: BaicellsQAFBHandler,
     EnodebDeviceName.BAICELLS_RTS: BaicellsRTSHandler,
+    EnodebDeviceName.BAICELLS_QRTB: BaicellsQRTBHandler,
     EnodebDeviceName.CAVIUM: CaviumHandler,
     EnodebDeviceName.FREEDOMFI_ONE: FreedomFiOneHandler,
 }

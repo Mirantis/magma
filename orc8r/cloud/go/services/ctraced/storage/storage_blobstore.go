@@ -16,11 +16,9 @@ package storage
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
-
 	"magma/orc8r/cloud/go/blobstore"
 	"magma/orc8r/cloud/go/storage"
-	merrors "magma/orc8r/lib/go/errors"
+	"magma/orc8r/lib/go/merrors"
 )
 
 const (
@@ -33,30 +31,30 @@ const (
 
 // NewCtracedBlobstore returns a ctraced storage implementation
 // backed by the provided blobstore factory.
-func NewCtracedBlobstore(factory blobstore.BlobStorageFactory) CtracedStorage {
+func NewCtracedBlobstore(factory blobstore.StoreFactory) CtracedStorage {
 	return &ctracedBlobStore{factory: factory}
 }
 
 type ctracedBlobStore struct {
-	factory blobstore.BlobStorageFactory
+	factory blobstore.StoreFactory
 }
 
 // StoreCallTrace
 func (c *ctracedBlobStore) StoreCallTrace(networkID string, callTraceID string, data []byte) error {
 	store, err := c.factory.StartTransaction(nil)
 	if err != nil {
-		return errors.Wrap(err, "failed to start transaction")
+		return fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer store.Rollback()
 
-	err = store.CreateOrUpdate(
+	err = store.Write(
 		networkID,
 		blobstore.Blobs{
 			{Type: CtracedBlobType, Key: callTraceID, Value: data, Version: 0},
 		},
 	)
 	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("failed to store call trace %s", callTraceID))
+		return fmt.Errorf("failed to store call trace %s: %w", callTraceID, err)
 	}
 
 	return store.Commit()
@@ -66,7 +64,7 @@ func (c *ctracedBlobStore) StoreCallTrace(networkID string, callTraceID string, 
 func (c *ctracedBlobStore) GetCallTrace(networkID string, callTraceID string) ([]byte, error) {
 	store, err := c.factory.StartTransaction(&storage.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to start transaction")
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer store.Rollback()
 
@@ -78,7 +76,7 @@ func (c *ctracedBlobStore) GetCallTrace(networkID string, callTraceID string) ([
 		return nil, err
 	}
 	if err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf("failed to get call trace %s", callTraceID))
+		return nil, fmt.Errorf("failed to get call trace %s: %w", callTraceID, err)
 	}
 
 	return blob.Value, store.Commit()
@@ -88,7 +86,7 @@ func (c *ctracedBlobStore) GetCallTrace(networkID string, callTraceID string) ([
 func (c *ctracedBlobStore) DeleteCallTrace(networkID string, callTraceID string) error {
 	store, err := c.factory.StartTransaction(&storage.TxOptions{ReadOnly: true})
 	if err != nil {
-		return errors.Wrap(err, "failed to start transaction")
+		return fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer store.Rollback()
 
@@ -99,7 +97,7 @@ func (c *ctracedBlobStore) DeleteCallTrace(networkID string, callTraceID string)
 		},
 	)
 	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("failed to delete call trace %s", callTraceID))
+		return fmt.Errorf("failed to delete call trace %s: %w", callTraceID, err)
 	}
 
 	return store.Commit()

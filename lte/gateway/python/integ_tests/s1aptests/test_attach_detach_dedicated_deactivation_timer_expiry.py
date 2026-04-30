@@ -20,7 +20,7 @@ from integ_tests.s1aptests import s1ap_wrapper
 from integ_tests.s1aptests.s1ap_utils import SpgwUtil
 
 
-class TestAttachDetachDedicatedDeactTmrExp(unittest.TestCase):
+class TestAttachDetachDedicatedDeactivationTimerExpiry(unittest.TestCase):
     """Dedicated bearer deactivation timer expiry test
     with a single UE
     """
@@ -34,14 +34,14 @@ class TestAttachDetachDedicatedDeactTmrExp(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_detach(self):
+    def test_attach_detach_dedicated_deactivation_timer_expiry(self):
         """attach/detach + dedicated bearer deactivation timer expiry test
         with a single UE
         """
         num_ues = 1
         self._s1ap_wrapper.configUEDevice(num_ues)
 
-        for i in range(num_ues):
+        for _ in range(num_ues):
             req = self._s1ap_wrapper.ue_req
             print(
                 "********************** Running End to End attach for ",
@@ -78,9 +78,7 @@ class TestAttachDetachDedicatedDeactTmrExp(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             act_ded_ber_ctxt_req = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
             )
@@ -115,10 +113,7 @@ class TestAttachDetachDedicatedDeactTmrExp(unittest.TestCase):
             # TODO:Receive retransmissions once support is added
             # at s1ap tester
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value
             deact_ded_ber_ctxt_req = response.cast(
                 s1ap_types.UeDeActvBearCtxtReq_t,
             )

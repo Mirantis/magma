@@ -41,14 +41,14 @@
 #include <sys/time.h>
 #include <liblfds710.h>
 
-#include "log.h"
-#include "bstrlib.h"
+#include "lte/gateway/c/core/oai/common/log.h"
+#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
 
 struct timeval;
 
 typedef enum {
   MIN_SH_TS_LOG_CLIENT = 0,
-  SH_TS_LOG_TXT        = MIN_SH_TS_LOG_CLIENT,
+  SH_TS_LOG_TXT = MIN_SH_TS_LOG_CLIENT,
   MAX_SH_TS_LOG_CLIENT,
 } sh_ts_log_app_id_t;
 

@@ -24,16 +24,17 @@
 
 #include <stdlib.h>
 
-#include "dynamic_memory_check.h"
-#include "assertions.h"
-#include "3gpp_24.008.h"
-#include "3gpp_36.413.h"
-#include "intertask_interface.h"
-#include "itti_free_defined_msg.h"
-#include "async_system_messages_types.h"
-#include "ip_forward_messages_types.h"
-#include "s11_messages_types.h"
-#include "sctp_messages_types.h"
+#include "lte/gateway/c/core/common/assertions.h"
+#include "lte/gateway/c/core/common/dynamic_memory_check.h"
+#include "lte/gateway/c/core/oai/common/itti_free_defined_msg.h"
+#include "lte/gateway/c/core/oai/include/async_system_messages_types.h"
+#include "lte/gateway/c/core/oai/include/ip_forward_messages_types.h"
+#include "lte/gateway/c/core/oai/include/n11_messages_types.h"
+#include "lte/gateway/c/core/oai/include/s11_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/sctp_messages_types.hpp"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_24.008.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_36.413.h"
+#include "lte/gateway/c/core/oai/lib/itti/intertask_interface.h"
 
 //------------------------------------------------------------------------------
 void itti_free_msg_content(MessageDef* const message_p) {
@@ -153,15 +154,28 @@ void itti_free_msg_content(MessageDef* const message_p) {
       break;
     case S11_PAGING_REQUEST: {
       if (message_p->ittiMsg.s11_paging_request.imsi) {
-        free_wrapper((void**) &message_p->ittiMsg.s11_paging_request.imsi);
+        free_wrapper((void**)&message_p->ittiMsg.s11_paging_request.imsi);
       }
     } break;
 
+    case S1AP_PATH_SWITCH_REQUEST: {
+      e_rab_to_be_switched_in_downlink_list_t* e_rab_to_be_switched =
+          &S1AP_PATH_SWITCH_REQUEST(message_p).e_rab_to_be_switched_dl_list;
+      for (int i = 0; i < e_rab_to_be_switched->no_of_items; i++) {
+        bdestroy_wrapper(
+            &e_rab_to_be_switched->item[i].transport_layer_address);
+      }
+      break;
+    }
     case S1AP_ENB_INITIATED_RESET_ACK:
-      free_wrapper((void**) &message_p->ittiMsg.s1ap_enb_initiated_reset_ack
+      free_wrapper((void**)&message_p->ittiMsg.s1ap_enb_initiated_reset_ack
                        .ue_to_reset_list);
       break;
-    case S1AP_UE_CAPABILITIES_IND:
+    case S1AP_UE_CAPABILITIES_IND: {
+      free_wrapper(
+          (void**)&message_p->ittiMsg.s1ap_ue_cap_ind.radio_capabilities);
+      break;
+    }
     case S1AP_ENB_DEREGISTERED_IND:
     case S1AP_UE_CONTEXT_RELEASE_REQ:
     case S1AP_UE_CONTEXT_RELEASE_COMMAND:
@@ -187,6 +201,16 @@ void itti_free_msg_content(MessageDef* const message_p) {
                .item[0]
                .nas_pdu);
       break;
+    case S1AP_E_RAB_SETUP_RSP: {
+      itti_s1ap_e_rab_setup_rsp_t* e_rab_setup_rsp_msg =
+          &S1AP_E_RAB_SETUP_RSP(message_p);
+      for (int i = 0; i < e_rab_setup_rsp_msg->e_rab_setup_list.no_of_items;
+           i++) {
+        bdestroy_wrapper(&e_rab_setup_rsp_msg->e_rab_setup_list.item[i]
+                              .transport_layer_address);
+      }
+      break;
+    }
     case S1AP_NAS_DL_DATA_REQ:
       bdestroy_wrapper(&message_p->ittiMsg.s1ap_nas_dl_data_req.nas_msg);
       break;
@@ -198,6 +222,15 @@ void itti_free_msg_content(MessageDef* const message_p) {
       bdestroy_wrapper(
           &message_p->ittiMsg.s1ap_handover_request_ack.tgt_src_container);
       break;
+    case S1AP_HANDOVER_NOTIFY: {
+      e_rab_admitted_list_t e_rab_admitted_list = {};
+      e_rab_admitted_list =
+          message_p->ittiMsg.s1ap_handover_notify.e_rab_admitted_list;
+      for (uint8_t idx = 0; idx < e_rab_admitted_list.no_of_items; idx++) {
+        bdestroy_wrapper(
+            &e_rab_admitted_list.item[idx].transport_layer_address);
+      }
+    } break;
     case S6A_UPDATE_LOCATION_REQ:
     case S6A_UPDATE_LOCATION_ANS:
     case S6A_AUTH_INFO_REQ:
@@ -207,7 +240,7 @@ void itti_free_msg_content(MessageDef* const message_p) {
 
     case S11_NW_INITIATED_DEACTIVATE_BEARER_RESP:
       free_wrapper(
-          (void**) &message_p->ittiMsg.s11_nw_init_deactv_bearer_rsp.lbi);
+          (void**)&message_p->ittiMsg.s11_nw_init_deactv_bearer_rsp.lbi);
       break;
 
     case SCTP_INIT_MSG:
@@ -229,6 +262,64 @@ void itti_free_msg_content(MessageDef* const message_p) {
     case SCTP_DATA_CNF:
     case SCTP_CLOSE_ASSOCIATION:
       // DO nothing
+      break;
+
+    // AMF and NGAP Clean up messages
+    case NGAP_INITIAL_UE_MESSAGE:
+      bdestroy(NGAP_INITIAL_UE_MESSAGE(message_p).nas);
+      break;
+
+    case NGAP_NAS_DL_DATA_REQ:
+      bdestroy_wrapper(&message_p->ittiMsg.ngap_nas_dl_data_req.nas_msg);
+      break;
+
+    case NGAP_INITIAL_CONTEXT_SETUP_REQ:
+      for (uint i = 0;
+           i < message_p->ittiMsg.ngap_initial_context_setup_req
+                   .PDU_Session_Resource_Setup_Transfer_List.no_of_items;
+           ++i) {
+        bdestroy_wrapper(
+            &message_p->ittiMsg.ngap_initial_context_setup_req
+                 .PDU_Session_Resource_Setup_Transfer_List.item[i]
+                 .PDU_Session_Resource_Setup_Request_Transfer
+                 .up_transport_layer_info.gtp_tnl.endpoint_ip_address);
+      }
+      bdestroy_wrapper(
+          &message_p->ittiMsg.ngap_initial_context_setup_req.nas_pdu);
+      break;
+    case NGAP_PDUSESSIONRESOURCE_REL_REQ:
+      bdestroy_wrapper(
+          &message_p->ittiMsg.ngap_pdusessionresource_rel_req.nas_msg);
+      break;
+
+    case AMF_APP_UPLINK_DATA_IND:
+      bdestroy_wrapper(&message_p->ittiMsg.amf_app_ul_data_ind.nas_msg);
+      break;
+    case NGAP_PDUSESSION_RESOURCE_SETUP_REQ: {
+      itti_ngap_pdusession_resource_setup_req_t* pdusession_resource_setup_req =
+          &NGAP_PDUSESSION_RESOURCE_SETUP_REQ(message_p);
+      Ngap_PDUSession_Resource_Setup_Request_List_t* resource_list =
+          &(pdusession_resource_setup_req->pduSessionResource_setup_list);
+      pdusession_setup_item_t* session_item = &(resource_list->item[0]);
+      pdu_session_resource_setup_request_transfer_t* session_transfer =
+          &(session_item->PDU_Session_Resource_Setup_Request_Transfer);
+      bdestroy_wrapper(&session_transfer->up_transport_layer_info.gtp_tnl
+                            .endpoint_ip_address);
+      bdestroy_wrapper(&pdusession_resource_setup_req->nas_pdu);
+      break;
+    }
+    case NGAP_PDU_SESSION_RESOURCE_MODIFY_REQ: {
+      itti_ngap_pdu_session_resource_modify_request_t*
+          pdusession_resource_modify_req =
+              &NGAP_PDU_SESSION_RESOURCE_MODIFY_REQ(message_p);
+      bdestroy_wrapper(
+          &pdusession_resource_modify_req->pduSessResourceModReqList.item[0]
+               .nas_pdu);
+      break;
+    }
+    case NGAP_GNB_INITIATED_RESET_REQ:
+      free_wrapper((void**)&message_p->ittiMsg.ngap_gnb_initiated_reset_req
+                       .ue_to_reset_list);
       break;
     default:;
   }

@@ -16,7 +16,6 @@ import unittest
 
 import s1ap_types
 from integ_tests.s1aptests import s1ap_wrapper
-from integ_tests.s1aptests.ovs.rest_api import get_datapath
 from integ_tests.s1aptests.s1ap_utils import (
     GTPBridgeUtils,
     HeaderEnrichmentUtils,
@@ -26,7 +25,7 @@ from integ_tests.s1aptests.s1ap_utils import (
 from lte.protos.policydb_pb2 import FlowMatch, HeaderEnrichment
 
 
-class TestAttachDetachWithHE(unittest.TestCase):
+class TestAttachDetachWithHePolicy(unittest.TestCase):
     SPGW_TABLE = 0
     HE_TABLE = 4
     LOCAL_PORT = "LOCAL"
@@ -39,7 +38,7 @@ class TestAttachDetachWithHE(unittest.TestCase):
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_detach_with_he(self):
+    def test_attach_detach_with_he_policy(self):
         """ Attach/detach + send ReAuth Req to session manager with a
         single UE along with Header enrichment.
         This test validates that same data test wotks with HE policy
@@ -53,7 +52,6 @@ class TestAttachDetachWithHE(unittest.TestCase):
         ]
         wait_for_s1 = [True, False]
         self._s1ap_wrapper.configUEDevice(num_ues)
-        datapath = get_datapath()
         MAX_NUM_RETRIES = 5
         gtp_br_util = GTPBridgeUtils()
         PROXY_PORT = gtp_br_util.get_proxy_port_no()
@@ -125,9 +123,7 @@ class TestAttachDetachWithHE(unittest.TestCase):
 
             # Receive Activate dedicated bearer request
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             act_ded_ber_ctxt_req = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
             )
@@ -163,10 +159,7 @@ class TestAttachDetachWithHE(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value
 
             print("******************* Received deactivate eps bearer context")
 

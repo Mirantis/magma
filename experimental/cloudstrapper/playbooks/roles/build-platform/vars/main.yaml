@@ -12,6 +12,7 @@ dockerPackages:
   - docker-ce-cli
   - containerd.io
   - python3-docker
+  - docker-compose-plugin
 pyenvDeps:
   - build-essential
   - libssl-dev
@@ -52,7 +53,7 @@ binPyenv: "{{ dirHome }}/pyenv.run"
 pyenvVersion: 3.7.3
 magmaRootDir: "{{ dirHome }}/magma"
 magmaBuildDir: "{{ magmaRootDir }}/orc8r/cloud/docker"
-magmaNmsDir: "{{ magmaRootDir }}/nms/packages/magmalte"
+magmaNmsDir: "{{ magmaRootDir }}/nms"
 magmaPublishTag: latest
 dirShim: "{{ usrHome }}/.pyenv/shims/"
 usrProfile: "{{ dirHome }}/.profile"

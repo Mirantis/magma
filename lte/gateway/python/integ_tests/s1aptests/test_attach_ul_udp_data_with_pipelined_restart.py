@@ -29,7 +29,7 @@ class TestAttachUlUdpDataWithPipelinedRestart(unittest.TestCase):
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_ul_udp_data(self):
+    def test_attach_ul_udp_data_with_pipelined_restart(self):
         """
         Attach, send UL UDP data, restart Pipelined and
         send UL UDP data again
@@ -63,11 +63,10 @@ class TestAttachUlUdpDataWithPipelinedRestart(unittest.TestCase):
             "************************* Restarting Pipelined service",
             "on gateway",
         )
-        self._s1ap_wrapper.magmad_util.restart_services(["pipelined"])
-
-        for j in range(30):
-            print("Waiting for", j, "seconds")
-            time.sleep(1)
+        wait_for_restart = 30
+        self._s1ap_wrapper.magmad_util.restart_services(
+            ["pipelined"], wait_for_restart,
+        )
 
         print(
             "************************* Running UE uplink (UDP) for UE id ",

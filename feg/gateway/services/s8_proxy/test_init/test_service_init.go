@@ -1,3 +1,16 @@
+/*
+ * Copyright 2020 The Magma Authors.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package test_init
 
 import (
@@ -48,8 +61,8 @@ func StartS8AndPGWService(t *testing.T, clientAddr, serverAddr string) (*mock_pg
 	if err != nil {
 		return nil, err
 	}
-	srv, lis := test_utils.NewTestService(t, registry.ModuleName, registry.S8_PROXY)
+	srv, lis, _ := test_utils.NewTestService(t, registry.ModuleName, registry.S8_PROXY)
 	protos.RegisterS8ProxyServer(srv.GrpcServer, s8service)
-	go srv.RunTest(lis)
+	go srv.RunTest(lis, nil)
 	return mockPgw, nil
 }

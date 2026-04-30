@@ -29,7 +29,7 @@ class TestAttachDetachMultipleIpBlocksMobilitydRestart(unittest.TestCase):
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_detach_multiple_ip_blocks(self):
+    def test_attach_detach_multiple_ip_blocks_mobilityd_restart(self):
         """
         Attaching and detaching UE in mobilityd with multiple IP blocks across
         restart
@@ -45,15 +45,15 @@ class TestAttachDetachMultipleIpBlocksMobilitydRestart(unittest.TestCase):
                                      "mobilityd "
 
         print("************************* Restarting mobilityd")
-        self._s1ap_wrapper.magmad_util.restart_services(["mobilityd"])
-        for j in range(30):
-            print("Waiting for", j, "seconds")
-            sleep(1)
+        wait_for_restart = 30
+        self._s1ap_wrapper.magmad_util.restart_services(
+            ["mobilityd"], wait_for_restart,
+        )
 
         curr_blocks = self._s1ap_wrapper.mobility_util.list_ip_blocks()
         # Check if old_blocks and curr_blocks contain same ip blocks after
         # restart
-        self.assertListEqual(old_blocks, curr_blocks)
+        assert old_blocks == curr_blocks
 
         req = self._s1ap_wrapper.ue_req
         print(

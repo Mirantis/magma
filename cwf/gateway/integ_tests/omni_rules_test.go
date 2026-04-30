@@ -22,7 +22,6 @@ import (
 	"time"
 
 	cwfprotos "magma/cwf/cloud/go/protos"
-	"magma/feg/cloud/go/protos"
 	fegprotos "magma/feg/cloud/go/protos"
 	"magma/lte/cloud/go/services/policydb/obsidian/models"
 
@@ -32,18 +31,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// - Insert two static rules into the DB. (static-block-all and omni-pass-all)
-// - The omnipresent rule, with higher priority than the block all, will be set
-//   as omnipresent/network-wide.
-// - Set an expectation for a CCR-I to be sent up to PCRF, to which it will
-//   respond with a rule install (static-block-all).
-// - Set an expectation for a CCR-I to be sent up to OCS, wo which it will responde
-// 	 with some credit installed
-// - Generate traffic and assert the CCR-I is received.
-// - Assert that the traffic goes through. This means the network wide rules
-//   gets installed properly.
-// - Trigger a Gx RAR with a rule removal for the block all rule. Assert the
-//   answer is successful.
+//   - Insert two static rules into the DB. (static-block-all and omni-pass-all)
+//   - The omnipresent rule, with higher priority than the block all, will be set
+//     as omnipresent/network-wide.
+//   - Set an expectation for a CCR-I to be sent up to PCRF, to which it will
+//     respond with a rule install (static-block-all).
+//   - Set an expectation for a CCR-I to be sent up to OCS, wo which it will responde
+//     with some credit installed
+//   - Generate traffic and assert the CCR-I is received.
+//   - Assert that the traffic goes through. This means the network wide rules
+//     gets installed properly.
+//   - Trigger a Gx RAR with a rule removal for the block all rule. Assert the
+//     answer is successful.
 func TestOmnipresentRules(t *testing.T) {
 	fmt.Println("\nRunning TestOmnipresentRules...")
 	tr := NewTestRunner(t)
@@ -85,27 +84,27 @@ func TestOmnipresentRules(t *testing.T) {
 
 	// Gx - PCRF config
 	usageMonitorInfo := getUsageInformation("mkey1", 5*MegaBytes)
-	gxInitRequest := protos.NewGxCCRequest(imsi, protos.CCRequestType_INITIAL)
-	gxInitAnswer := protos.NewGxCCAnswer(diam.Success).
+	gxInitRequest := fegprotos.NewGxCCRequest(imsi, fegprotos.CCRequestType_INITIAL)
+	gxInitAnswer := fegprotos.NewGxCCAnswer(diam.Success).
 		SetStaticRuleInstalls([]string{"static-block-all"}, []string{}).
 		SetUsageMonitorInfo(usageMonitorInfo)
-	gxInitExpectation := protos.NewGxCreditControlExpectation().Expect(gxInitRequest).Return(gxInitAnswer)
-	gxExpectations := []*protos.GxCreditControlExpectation{gxInitExpectation}
+	gxInitExpectation := fegprotos.NewGxCreditControlExpectation().Expect(gxInitRequest).Return(gxInitAnswer)
+	gxExpectations := []*fegprotos.GxCreditControlExpectation{gxInitExpectation}
 	assert.NoError(t, setPCRFExpectations(gxExpectations, nil)) // we don't expect any update requests
 
 	// Gy - OCS config
 	quotaGrant := &fegprotos.QuotaGrant{
 		RatingGroup: 1,
 		GrantedServiceUnit: &fegprotos.Octets{
-			TotalOctets: 1 * MegaBytes,
+			TotalOctets: 5 * MegaBytes,
 		},
 		IsFinalCredit: false,
 		ResultCode:    diam.Success,
 	}
-	gyInitRequest := protos.NewGyCCRequest(imsi, protos.CCRequestType_INITIAL)
-	gyInitAnswer := protos.NewGyCCAnswer(diam.Success).SetQuotaGrant(quotaGrant)
-	gyInitExpectation := protos.NewGyCreditControlExpectation().Expect(gyInitRequest).Return(gyInitAnswer)
-	gyExpectations := []*protos.GyCreditControlExpectation{gyInitExpectation}
+	gyInitRequest := fegprotos.NewGyCCRequest(imsi, fegprotos.CCRequestType_INITIAL)
+	gyInitAnswer := fegprotos.NewGyCCAnswer(diam.Success).SetQuotaGrant(quotaGrant)
+	gyInitExpectation := fegprotos.NewGyCreditControlExpectation().Expect(gyInitRequest).Return(gyInitAnswer)
+	gyExpectations := []*fegprotos.GyCreditControlExpectation{gyInitExpectation}
 	assert.NoError(t, setOCSExpectations(gyExpectations, nil))
 
 	tr.AuthenticateAndAssertSuccess(imsi)
@@ -133,9 +132,9 @@ func TestOmnipresentRules(t *testing.T) {
 	tr.AssertAllGxExpectationsMetNoError()
 
 	// Trigger a ReAuth with rule removals of monitored rules
-	target := &protos.PolicyReAuthTarget{
+	target := &fegprotos.PolicyReAuthTarget{
 		Imsi: imsi,
-		RulesToRemove: &protos.RuleRemovals{
+		RulesToRemove: &fegprotos.RuleRemovals{
 			RuleNames: []string{"static-block-all"},
 		},
 	}
@@ -202,10 +201,10 @@ func TestGxDisabledOmnipresentRules(t *testing.T) {
 		IsFinalCredit: false,
 		ResultCode:    diam.Success,
 	}
-	gyInitRequest := protos.NewGyCCRequest(imsi, protos.CCRequestType_INITIAL)
-	gyInitAnswer := protos.NewGyCCAnswer(diam.Success).SetQuotaGrant(quotaGrant)
-	gyInitExpectation := protos.NewGyCreditControlExpectation().Expect(gyInitRequest).Return(gyInitAnswer)
-	gyExpectations := []*protos.GyCreditControlExpectation{gyInitExpectation}
+	gyInitRequest := fegprotos.NewGyCCRequest(imsi, fegprotos.CCRequestType_INITIAL)
+	gyInitAnswer := fegprotos.NewGyCCAnswer(diam.Success).SetQuotaGrant(quotaGrant)
+	gyInitExpectation := fegprotos.NewGyCreditControlExpectation().Expect(gyInitRequest).Return(gyInitAnswer)
+	gyExpectations := []*fegprotos.GyCreditControlExpectation{gyInitExpectation}
 	assert.NoError(t, setOCSExpectations(gyExpectations, nil))
 
 	tr.AuthenticateAndAssertSuccess(imsi)

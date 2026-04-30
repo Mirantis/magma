@@ -15,32 +15,32 @@ limitations under the License.
 #include <sys/types.h>
 
 extern "C" {
-#include "common_types.h"
-#include "ha_defs.h"
-#include "ha_messages_types.h"
-#include "intertask_interface.h"
-#include "intertask_interface_types.h"
-#include "itti_types.h"
-#include "log.h"
-#include "s1ap_state.h"
+#include "lte/gateway/c/core/oai/common/common_types.h"
+#include "lte/gateway/c/core/oai/lib/itti/intertask_interface.h"
+#include "lte/gateway/c/core/oai/lib/itti/intertask_interface_types.h"
+#include "lte/gateway/c/core/oai/lib/itti/itti_types.h"
+#include "lte/gateway/c/core/oai/common/log.h"
 #include "S1ap_CauseRadioNetwork.h"
 }
 
-#include "HaClient.h"
-#include "mme_app_state_manager.h"
-#include "s1ap_state_manager.h"
+#include "lte/gateway/c/core/oai/tasks/ha/ha_defs.hpp"
+#include "lte/gateway/c/core/oai/include/ha_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/s1ap_state.hpp"
+#include "lte/gateway/c/core/oai/tasks/ha/HaClient.hpp"
+#include "lte/gateway/c/core/oai/tasks/mme_app/mme_app_state_manager.hpp"
+#include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_state_manager.hpp"
 
-static bool trigger_agw_offload_for_ue(
-    const hash_key_t keyP, void* const elementP, void* parameterP,
-    void** resultP);
+static bool trigger_agw_offload_for_ue(const hash_key_t keyP,
+                                       void* const elementP, void* parameterP,
+                                       void** resultP);
 
 bool sync_up_with_orc8r(void) {
   magma::HaClient::get_eNB_offload_state(
       [](grpc::Status status,
          magma::lte::GetEnodebOffloadStateResponse response) {
         if (status.ok()) {
-          OAILOG_INFO(
-              LOG_UTIL, "Received eNodeB connection state with the primary.");
+          OAILOG_INFO(LOG_UTIL,
+                      "Received eNodeB connection state with the primary.");
           // iterate over the eNodeB connection states
           ha_agw_offload_req_t offload_req = {0};
           for (auto const& item : response.enodeb_offload_states()) {
@@ -51,9 +51,9 @@ bool sync_up_with_orc8r(void) {
               // The effect will be observed in the next sync up with the cloud.
               offload_req.enb_offload_type = ANY;
               handle_agw_offload_req(&offload_req);
-            } else if (
-                item.second == magma::lte::GetEnodebOffloadStateResponse::
-                                   PRIMARY_CONNECTED_AND_SERVING_UES) {
+            } else if (item.second ==
+                       magma::lte::GetEnodebOffloadStateResponse::
+                           PRIMARY_CONNECTED_AND_SERVING_UES) {
               offload_req.eNB_id = item.first;
               // Primary looks healthy as UEs are camped on it, offload the rest
               // of UEs.
@@ -62,16 +62,16 @@ bool sync_up_with_orc8r(void) {
             }
           }
         } else {
-          OAILOG_ERROR(
-              LOG_UTIL, "GRPC Failure Message: %s Status Error Code: %d",
-              status.error_message().c_str(), status.error_code());
+          OAILOG_ERROR(LOG_UTIL,
+                       "GRPC Failure Message: %s Status Error Code: %d",
+                       status.error_message().c_str(), status.error_code());
         }
       });
   return true;
 }
 
 typedef struct callback_data_s {
-  s1ap_state_t* s1ap_state;
+  magma::lte::oai::S1apState* s1ap_state;
   ha_agw_offload_req_t* request;
 } callback_data_t;
 
@@ -83,28 +83,35 @@ void handle_agw_offload_req(ha_agw_offload_req_t* offload_req) {
       magma::lte::S1apStateManager::getInstance().get_state(false);
   callback_data.request = offload_req;
   hashtable_ts_apply_callback_on_elements(
-      state_imsi_ht, trigger_agw_offload_for_ue, (void*) &callback_data, NULL);
+      state_imsi_ht, trigger_agw_offload_for_ue, (void*)&callback_data, NULL);
 }
 
-bool trigger_agw_offload_for_ue(
-    const hash_key_t keyP, void* const elementP, void* parameterP,
-    void** resultP) {
-  imsi64_t imsi64                = INVALID_IMSI64;
-  callback_data_t* callback_data = (callback_data_t*) parameterP;
+bool trigger_agw_offload_for_ue(const hash_key_t keyP, void* const elementP,
+                                void* parameterP, void** resultP) {
+  imsi64_t imsi64 = INVALID_IMSI64;
+  callback_data_t* callback_data = (callback_data_t*)parameterP;
   ha_agw_offload_req_t* offload_request =
-      (ha_agw_offload_req_t*) callback_data->request;
-  s1ap_state_t* s1ap_state = (s1ap_state_t*) callback_data->s1ap_state;
-  struct ue_mm_context_s* ue_context_p = (struct ue_mm_context_s*) elementP;
+      (ha_agw_offload_req_t*)callback_data->request;
+  magma::lte::oai::S1apState* s1ap_state =
+      (magma::lte::oai::S1apState*)callback_data->s1ap_state;
+  struct ue_mm_context_s* ue_context_p = (struct ue_mm_context_s*)elementP;
   bool any_flag = false;  // true if we tried offloading any UE
 
   IMSI_STRING_TO_IMSI64(offload_request->imsi, &imsi64);
 
-  enb_description_t* enb_ref_p =
-      s1ap_state_get_enb(s1ap_state, ue_context_p->sctp_assoc_id_key);
+  magma::lte::oai::EnbDescription enb_ref_p;
+  magma::proto_map_rc_t rc = magma::lte::s1ap_state_get_enb(
+      s1ap_state, ue_context_p->sctp_assoc_id_key, &enb_ref_p);
 
+  if (rc != magma::PROTO_MAP_OK) {
+    OAILOG_ERROR_UE(LOG_UTIL, imsi64,
+                    "Failed to find enb_ref_p for assoc_id :%u",
+                    ue_context_p->sctp_assoc_id_key);
+    return false;
+  }
   // Return if this UE does not satisfy any of the filtering criteria
   if ((imsi64 != ue_context_p->emm_context._imsi64) &&
-      (offload_request->eNB_id != enb_ref_p->enb_id)) {
+      (offload_request->eNB_id != enb_ref_p.enb_id())) {
     return false;
   }
 
@@ -121,7 +128,7 @@ bool trigger_agw_offload_for_ue(
         ue_context_p->mme_ue_s1ap_id;
     S1AP_UE_CONTEXT_RELEASE_REQ(message_p).enb_ue_s1ap_id =
         ue_context_p->enb_ue_s1ap_id;
-    S1AP_UE_CONTEXT_RELEASE_REQ(message_p).enb_id   = enb_ref_p->enb_id;
+    S1AP_UE_CONTEXT_RELEASE_REQ(message_p).enb_id = enb_ref_p.enb_id();
     S1AP_UE_CONTEXT_RELEASE_REQ(message_p).relCause = S1AP_NAS_MME_OFFLOADING;
 
     OAILOG_INFO(
@@ -134,36 +141,33 @@ bool trigger_agw_offload_for_ue(
         ue_context_p->emm_context._imsi64, offload_request->imsi,
         ue_context_p->mme_ue_s1ap_id, ue_context_p->enb_ue_s1ap_id,
         ue_context_p->e_utran_cgi.cell_identity.enb_id,
-        ue_context_p->e_utran_cgi.cell_identity.cell_id, enb_ref_p->enb_id);
-    OAILOG_INFO(
-        LOG_UTIL, "UE Context Release procedure initiated for IMSI%s",
-        offload_request->imsi);
-    IMSI_STRING_TO_IMSI64(
-        offload_request->imsi, &message_p->ittiMsgHeader.imsi);
+        ue_context_p->e_utran_cgi.cell_identity.cell_id, enb_ref_p.enb_id());
+    OAILOG_INFO(LOG_UTIL, "UE Context Release procedure initiated for IMSI%s",
+                offload_request->imsi);
+    IMSI_STRING_TO_IMSI64(offload_request->imsi,
+                          &message_p->ittiMsgHeader.imsi);
     send_msg_to_task(&ha_task_zmq_ctx, TASK_MME_APP, message_p);
     any_flag = true;
-  } else if (
-      (ue_context_p->ecm_state == ECM_IDLE) &&
-      (ue_context_p->mm_state == UE_REGISTERED) &&
-      ((enb_offtype == ALL) || (enb_offtype == ANY) ||
-       (enb_offtype == ANY_IDLE))) {
+  } else if ((ue_context_p->ecm_state == ECM_IDLE) &&
+             (ue_context_p->mm_state == UE_REGISTERED) &&
+             ((enb_offtype == ALL) || (enb_offtype == ANY) ||
+              (enb_offtype == ANY_IDLE))) {
     // Upon connection re-establishment, this release cause value will
     // be checked and cleared by MME APP to send offload request.
     ue_context_p->ue_context_rel_cause = S1AP_NAS_MME_PENDING_OFFLOADING;
 
     char imsi[IMSI_BCD_DIGITS_MAX + 1] = {0};
-    IMSI64_TO_STRING(
-        ue_context_p->emm_context._imsi64, imsi,
-        ue_context_p->emm_context._imsi.length);
+    IMSI64_TO_STRING(ue_context_p->emm_context._imsi64, imsi,
+                     ue_context_p->emm_context._imsi.length);
 
     OAILOG_INFO(LOG_UTIL, "Paging procedure initiated for IMSI%s", imsi);
-    MessageDef* message_p                       = NULL;
+    MessageDef* message_p = NULL;
     itti_s11_paging_request_t* paging_request_p = NULL;
 
-    message_p        = itti_alloc_new_message(TASK_HA, S11_PAGING_REQUEST);
+    message_p = itti_alloc_new_message(TASK_HA, S11_PAGING_REQUEST);
     paging_request_p = &message_p->ittiMsg.s11_paging_request;
-    memset((void*) paging_request_p, 0, sizeof(itti_s11_paging_request_t));
-    paging_request_p->imsi        = strdup(imsi);
+    memset((void*)paging_request_p, 0, sizeof(itti_s11_paging_request_t));
+    paging_request_p->imsi = strdup(imsi);
     message_p->ittiMsgHeader.imsi = ue_context_p->emm_context._imsi64;
     send_msg_to_task(&ha_task_zmq_ctx, TASK_MME_APP, message_p);
     any_flag = true;

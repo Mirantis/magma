@@ -46,6 +46,7 @@ from lte.protos.session_manager_pb2_grpc import (
     LocalSessionManagerStub,
     SetInterfaceForUserPlaneStub,
 )
+from magma.common.sentry import EXCLUDE_FROM_ERROR_MONITORING
 from magma.common.service import MagmaService
 from magma.common.service_registry import ServiceRegistry
 from magma.configuration import environment
@@ -57,34 +58,32 @@ from magma.pipelined.app.check_quota import CheckQuotaController
 from magma.pipelined.app.classifier import Classifier
 from magma.pipelined.app.conntrack import ConntrackController
 from magma.pipelined.app.dpi import DPIController
+from magma.pipelined.app.egress import EGRESS, EgressController
 from magma.pipelined.app.enforcement import EnforcementController
 from magma.pipelined.app.enforcement_stats import EnforcementStatsController
 from magma.pipelined.app.gy import GYController
 from magma.pipelined.app.he import HeaderEnrichmentController
-from magma.pipelined.app.inout import (
-    EGRESS,
-    INGRESS,
-    PHYSICAL_TO_LOGICAL,
-    InOutController,
-)
+from magma.pipelined.app.ingress import INGRESS, IngressController
 from magma.pipelined.app.ipfix import IPFIXController
 from magma.pipelined.app.ipv6_solicitation import IPV6SolicitationController
 from magma.pipelined.app.li_mirror import LIMirrorController
+from magma.pipelined.app.middle import PHYSICAL_TO_LOGICAL, MiddleController
 from magma.pipelined.app.ng_services import NGServiceController
 from magma.pipelined.app.startup_flows import StartupFlows
 from magma.pipelined.app.tunnel_learn import TunnelLearnController
 from magma.pipelined.app.ue_mac import UEMacAddressController
 from magma.pipelined.app.uplink_bridge import UplinkBridgeController
 from magma.pipelined.app.vlan_learn import VlanLearnController
-from magma.pipelined.app.xwf_passthru import XWFPassthruController
+from magma.pipelined.ebpf.ebpf_manager import get_ebpf_manager
 from magma.pipelined.internal_ip_allocator import InternalIPAllocator
 from magma.pipelined.ipv6_prefix_store import InterfaceIDToPrefixMapper
+from magma.pipelined.qos.common import QosManager
 from magma.pipelined.rule_mappers import (
     RestartInfoStore,
     RuleIDToNumMapper,
     SessionRuleToVersionMapper,
 )
-from magma.pipelined.tunnel_id_store import TunnelToTunnelMapper
+from redis import ConnectionError
 from ryu.base.app_manager import AppManager
 
 # Type is either Physical or Logical, highest order_priority is at zero
@@ -171,11 +170,10 @@ class _TableManager:
                 self.INGRESS_TABLE_NUM + 1,
                 self.PHYSICAL_TO_LOGICAL_TABLE_NUM,
             ),
-            ControllerType.LOGICAL:
-                TableRange(
-                    self.PHYSICAL_TO_LOGICAL_TABLE_NUM + 1,
-                    self.EGRESS_TABLE_NUM,
-                ),
+            ControllerType.LOGICAL: TableRange(
+                self.PHYSICAL_TO_LOGICAL_TABLE_NUM + 1,
+                self.EGRESS_TABLE_NUM,
+            ),
         }
         self._scratch_range = TableRange(
             self.SCRATCH_TABLE_START_NUM,
@@ -250,8 +248,7 @@ class _TableManager:
         return self._table_ranges[app.type].get_next_table(app.main_table)
 
     def is_app_enabled(self, app_name: str) -> bool:
-        return app_name in self._tables_by_app or \
-            app_name == InOutController.APP_NAME
+        return app_name in self._tables_by_app
 
     def is_ng_app_enabled(self, app_name: str) -> bool:
         return app_name in self._tables_by_app or \
@@ -277,7 +274,7 @@ class _TableManager:
             ),
         )
         # Include table 0 when it is managed by the EPC, for completeness.
-        if not any(table in ['ue_mac', 'xwf_passthru', 'classifier'] for table in self._tables_by_app):
+        if not any(table in ['ue_mac', 'classifier'] for table in self._tables_by_app):
             resp['mme'] = Tables(main_table=0, type=None)
             resp.move_to_end('mme', last=False)
         return resp
@@ -310,7 +307,6 @@ class ServiceManager:
     STARTUP_FLOWS_RECIEVER_CONTROLLER = 'startup_flows'
     CHECK_QUOTA_SERVICE_NAME = 'check_quota'
     LI_MIRROR_SERVICE_NAME = 'li_mirror'
-    XWF_PASSTHRU_NAME = 'xwf_passthru'
     UPLINK_BRIDGE_NAME = 'uplink_bridge'
     CLASSIFIER_NAME = 'classifier'
     HE_CONTROLLER_NAME = 'proxy'
@@ -462,14 +458,6 @@ class ServiceManager:
                 order_priority=900,
             ),
         ],
-        XWF_PASSTHRU_NAME: [
-            App(
-                name=XWFPassthruController.APP_NAME,
-                module=XWFPassthruController.__module__,
-                type=XWFPassthruController.APP_TYPE,
-                order_priority=0,
-            ),
-        ],
         UPLINK_BRIDGE_NAME: [
             App(
                 name=UplinkBridgeController.APP_NAME,
@@ -513,14 +501,26 @@ class ServiceManager:
         else:
             self._5G_flag_enable = magma_service.config.get('enable5g_features')
 
-        # inout is a mandatory app and it occupies:
-        #   table 1(for ingress)
-        #   table 10(for middle)
-        #   table 20(for egress)
+        # ingress, middle and egress are mandatory apps and occupy:
+        #   table 1 (for ingress)
+        #   table 10 (for middle)
+        #   table 20 (for egress)
         self._apps = [
             App(
-                name=InOutController.APP_NAME,
-                module=InOutController.__module__,
+                name=IngressController.APP_NAME,
+                module=IngressController.__module__,
+                type=None,
+                order_priority=0,
+            ),
+            App(
+                name=MiddleController.APP_NAME,
+                module=MiddleController.__module__,
+                type=None,
+                order_priority=0,
+            ),
+            App(
+                name=EgressController.APP_NAME,
+                module=EgressController.__module__,
                 type=None,
                 order_priority=0,
             ),
@@ -530,8 +530,8 @@ class ServiceManager:
         self.rule_id_mapper = RuleIDToNumMapper()
         self.session_rule_version_mapper = SessionRuleToVersionMapper()
         self.interface_to_prefix_mapper = InterfaceIDToPrefixMapper()
-        self.tunnel_id_mapper = TunnelToTunnelMapper()
         self.restart_info_store = RestartInfoStore()
+        self.ebpf = get_ebpf_manager(magma_service.config)
 
         apps = self._get_static_apps()
         apps.extend(self._get_dynamic_apps())
@@ -543,7 +543,7 @@ class ServiceManager:
             if app.name in self.STATIC_APP_WITH_NO_TABLE:
                 continue
             # UE MAC service must be registered with Table 0
-            if app.name in [self.UE_MAC_ADDRESS_SERVICE_NAME, self.XWF_PASSTHRU_NAME]:
+            if app.name in [self.UE_MAC_ADDRESS_SERVICE_NAME]:
                 self._table_manager.register_apps_for_table0_service([app])
                 continue
             if self._5G_flag_enable:
@@ -609,12 +609,11 @@ class ServiceManager:
         # Some setups might not use REDIS
         if self._magma_service.config['redis_enabled']:
             # Wait for redis as multiple controllers rely on it
-            while not redisAvailable(self.rule_id_mapper.redis_cli):
+            while not redis_available(self.rule_id_mapper.redis_cli):
                 logging.warning("Pipelined waiting for redis...")
                 time.sleep(1)
             self.rule_id_mapper.setup_redis()
             self.interface_to_prefix_mapper.setup_redis()
-            self.tunnel_id_mapper.setup_redis()
 
         manager = AppManager.get_instance()
         manager.load_apps([app.module for app in self._apps])
@@ -623,8 +622,8 @@ class ServiceManager:
         contexts[
             'session_rule_version_mapper'
         ] = self.session_rule_version_mapper
+        contexts['ebpf_manager'] = self.ebpf
         contexts['interface_to_prefix_mapper'] = self.interface_to_prefix_mapper
-        contexts['tunnel_id_mapper'] = self.tunnel_id_mapper
         contexts['restart_info_store'] = self.restart_info_store
         contexts['app_futures'] = {app.name: Future() for app in self._apps}
         contexts['internal_ip_allocator'] = \
@@ -633,6 +632,7 @@ class ServiceManager:
         contexts['mconfig'] = self._magma_service.mconfig
         contexts['loop'] = self._magma_service.loop
         contexts['service_manager'] = self
+        contexts['qos_manager'] = QosManager(self._magma_service.loop, self._magma_service.config)
 
         sessiond_chan = ServiceRegistry.get_rpc_channel(
             'sessiond', ServiceRegistry.LOCAL,
@@ -741,10 +741,13 @@ class ServiceManager:
         return self._table_manager.get_all_table_assignments()
 
 
-def redisAvailable(redis_cli):
+def redis_available(redis_cli):
     try:
         redis_cli.ping()
-    except Exception as e:
-        logging.error(e)
+    except ConnectionError:
+        logging.exception("Error connecting to Redis", extra=EXCLUDE_FROM_ERROR_MONITORING)
+        return False
+    except Exception:
+        logging.exception("Unexpected error when pinging Redis")
         return False
     return True

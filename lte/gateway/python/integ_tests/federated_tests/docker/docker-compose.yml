@@ -43,13 +43,11 @@ x-pyservice_base: &pyservice_base
 
 # Use generic python anchor with logging capabilities to avoid repetition for python services
 x-pyservice: &pyservice
-  <<: *pyservice_base
-  <<: *depends_on_logs
+  <<: [*pyservice_base, *depends_on_logs]
 
 # Use generic go anchor to avoid repetition for go services
 x-goservice: &goservice
-  <<: *service
-  <<: *depends_on_logs
+  <<: [*service, *depends_on_logs]
   image: ${DOCKER_REGISTRY}gateway_go:${IMAGE_VERSION}
 
 
@@ -116,8 +114,8 @@ services:
     <<: *goservice
     container_name: s6a_proxy
     environment:
-      MAGMA_PRINT_GRPC_PAYLOAD: 0
-    command: envdir /var/opt/magma/envdir /var/opt/magma/bin/s6a_proxy -logtostderr=true -v=0
+      MAGMA_PRINT_GRPC_PAYLOAD: 2
+    command: envdir /var/opt/magma/envdir /var/opt/magma/bin/s6a_proxy -logtostderr=true -v=9
 
 
   s8_proxy:

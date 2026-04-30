@@ -31,7 +31,7 @@ include_directories("/usr/src/googletest/googlemock/include/")
 link_directories(/usr/src/googletest/googlemock/lib/)
 
 set(MME_APP_UE_CONTEXT_IMSI_SRC
-    test_mme_app_ue_context.c
+    test_mme_app_ue_context.cpp
     )
 
 set(MME_APP_NAS_ENCODE_DECODE_SRC
@@ -47,11 +47,19 @@ set(NAS_APN_AMBR
     )
 
 set(MME_APP_TEST_SRC
+    mme_procedure_test_fixture.hpp
+    mme_procedure_test_fixture.cpp
     mme_app_test.cpp
     mme_app_test_util.cpp
-    test_mme_app_emm_decode.cpp
+    test_mme_app_emm_encode_decode.cpp
+    test_mme_app_esm_encode_decode.cpp
     test_mme_app_config.cpp
     test_mme_procedures.cpp
+    test_mme_procedures_mobile_reachability_timer.cpp
+    test_mme_procedures_nas_timer.cpp
+    test_mme_procedures_x2_handover.cpp
+    test_mme_procedures_network_initiated.cpp
+    test_sgw_config.cpp
     )
 
 add_executable(test_mme_app_ue_context_imsi ${MME_APP_UE_CONTEXT_IMSI_SRC})
@@ -62,7 +70,7 @@ add_executable(mme_app_test ${MME_APP_TEST_SRC})
 
 target_link_libraries(test_mme_app_ue_context_imsi
     TASK_MME_APP ${CHECK_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT}
-    LIB_BSTR LIB_HASHTABLE
+    LIB_BSTR LIB_HASHTABLE gtest gtest_main
     )
 
 target_link_libraries(test_nas_encode_decode
@@ -81,7 +89,7 @@ target_link_libraries(test_nas_eps_quality_of_service
     )
 
 target_link_libraries(mme_app_test
-    TASK_MME_APP TASK_NAS ${CHECK_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT}
+    TASK_MME_APP TASK_NAS TASK_AMF_APP ${CHECK_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT}
     LIB_BSTR LIB_ITTI MOCK_TASKS gtest gtest_main ${CRYPTO_LIBRARIES} ${OPENSSL_LIBRARIES}
     ${NETTLE_LIBRARIES}
     )

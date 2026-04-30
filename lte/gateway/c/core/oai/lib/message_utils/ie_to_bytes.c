@@ -30,7 +30,7 @@
 
 #include <stdbool.h>
 
-#include "ie_to_bytes.h"
+#include "lte/gateway/c/core/oai/lib/message_utils/ie_to_bytes.h"
 
 // 18.4.24 in 3GPP TS 29.018
 void tmsi_status_to_bytes(const bool* tmsi_status, char* byte_arr) {
@@ -78,8 +78,8 @@ void ecgi_to_bytes(const ecgi_t* ecgi, char* byte_arr) {
 }
 
 // 10.5.1.6 in 3GPP TS 24.008
-void mobile_station_classmark2_to_bytes(
-    const MobileStationClassmark2_t* mscm2, char* byte_arr) {
+void mobile_station_classmark2_to_bytes(const MobileStationClassmark2_t* mscm2,
+                                        char* byte_arr) {
   byte_arr[0] = (mscm2->revisionlevel << 5) | (mscm2->esind << 4) |
                 (mscm2->a51 << 3) | mscm2->rfpowercapability;
   byte_arr[1] = (mscm2->pscapability << 6) | (mscm2->ssscreenindicator << 4) |

@@ -23,7 +23,7 @@ from __future__ import (
 )
 
 import logging
-from ipaddress import ip_address, ip_network
+from ipaddress import ip_network
 from typing import List, Optional
 
 from lte.protos.subscriberdb_pb2_grpc import SubscriberDBStub
@@ -34,6 +34,7 @@ from magma.mobilityd.ip_allocator_base import (
 from magma.mobilityd.ip_descriptor import IPDesc, IPState, IPType
 from magma.mobilityd.mobility_store import MobilityStore
 from magma.mobilityd.subscriberdb_client import SubscriberDbClient
+from magma.mobilityd.utils import IPAddress, IPNetwork, log_error_and_raise
 
 DEFAULT_IP_RECYCLE_INTERVAL = 15
 
@@ -44,6 +45,7 @@ class IPAllocatorStaticWrapper(IPAllocator):
         self, store: MobilityStore,
         subscriberdb_rpc_stub: SubscriberDBStub,
         ip_allocator: IPAllocator,
+        ipv6: bool = False,
     ):
         """ Initializes a static IP allocator
             This is wrapper around other configured Ip allocator. If subscriber
@@ -53,39 +55,43 @@ class IPAllocatorStaticWrapper(IPAllocator):
         self._store = store
         self._subscriber_client = SubscriberDbClient(subscriberdb_rpc_stub)
         self._ip_allocator = ip_allocator
+        if ipv6:
+            self._ip_version = 6
+        else:
+            self._ip_version = 4
 
-    def add_ip_block(self, ipblock: ip_network):
+    def add_ip_block(self, ipblock: IPNetwork):
         """ Add a block of IP addresses to the free IP list
         """
         self._ip_allocator.add_ip_block(ipblock)
 
     def remove_ip_blocks(
-        self, ipblocks: List[ip_network],
+        self, ipblocks: List[IPNetwork],
         force: bool = False,
-    ) -> List[ip_network]:
+    ) -> List[IPNetwork]:
         """ Remove allocated IP blocks.
         """
         return self._ip_allocator.remove_ip_blocks(ipblocks, force)
 
-    def list_added_ip_blocks(self) -> List[ip_network]:
+    def list_added_ip_blocks(self) -> List[IPNetwork]:
         """ List IP blocks added to the IP allocator
         Return:
              copy of the list of assigned IP blocks
         """
         return self._ip_allocator.list_added_ip_blocks()
 
-    def list_allocated_ips(self, ipblock: ip_network) -> List[ip_address]:
+    def list_allocated_ips(self, ipblock: IPNetwork) -> List[IPAddress]:
         """ List IP addresses allocated from a given IP block
         """
         return self._ip_allocator.list_allocated_ips(ipblock)
 
-    def alloc_ip_address(self, sid: str, vlan: int) -> IPDesc:
+    def alloc_ip_address(self, sid: str, vlan_id: int) -> IPDesc:
         """ Check if subscriber has static IP assigned.
         If it is not allocated use IP allocator to assign an IP.
         """
         ip_desc = self._allocate_static_ip(sid)
         if ip_desc is None:
-            ip_desc = self._ip_allocator.alloc_ip_address(sid, vlan)
+            ip_desc = self._ip_allocator.alloc_ip_address(sid, vlan_id)
         return ip_desc
 
     def release_ip(self, ip_desc: IPDesc):
@@ -99,6 +105,10 @@ class IPAllocatorStaticWrapper(IPAllocator):
                 IPState.FREE,
             )
             ip_block_network = ip_network(ip_desc.ip_block)
+            logging.debug(
+                "assigned blocks: %s remove: %s", self._store.assigned_ip_blocks,
+                ip_block_network,
+            )
             if ip_block_network in self._store.assigned_ip_blocks:
                 self._store.assigned_ip_blocks.remove(ip_block_network)
         else:
@@ -116,14 +126,18 @@ class IPAllocatorStaticWrapper(IPAllocator):
             "Found static IP: sid: %s ip_addr_info: %s",
             sid, str(ip_addr_info),
         )
+        if ip_addr_info.ip.version != self._ip_version:
+            logging.debug("IP version mismatch, expected version: %d", self._ip_version)
+            return None
         # Validate static IP is not in any of IP pool.
         for ip_pool in self._store.assigned_ip_blocks:
             if ip_addr_info.ip in ip_pool:
-                error_msg = "Static Ip {} Overlap with IP-POOL: {}".format(
-                    ip_addr_info.ip, ip_pool,
+                log_error_and_raise(
+                    DuplicateIPAssignmentError,
+                    "Static Ip %s Overlap with IP-POOL: %s",
+                    ip_addr_info.ip,
+                    ip_pool,
                 )
-                logging.error(error_msg)
-                raise DuplicateIPAssignmentError(error_msg)
 
         # update gw info if available.
         if ip_addr_info.net_info.gw_ip:

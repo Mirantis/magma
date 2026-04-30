@@ -11,17 +11,23 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <glog/logging.h>
 #include <lte/protos/mconfig/mconfigs.pb.h>
+#include <orc8r/protos/common.pb.h>
+#include <stdint.h>
+#include <yaml-cpp/yaml.h>
+#include <memory>
+#include <ostream>
+#include <string>
 
-#include "includes/MagmaService.h"
-#include "includes/MConfigLoader.h"
-#include "includes/ServiceRegistrySingleton.h"
-
-#include "EventTracker.h"
-#include "PacketGenerator.h"
-#include "magma_logging_init.h"
+#include "lte/gateway/c/connection_tracker/src/EventTracker.hpp"
+#include "lte/gateway/c/connection_tracker/src/PacketGenerator.hpp"
+#include "orc8r/gateway/c/common/config/MConfigLoader.hpp"
+#include "orc8r/gateway/c/common/config/ServiceConfigLoader.hpp"
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
+#include "orc8r/gateway/c/common/logging/magma_logging_init.hpp"
+#include "orc8r/gateway/c/common/sentry/SentryWrapper.hpp"
+#include "orc8r/gateway/c/common/service303/MagmaService.hpp"
 
 #define CONNECTION_SERVICE "connectiond"
 #define CONNECTIOND_VERSION "1.0"
@@ -41,13 +47,10 @@ static magma::mconfig::ConnectionD load_mconfig() {
   return mconfig;
 }
 
-static uint32_t get_log_verbosity(
-    const YAML::Node& config, magma::mconfig::ConnectionD mconfig) {
+static uint32_t get_log_verbosity(const YAML::Node& config,
+                                  magma::mconfig::ConnectionD mconfig) {
   if (!config["log_level"].IsDefined()) {
-    if (mconfig.log_level() < 0 || mconfig.log_level() > 4) {
-      return MINFO;
-    }
-    return mconfig.log_level();
+    return magma::get_log_verbosity_from_mconfig(mconfig.log_level());
   }
   std::string log_level = config["log_level"].as<std::string>();
   if (log_level == "DEBUG") {
@@ -68,6 +71,8 @@ static uint32_t get_log_verbosity(
 }
 
 int main(void) {
+  sentry_config_t sentry_config = construct_sentry_config_from_mconfig();
+  initialize_sentry(SENTRY_TAG_CONNECTIOND, &sentry_config);
   magma::init_logging(CONNECTION_SERVICE);
 
   auto mconfig = load_mconfig();
@@ -77,12 +82,12 @@ int main(void) {
   MLOG(MINFO) << "Starting Connection Tracker";
 
   std::string interface_name = config["interface_name"].as<std::string>();
-  std::string pkt_dst_mac    = config["pkt_dst_mac"].as<std::string>();
-  std::string pkt_src_mac    = config["pkt_src_mac"].as<std::string>();
-  int zone                   = config["zone"].as<int>();
+  std::string pkt_dst_mac = config["pkt_dst_mac"].as<std::string>();
+  std::string pkt_src_mac = config["pkt_src_mac"].as<std::string>();
+  int zone = config["zone"].as<int>();
 
-  magma::service303::MagmaService server(
-      CONNECTION_SERVICE, CONNECTIOND_VERSION);
+  magma::service303::MagmaService server(CONNECTION_SERVICE,
+                                         CONNECTIOND_VERSION);
   server.Start();
 
   auto pkt_generator = std::make_shared<magma::lte::PacketGenerator>(
@@ -93,5 +98,6 @@ int main(void) {
 
   event_tracker->init_conntrack_event_loop();
 
+  shutdown_sentry();
   return 0;
 }

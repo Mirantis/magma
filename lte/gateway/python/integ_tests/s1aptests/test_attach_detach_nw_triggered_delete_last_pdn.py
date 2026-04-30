@@ -39,7 +39,7 @@ class TestAttachDetachNwTriggeredDeleteLastPdn(unittest.TestCase):
         num_ues = 1
         self._s1ap_wrapper.configUEDevice(num_ues)
 
-        for i in range(num_ues):
+        for _ in range(num_ues):
             req = self._s1ap_wrapper.ue_req
             print(
                 "********************** Running End to End attach for ",
@@ -73,9 +73,7 @@ class TestAttachDetachNwTriggeredDeleteLastPdn(unittest.TestCase):
                 flow_list,
             )
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             act_ded_ber_ctxt_req = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
             )
@@ -107,10 +105,7 @@ class TestAttachDetachNwTriggeredDeleteLastPdn(unittest.TestCase):
             )
             # Receive NW initiated detach request
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_NW_INIT_DETACH_REQUEST.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_NW_INIT_DETACH_REQUEST.value
             print("**************** Received NW initiated Detach Req")
             print("**************** Sending Detach Accept")
 

@@ -1,36 +1,52 @@
 {
 	"extensions": [
 		"CoenraadS.bracket-pair-colorizer-2",
-		"xaver.clang-format",
-		"golang.go",
-		"notskm.clang-tidy",
+		"samverschueren.final-newline", // Adds a newline on save
 		"eamodio.gitlens",
-		"yzhang.markdown-all-in-one",
-		"christian-kohler.path-intellisense",
-		"vscodevim.vim",
 		"vscode-icons-team.vscode-icons",
 		"ms-vsliveshare.vsliveshare",
 		"ms-azuretools.vscode-docker",
+		// Editor
+		"vscodevim.vim",
+		// Markdown
+		"yzhang.markdown-all-in-one",
+		// Golang
+		"golang.go",
+		// C/C++
+		"notskm.clang-tidy",
+		"christian-kohler.path-intellisense",
 		"llvm-vs-code-extensions.vscode-clangd",
-		"mitaki28.vscode-clang",
+		// Python
+		"ms-python.python",
+		"ms-python.vscode-pylance",
+		"njpwerner.autodocstring",
+		// Protobuf
+		"zxh404.vscode-proto3",
+		// Bazel
 		"stackbuild.bazel-stack-vscode",
-		"coolchyni.beyond-debug",
 		"stackbuild.bazel-stack-vscode-cc",
 		"augustocdias.tasks-shell-input",
+		"ryuta46.multi-command",
+		"coolchyni.beyond-debug"
 	],
-	"image": "ghcr.io/magma/devcontainer:sha-6c6d62b",
+	"image": "ghcr.io/magma/magma/devcontainer:sha-84cfceb",
 	"settings": {
-		"terminal.integrated.shell.linux": "/bin/bash",
+		"search.followSymlinks": false,
+		"terminal.integrated.profiles.linux": {
+			"bash": {
+				"path": "bash",
+				"icon": "terminal-bash"
+			},
+			"zsh": {
+				"path": "zsh"
+			}
+		},
 		"files.watcherExclude": {
 			"**/.bazel-cache/**": true,
-			"**/.bazel-cache-repo/**": true,
-		},		
-		"bsv.bazel.buildFlags": [
-			"--config=devcontainer",
-		],
-		"bsv.bazel.testFlags": [
-			"--compilation_mode=dbg",
-		],
+			"**/.bazel-cache-repo/**": true
+		},
+		"bsv.bazel.buildFlags": [],
+		"bsv.bazel.testFlags": [],
 		"bsv.bes.enabled": false,
 		"bsv.bzl.codesearch.enabled": false,
 		"bsv.bzl.invocation.buildEventPublishAllActions": false,
@@ -44,26 +60,54 @@
 		"clangd.arguments": [
 			"-log=verbose",
 			"-pretty",
-			"--background-index",
+			"--background-index"
 		],
 		"clangd.onConfigChanged": "restart",
-		// Update this field with any new targets that need compilation database generation
+		"editor.formatOnSave": true,
+		// Update this field with any new Bazel targets that need compilation database generation
 		"bsv.cc.compdb.targets": [
-			"//lte/gateway/c/session_manager:sessiond"
-		]
+			"//orc8r/gateway/c/...",
+			"//lte/gateway/c/..."
+		],
+		"multiCommand.commands": [
+			{
+				"command": "multiCommand.generateCcWithBazelAndRestartClangderror",
+				"sequence": [
+					"bsv.cc.compdb.generate",
+					"clangd.restart"
+				]
+			}
+		],
+		"python.terminal.activateEnvironment": true,
+		"python.analysis.extraPaths": [
+			"${containerWorkspaceFolder}/orc8r/gateway/python/",
+			"${containerWorkspaceFolder}/lte/gateway/python/"
+		],
+		"python.defaultInterpreterPath": "/home/vscode/python_ide_env/bin/python3",
+		"python.formatting.provider": "autopep8",
+		"python.formatting.autopep8Args": [
+			// This should be the same set of flags as ones specified in `lte/gateway/precommit.py`
+			"--select=W191,W291,W292,W293,W391,E131,E2,E3"
+		],
+		"[python]": {
+			"editor.codeActionsOnSave": {
+				"source.organizeImports": true
+			}
+		}
 	},
+	// Also see https://github.com/magma/magma/blob/77bc3e4a1c8a76e723fff2aa355a04445d04a3c6/.devcontainer/Dockerfile#L25
 	"mounts": [
 		"source=/var/run/docker.sock,target=/var/run/docker-host.sock,type=bind"
 	],
-	"postCreateCommand": "sudo ln -s ${containerWorkspaceFolder}/lte/gateway/configs /etc/magma",
+	// Uncomment the following line to use the docker socket of the host  machine
+	//"overrideCommand": false,
+	"postCreateCommand": "${containerWorkspaceFolder}/.devcontainer/post-create-commands.sh ${containerWorkspaceFolder}",
+	// multiple postCreateCommands: currently only possible with '&&'/';' or shell script (https://github.com/microsoft/vscode-remote-release/issues/3527)
 	"runArgs": [
 		"--init"
 	],
-	"containerEnv": {
-		"VSCODE_BAZEL_BUILD_CONFIG": "devcontainer",
-	},
 	"remoteEnv": {
-		"LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}",
+		"LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
 	},
-	"remoteUser": "vscode",
+	"remoteUser": "vscode"
 }

@@ -61,14 +61,6 @@ class IPV6RouterSolicitationTableTest(unittest.TestCase):
     OTHER_IP = '1.2.3.4'
 
     @classmethod
-    @unittest.mock.patch(
-        'netifaces.ifaddresses', return_value=[
-            [{'addr': '00:11:22:33:44:55'}],
-            [{'addr': 'fe80::706e:85ff:fe67:14f%testing_br'}],
-        ],
-    )
-    @unittest.mock.patch('netifaces.AF_LINK', 0)
-    @unittest.mock.patch('netifaces.AF_INET6', 1)
     def setUpClass(cls, *_):
         """
         Starts the thread which launches ryu apps
@@ -114,6 +106,7 @@ class IPV6RouterSolicitationTableTest(unittest.TestCase):
                 'clean_restart': True,
                 'virtual_mac': 'd6:34:bc:81:5d:40',
                 'enable_nat': True,
+                'classifier_controller_id': 5,
             },
             mconfig=PipelineD(
                 ue_ip_block=cls.UE_BLOCK,
@@ -178,12 +171,13 @@ class IPV6RouterSolicitationTableTest(unittest.TestCase):
         snapshot_verifier = SnapshotVerifier(
             self, self.BRIDGE,
             self.service_manager,
+            include_stats=False,
         )
 
         with isolator, snapshot_verifier:
             pkt_sender.send(pkt_rs)
             pkt_sender.send(pkt_ns)
-            wait_after_send(self.testing_controller)
+            wait_after_send(self.testing_controller, wait_time=5)
 
 
 if __name__ == "__main__":

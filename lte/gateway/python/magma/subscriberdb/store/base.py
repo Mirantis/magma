@@ -100,12 +100,7 @@ class BaseStore(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def list_subscribers(self):
-        """
-        Method that should return the list of subscribers stored
-
-        Returns:
-            List of subscriber ids
-        """
+        """list_subscribers - method that should return the list of subscribers stored"""
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -146,3 +141,28 @@ class DuplicateSubscriberError(Exception):
     to delete the old subscriber and add, or declare an error.
     """
     pass
+
+
+class SubscriberServerTooBusy(Exception):
+    """
+    Exception thrown when sqlite3 is locked by other application
+    when a query is requested for a subscriber
+    """
+    pass
+
+
+class SuciProfileNotFoundError(Exception):
+    """
+    Exception thrown when a suciprofile is not present in the store
+    when a query is requested for that suciprofile
+    """
+    pass                    # noqa: WPS604
+
+
+class DuplicateSuciProfileError(Exception):
+    """
+    Exception thrown when a suciprofile is requested to be added to the store,
+    and the subscriber is already present. The application can choose
+    to delete the old suciprofile and add, or declare an error.
+    """
+    pass                    # noqa: WPS604

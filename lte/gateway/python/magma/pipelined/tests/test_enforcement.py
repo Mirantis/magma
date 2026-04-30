@@ -70,7 +70,7 @@ class EnforcementTableTest(unittest.TestCase):
     BRIDGE = 'testing_br'
     IFACE = 'testing_br'
     MAC_DEST = "5e:cc:cc:b1:49:4b"
-    he_controller_reference = Future()
+    he_controller_reference: Future = Future()
     VETH = 'tveth1'
     VETH_NS = 'tveth1_ns'
     PROXY_PORT = '16'
@@ -130,6 +130,7 @@ class EnforcementTableTest(unittest.TestCase):
                 'enable_nat': True,
                 'ovs_gtp_port_number': 10,
                 'setup_type': 'LTE',
+                'redis_enabled': False,
             },
             mconfig=PipelineD(),
             loop=None,
@@ -498,7 +499,7 @@ class EnforcementTableTest(unittest.TestCase):
         )
 
         with s1.isolator, s1.context, s2.isolator, s2.context, flow_verifier, \
-             snapshot_verifier:
+                snapshot_verifier:
             for pkt in pkts_to_send:
                 pkt_sender.send(pkt.pkt, pkt.num)
 

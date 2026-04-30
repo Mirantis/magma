@@ -20,7 +20,6 @@ import (
 	"sort"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/pkg/errors"
 	"github.com/thoas/go-funk"
 
 	"magma/orc8r/cloud/go/sqorc"
@@ -63,13 +62,13 @@ func (store *sqlConfiguratorStorage) doesPhysicalIDExist(physicalID string) (boo
 		return false, nil
 	}
 	if err != nil {
-		return false, errors.Wrapf(err, "check for existence of physical ID %s", physicalID)
+		return false, fmt.Errorf("check for existence of physical ID %s: %w", physicalID, err)
 	}
 
 	return count > 0, nil
 }
 
-func (store *sqlConfiguratorStorage) insertIntoEntityTable(networkID string, ent NetworkEntity) (NetworkEntity, error) {
+func (store *sqlConfiguratorStorage) insertIntoEntityTable(networkID string, ent *NetworkEntity) (*NetworkEntity, error) {
 	ent.Pk = store.idGenerator.New()
 	ent.GraphID = store.idGenerator.New() // potentially-temporary graph ID
 
@@ -79,12 +78,12 @@ func (store *sqlConfiguratorStorage) insertIntoEntityTable(networkID string, ent
 		RunWith(store.tx).
 		Exec()
 	if err != nil {
-		return NetworkEntity{}, errors.Wrapf(err, "error creating entity %s", ent.GetTK())
+		return &NetworkEntity{}, fmt.Errorf("error creating entity %s: %w", ent.GetTK(), err)
 	}
 	return ent, nil
 }
 
-func (store *sqlConfiguratorStorage) createEdges(networkID string, entity NetworkEntity) (EntitiesByTK, error) {
+func (store *sqlConfiguratorStorage) createEdges(networkID string, entity *NetworkEntity) (EntitiesByTK, error) {
 	// Load the associated entities first because we need to know PKs
 	// This will also load graph ID on the entity because creating an edge can
 	// involve merging previously disjoint graphs.
@@ -108,35 +107,35 @@ func (store *sqlConfiguratorStorage) createEdges(networkID string, entity Networ
 	}
 	_, err = insertBuilder.RunWith(store.tx).Exec()
 	if err != nil {
-		return entsByTk, errors.Wrap(err, "error creating assocs")
+		return entsByTk, fmt.Errorf("error creating assocs: %w", err)
 	}
 	return entsByTk, nil
 }
 
-func (store *sqlConfiguratorStorage) loadEntsFromEdges(networkID string, targetEntity NetworkEntity) (EntitiesByTK, error) {
+func (store *sqlConfiguratorStorage) loadEntsFromEdges(networkID string, targetEntity *NetworkEntity) (EntitiesByTK, error) {
 	loadedEntsByTk, err := store.loadEntitiesFromIDs(networkID, targetEntity.Associations)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
-	loadedEntsByTk[targetEntity.GetTK()] = &targetEntity
+	loadedEntsByTk[targetEntity.GetTK()] = targetEntity
 	return loadedEntsByTk, nil
 }
 
 func (store *sqlConfiguratorStorage) loadEntitiesFromIDs(networkID string, idsToLoad []*EntityID) (EntitiesByTK, error) {
-	loaded, err := store.loadEntities(networkID, EntityLoadFilter{IDs: idsToLoad}, EntityLoadCriteria{})
+	loaded, err := store.loadEntities(networkID, &EntityLoadFilter{IDs: idsToLoad}, &EntityLoadCriteria{})
 	if err != nil {
 		return nil, err
 	}
 
 	entsNotFound := calculateIDsNotFound(loaded, idsToLoad)
 	if funk.NotEmpty(entsNotFound) {
-		return nil, errors.Errorf("could not find entities matching %v", entsNotFound)
+		return nil, fmt.Errorf("could not find entities matching %v", entsNotFound)
 	}
 
 	return loaded, nil
 }
 
-func (store *sqlConfiguratorStorage) mergeGraphs(createdEntity NetworkEntity, allAssociatedEntsByTk EntitiesByTK) (string, error) {
+func (store *sqlConfiguratorStorage) mergeGraphs(createdEntity *NetworkEntity, allAssociatedEntsByTk EntitiesByTK) (string, error) {
 	// If we create a node or edge which bridges 2 previously disjoint graphs,
 	// then we need to change the ID of one of the graphs to the joined one.
 
@@ -173,25 +172,25 @@ func (store *sqlConfiguratorStorage) mergeGraphs(createdEntity NetworkEntity, al
 			RunWith(sc).
 			Exec()
 		if err != nil {
-			return "", errors.Wrap(err, "error updating entity graphs")
+			return "", fmt.Errorf("error updating entity graphs: %w", err)
 		}
 	}
 
 	return targetGraphID, nil
 }
 
-func (store *sqlConfiguratorStorage) loadEntToUpdate(networkID string, update EntityUpdateCriteria) (*NetworkEntity, error) {
+func (store *sqlConfiguratorStorage) loadEntToUpdate(networkID string, update *EntityUpdateCriteria) (*NetworkEntity, error) {
 	loaded, err := store.loadEntities(
 		networkID,
-		EntityLoadFilter{IDs: []*EntityID{update.GetID()}},
-		EntityLoadCriteria{},
+		&EntityLoadFilter{IDs: []*EntityID{update.GetID()}},
+		&EntityLoadCriteria{},
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to load entity to update")
+		return nil, fmt.Errorf("failed to load entity to update: %w", err)
 	}
 	// don't error on deleting an entity which doesn't exist
 	if len(loaded) != 1 && !update.DeleteEntity {
-		return nil, errors.Errorf("expected to load 1 ent for update, got %d", len(loaded))
+		return nil, fmt.Errorf("expected to load 1 ent for update, got %d", len(loaded))
 	}
 
 	if funk.IsEmpty(loaded) {
@@ -206,12 +205,12 @@ func (store *sqlConfiguratorStorage) loadEntToUpdate(networkID string, update En
 }
 
 // entOut is an output parameter
-func (store *sqlConfiguratorStorage) processEntityFieldsUpdate(pk string, update EntityUpdateCriteria, entOut *NetworkEntity) error {
+func (store *sqlConfiguratorStorage) processEntityFieldsUpdate(pk string, update *EntityUpdateCriteria, entOut *NetworkEntity) error {
 	_, err := store.getEntityUpdateQueryBuilder(pk, update).
 		RunWith(store.tx).
 		Exec()
 	if err != nil {
-		return errors.Wrap(err, "failed to update entity fields")
+		return fmt.Errorf("failed to update entity fields: %w", err)
 	}
 
 	if update.NewName != nil {
@@ -232,7 +231,7 @@ func (store *sqlConfiguratorStorage) processEntityFieldsUpdate(pk string, update
 }
 
 // entToUpdateOut is an output parameter
-func (store *sqlConfiguratorStorage) processEdgeUpdates(networkID string, update EntityUpdateCriteria, entToUpdateOut *NetworkEntity) error {
+func (store *sqlConfiguratorStorage) processEdgeUpdates(networkID string, update *EntityUpdateCriteria, entToUpdateOut *NetworkEntity) error {
 	assocsToSetSpecified := update.AssociationsToSet != nil
 	if !assocsToSetSpecified && funk.IsEmpty(update.AssociationsToAdd) && funk.IsEmpty(update.AssociationsToDelete) {
 		return nil
@@ -246,7 +245,7 @@ func (store *sqlConfiguratorStorage) processEdgeUpdates(networkID string, update
 			RunWith(store.tx).
 			Exec()
 		if err != nil {
-			return errors.Wrap(err, "failed to delete existing edges")
+			return fmt.Errorf("failed to delete existing edges: %w", err)
 		}
 	}
 
@@ -254,23 +253,23 @@ func (store *sqlConfiguratorStorage) processEdgeUpdates(networkID string, update
 	// we'll just make the ent's Associations the edges we want to create
 	// If we want to set associations, we'll create those
 	entToUpdateOut.Associations = update.getEdgesToCreate()
-	newlyAssociatedEntsByTk, err := store.createEdges(networkID, *entToUpdateOut)
+	newlyAssociatedEntsByTk, err := store.createEdges(networkID, entToUpdateOut)
 	if err != nil {
 		entToUpdateOut.Associations = nil
-		return errors.WithStack(err)
+		return err
 	}
 
 	// Just like entity creation, we might need to merge graphs after adding
-	newGraphID, err := store.mergeGraphs(*entToUpdateOut, newlyAssociatedEntsByTk)
+	newGraphID, err := store.mergeGraphs(entToUpdateOut, newlyAssociatedEntsByTk)
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 	entToUpdateOut.GraphID = newGraphID
 
 	// Now delete edges
 	err = store.deleteEdges(networkID, update.AssociationsToDelete, entToUpdateOut)
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 
 	// Finally, we need to load the entire graph corresponding to this node's
@@ -286,13 +285,13 @@ func (store *sqlConfiguratorStorage) processEdgeUpdates(networkID string, update
 
 	err = store.fixGraph(networkID, newGraphID, entToUpdateOut)
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 
 	return nil
 }
 
-func (store *sqlConfiguratorStorage) getEntityUpdateQueryBuilder(pk string, update EntityUpdateCriteria) sq.UpdateBuilder {
+func (store *sqlConfiguratorStorage) getEntityUpdateQueryBuilder(pk string, update *EntityUpdateCriteria) sq.UpdateBuilder {
 	// UPDATE cfg_entities SET (name, description, physical_id, config, version) = ($1, $2, $3, $4, cfg_entities.version + 1)
 	// WHERE pk = $5
 	updateBuilder := store.builder.Update(entityTable).Where(sq.Eq{entPkCol: pk})
@@ -321,7 +320,7 @@ func (store *sqlConfiguratorStorage) deleteEdges(networkID string, edgesToDelete
 	// Get PKs to delete
 	loaded, err := store.loadEntitiesFromIDs(networkID, edgesToDelete)
 	if err != nil {
-		return errors.Wrap(err, "could not load entities matching associations to delete")
+		return fmt.Errorf("could not load entities matching associations to delete: %w", err)
 	}
 
 	orClause := make(sq.Or, 0, len(edgesToDelete))
@@ -337,7 +336,7 @@ func (store *sqlConfiguratorStorage) deleteEdges(networkID string, edgesToDelete
 		RunWith(store.tx).
 		Exec()
 	if err != nil {
-		return errors.Wrap(err, "failed to delete assocs")
+		return fmt.Errorf("failed to delete assocs: %w", err)
 	}
 
 	if funk.IsEmpty(entToUpdateOut.Associations) {

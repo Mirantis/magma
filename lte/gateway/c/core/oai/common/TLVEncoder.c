@@ -24,16 +24,16 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "TLVEncoder.h"
+#include "lte/gateway/c/core/oai/common/TLVEncoder.h"
 
 int errorCodeEncoder = 0;
 
-int encode_bstring(
-    const_bstring const str, uint8_t* const buffer, const uint32_t buflen) {
+int encode_bstring(const_bstring const str, uint8_t* const buffer,
+                   const uint32_t buflen) {
   if (str) {
     if (blength(str) > 0) {
       CHECK_PDU_POINTER_AND_LENGTH_ENCODER(buffer, blength(str), buflen);
-      memcpy((void*) buffer, (void*) str->data, blength(str));
+      memcpy((void*)buffer, (void*)str->data, blength(str));
       return blength(str);
     } else {
       return 0;

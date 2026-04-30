@@ -25,10 +25,10 @@ import (
 	"magma/lte/cloud/go/services/nprobe/obsidian/handlers"
 	np_storage "magma/lte/cloud/go/services/nprobe/storage"
 	"magma/orc8r/cloud/go/blobstore"
-	"magma/orc8r/cloud/go/obsidian"
-	"magma/orc8r/cloud/go/obsidian/swagger"
-	"magma/orc8r/cloud/go/obsidian/swagger/protos"
 	"magma/orc8r/cloud/go/service"
+	"magma/orc8r/cloud/go/services/obsidian"
+	"magma/orc8r/cloud/go/services/obsidian/swagger/protos"
+	servicers "magma/orc8r/cloud/go/services/obsidian/swagger/servicers/protected"
 	"magma/orc8r/cloud/go/sqorc"
 	"magma/orc8r/cloud/go/storage"
 )
@@ -49,7 +49,7 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Error opening db connection: %+v", err)
 	}
-	fact := blobstore.NewSQLBlobStorageFactory(nprobe.NProbeTableBlobstore, db, sqorc.GetSqlBuilder())
+	fact := blobstore.NewSQLStoreFactory(nprobe.NProbeTableBlobstore, db, sqorc.GetSqlBuilder())
 	err = fact.InitializeFactory()
 	if err != nil {
 		glog.Fatalf("Error initializing nprobe table: %+v", err)
@@ -58,7 +58,7 @@ func main() {
 
 	// Attach handlers
 	obsidian.AttachHandlers(srv.EchoServer, handlers.GetHandlers(nprobeBlobstore))
-	protos.RegisterSwaggerSpecServer(srv.GrpcServer, swagger.NewSpecServicerFromFile(nprobe.ServiceName))
+	protos.RegisterSwaggerSpecServer(srv.ProtectedGrpcServer, servicers.NewSpecServicerFromFile(nprobe.ServiceName))
 
 	serviceConfig := nprobe.GetServiceConfig()
 	nProbeManager, err := manager.NewNProbeManager(serviceConfig, nprobeBlobstore)

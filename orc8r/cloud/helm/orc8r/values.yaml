@@ -15,10 +15,14 @@ nms:
   magmalte:
     create: true
     image:
-      repository: <registry>/magmalte
-      tag: latest
+      repository: linuxfoundation.jfrog.io/magma-docker/magmalte
+      tag: 1.7.0
   nginx:
     create: true
+  certs:
+    enabled: false
+  secret:
+    certs: orc8r-secrets-certs
 
 # Reference to one or more secrets to be used when pulling images
 # ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
@@ -55,8 +59,9 @@ secret:
 # certs sub-chart configuration.
 certs:
   create: false
+  enabled: false
 
-  domainName: localhost
+  domainName: ""
 
 nginx:
   create: true
@@ -79,7 +84,7 @@ nginx:
       clientcertLegacy: {}
       proxy: {}
     labels: {}
-    type: ClusterIP
+    type: LoadBalancer
     port:
       clientcert:
         port: 8443
@@ -102,8 +107,8 @@ nginx:
 
   # nginx image
   image:
-    repository: <registry>/nginx
-    tag: latest
+    repository: linuxfoundation.jfrog.io/magma-docker/nginx
+    tag: 1.7.0
     pullPolicy: IfNotPresent
 
   # Settings affecting nginx application
@@ -142,16 +147,17 @@ controller:
   # Configure pod disruption budgets for controller
   # ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/#specifying-a-poddisruptionbudget
   podDisruptionBudget:
-    enabled: false
+    enabled: true
     minAvailable: 1
     maxUnavailable: ""
 
   # orc8r_base image
   image:
-    repository: <registry>/orc8r_base
-    tag: latest
+    repository: linuxfoundation.jfrog.io/magma-docker/controller
+    tag: 1.7.0
     pullPolicy: IfNotPresent
-
+    env:
+      orc8r_domain_name: magma.test
   spec:
     # Postgres/mysql configuration
     database:
@@ -211,7 +217,9 @@ certifier:
   service:
     labels:
       orc8r.io/analytics_collector: "true"
-    annotations: {}
+    annotations:
+      orc8r.io/obsidian_handlers_path_prefixes: >
+        /magma/v1/user,
 
 configurator:
   service:
@@ -296,6 +304,11 @@ service_registry:
     labels: {}
     annotations: {}
 
+orc8r_worker:
+  service:
+    labels: {}
+    annotations: {}
+
 state:
   service:
     labels: {}
@@ -323,3 +336,26 @@ cloudwatch:
 # logging sub-chart configuration.
 logging:
   enabled: true
+
+# Domain proxy sub-chart configuration. Set true to enable.
+dp:
+  service:
+    labels:
+      orc8r.io/obsidian_handlers: "true"
+      orc8r.io/swagger_spec: "true"
+    annotations:
+      orc8r.io/obsidian_handlers_path_prefixes: /magma/v1/dp
+  enabled: false
+  config:
+    dp_backend:
+      cbsd_inactivity_interval_sec: 14400
+      log_consumer_url: "http://domain-proxy-fluentd:9888/dp"
+    active_mode_controller:
+      dial_timeout_sec: 60
+      heartbeat_send_timeout_sec: 10
+      request_timeout_sec: 5
+      request_processing_interval_sec: 10
+      polling_interval: 10
+      grpc_service: 'domain-proxy-radio-controller'
+      grpc_port: 50053
+      cbsd_inactivity_interval_sec: 14400

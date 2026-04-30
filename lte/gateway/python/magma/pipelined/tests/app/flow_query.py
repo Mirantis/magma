@@ -14,12 +14,10 @@ limitations under the License.
 import abc
 from collections import namedtuple
 
-from integ_tests.s1aptests.ovs import LOCALHOST
-from integ_tests.s1aptests.ovs.rest_api import get_datapath, get_flows
 from ryu.lib import hub
 
 FlowStats = namedtuple(
-    'FlowData', [
+    'FlowStats', [
         'packets', 'bytes', 'duration_sec',
         'cookie',
     ],
@@ -48,35 +46,6 @@ class FlowQuery(metaclass=abc.ABCMeta):
             [FlowStats]: Flow rules information
         """
         raise NotImplementedError()
-
-
-# REST API is deprecated transition to RyuDirectFlowQuery
-class RyuRestFlowQuery(FlowQuery):
-    """
-    RyuRestFlowQuery uses ryu REST api requests to get ovs flow stats.
-
-    Flows are matched on cookie and match fields. When the FlowQuery is created
-    the lookup method can be used to check the stats of the mathed flow.
-    """
-
-    def __init__(self, table_id, ovs_ip=LOCALHOST, match=None, cookie=None):
-        self._table_id = table_id
-        self._datapath = get_datapath(ovs_ip)
-        self._ovs_ip = ovs_ip
-        self._match = match
-        self._cookie = cookie
-
-    def lookup(self, match=None, cookie=None):
-        return [
-            FlowStats(
-                flow["packet_count"], flow["byte_count"], flow["duration_sec"],
-                flow["cookie"],
-            ) for flow in get_flows(
-                self._datapath,
-                _generate_ryu_req(self._table_id, self._match, self._cookie),
-                self._ovs_ip,
-            )
-        ]
 
 
 class RyuDirectFlowQuery(FlowQuery):

@@ -17,6 +17,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/magma/milenage"
 	"github.com/stretchr/testify/assert"
 
 	fegprotos "magma/feg/cloud/go/protos"
@@ -24,7 +25,6 @@ import (
 	"magma/feg/gateway/services/swx_proxy/cache"
 	swx "magma/feg/gateway/services/swx_proxy/servicers"
 	hss "magma/feg/gateway/services/testcore/hss/servicers"
-	"magma/lte/cloud/go/crypto"
 	lteprotos "magma/lte/cloud/go/protos"
 )
 
@@ -42,7 +42,7 @@ func testMARSuccessful(t *testing.T, verifyAuthorization bool, clearAAAserver bo
 	if clearAAAserver {
 		subscriber.State.TgppAaaServerName = ""
 	}
-	_, err = hss.UpdateSubscriber(context.Background(), subscriber)
+	_, err = hss.UpdateSubscriber(context.Background(), &lteprotos.SubscriberUpdate{Data: subscriber})
 	assert.NoError(t, err)
 
 	swxProxy := getTestSwxProxy(t, hss, verifyAuthorization, false, true)
@@ -58,10 +58,10 @@ func testMARSuccessful(t *testing.T, verifyAuthorization bool, clearAAAserver bo
 	assert.Equal(t, 5, len(maa.GetSipAuthVectors()))
 	for _, vector := range maa.GetSipAuthVectors() {
 		assert.Equal(t, fegprotos.AuthenticationScheme_EAP_AKA, vector.AuthenticationScheme)
-		assert.Equal(t, crypto.ConfidentialityKeyBytes, len(vector.ConfidentialityKey))
-		assert.Equal(t, crypto.IntegrityKeyBytes, len(vector.IntegrityKey))
-		assert.Equal(t, crypto.RandChallengeBytes+crypto.AutnBytes, len(vector.RandAutn))
-		assert.Equal(t, crypto.XresBytes, len(vector.Xres))
+		assert.Equal(t, milenage.ConfidentialityKeyBytes, len(vector.ConfidentialityKey))
+		assert.Equal(t, milenage.IntegrityKeyBytes, len(vector.IntegrityKey))
+		assert.Equal(t, milenage.RandChallengeBytes+milenage.AutnBytes, len(vector.RandAutn))
+		assert.Equal(t, milenage.XresBytes, len(vector.Xres))
 	}
 }
 
@@ -70,7 +70,7 @@ func TestMAR_AuthRejected(t *testing.T) {
 	subscriber, err := hss.GetSubscriberData(context.Background(), &lteprotos.SubscriberID{Id: "sub1"})
 	assert.NoError(t, err)
 	subscriber.Non_3Gpp.Non_3GppIpAccess = lteprotos.Non3GPPUserProfile_NON_3GPP_SUBSCRIPTION_BARRED
-	_, err = hss.UpdateSubscriber(context.Background(), subscriber)
+	_, err = hss.UpdateSubscriber(context.Background(), &lteprotos.SubscriberUpdate{Data: subscriber})
 	assert.NoError(t, err)
 
 	swxProxy := getTestSwxProxy(t, hss, true, true, true)

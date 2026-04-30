@@ -11,8 +11,9 @@
  * limitations under the License.
  */
 
-#include "includes/ServiceRegistrySingleton.h"
 #include <gtest/gtest.h>
+
+#include "orc8r/gateway/c/common/service_registry/ServiceRegistrySingleton.hpp"
 
 using magma::ServiceRegistrySingleton;
 using ::testing::Test;
@@ -39,10 +40,5 @@ TEST(TestServiceRegistry, test_get_local_channel_args) {
   EXPECT_EQ(args.ip, "127.0.0.1");
   EXPECT_EQ(args.port, "60051");
   EXPECT_EQ(args.authority, "mobilityd.local");
-}
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 }  // namespace magma

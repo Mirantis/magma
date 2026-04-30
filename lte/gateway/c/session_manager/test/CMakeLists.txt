@@ -19,22 +19,23 @@ include_directories("${PROJECT_SOURCE_DIR}")
 include_directories("/usr/src/googletest/googlemock/include/")
 
 add_library(SESSIOND_TEST_LIB
-    Consts.h
-    Matchers.h
+    Consts.hpp
+    Matchers.hpp
     ProtobufCreators.cpp
-    ProtobufCreators.h
-    SessiondMocks.h
-    SessionStateTester.h
+    ProtobufCreators.hpp
+    SessiondMocks.hpp
+    SessionStateTester.hpp
+    SessionStateTester5g.hpp
     )
 
 link_directories(/usr/src/googletest/googlemock/lib/)
 target_link_libraries(SESSIOND_TEST_LIB SESSION_MANAGER gmock_main gtest gtest_main gmock pthread rt)
 
 foreach (session_test polling_pipelined session_credit local_enforcer cloud_reporter
-    session_manager_handler sessiond_integ session_state
+    session_manager_handler sessiond_integ session_state operational_states_handler
     session_store store_client stored_state proxy_responder_handler
     metering_reporter local_enforcer_wallet_exhaust charging_grant
-    usage_monitor upf_node_state set_session_manager_handler)
+    usage_monitor upf_node_state set_session_manager_handler session_state_5g)
   add_executable(${session_test}_test test_${session_test}.cpp)
   target_link_libraries(${session_test}_test SESSIOND_TEST_LIB)
   add_test(test_${session_test} ${session_test}_test)

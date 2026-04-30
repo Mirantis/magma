@@ -10,17 +10,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-import collections
 import logging
 import time
+from typing import Any, List, NamedTuple
 
 import grpc
 import metrics_pb2 as metrics_proto
-import orc8r.protos.metricsd_pb2 as metricsd
 from integ_tests.gateway.rpc import get_rpc_channel
 from orc8r.protos.common_pb2 import Void
 from orc8r.protos.service303_pb2 import ServiceInfo
 from orc8r.protos.service303_pb2_grpc import Service303Stub
+
+
+# Container for storing metric values
+class MetricValue(NamedTuple):
+    service: str
+    name: str
+    labels: List
+    value: Any
 
 
 class MetricNotFoundException(Exception):
@@ -56,7 +63,7 @@ class GatewayServicesUtil(object):
         # Mobilityd comes up after mme, so wait for this too
         assert(
             self._mobilityd_service.wait_for_healthy_service(
-            after_start_time,
+                after_start_time,
             )
         )
 
@@ -103,7 +110,7 @@ class Service303Util(object):
     @staticmethod
     def _is_metric_type_supported(metric_type):
         return metric_type == metrics_proto.GAUGE \
-               or metric_type == metrics_proto.COUNTER
+            or metric_type == metrics_proto.COUNTER
 
     def get_metric_value(
         self,
@@ -117,12 +124,10 @@ class Service303Util(object):
         no metric under given metric_name matches the labels.
 
         Args:
-             metric_name (str): encoded string name of metric.
-             e.g.: "501" for ue_attach. Use str(protos.metricsd_pb2.ue_attach)
-             to get "501".
+             metric_name (str): name of metric.
              expected_labels ({str: str}): a dict of {label_name, label_value}
              that the metric should have. Optional
-             e.g.: {'0', 'success'}
+             e.g.: {'result', 'success'}
              default (float): default value to return if metric is not found.
              e.g.: 0.
 
@@ -139,8 +144,7 @@ class Service303Util(object):
                 return default
             else:
                 raise MetricNotFoundException(
-                    "No {metric_name} metric found."
-                    .format(metric_name=metric_name),
+                    f"No {metric_name} metric found.",
                 )
         metric_type = metric.type
         if not self._is_metric_type_supported(metric_type):
@@ -157,20 +161,17 @@ class Service303Util(object):
             return default
         else:
             raise MetricNotFoundException(
-                "No metric under {metric_name} "
-                "has all  of the label_values specified"
-                .format(metric_name=metric_name),
+                f"No metric under {metric_name} "
+                "has all  of the label_values specified",
             )
 
     def get_start_time(self):
         """ Get the start time of the running service """
-        return self.get_metric_value(
-            str(metricsd.process_start_time_seconds),
-        )
+        return self.get_metric_value("process_start_time_seconds")
 
     def get_uptime(self):
         """ Get the uptime (time since service start) of running service """
-        return self.get_metric_value(str(metricsd.process_cpu_seconds_total))
+        return self.get_metric_value("process_cpu_seconds_total")
 
     def get_metrics(self):
         """ Helper function to query for metrics over grpc """
@@ -238,22 +239,18 @@ class Service303Util(object):
             info = self._try_to_grpc(self.get_service_info)
 
             if (
-                info and info.health == ServiceInfo.APP_HEALTHY and
-                info.state == ServiceInfo.ALIVE
+                info and info.health == ServiceInfo.APP_HEALTHY
+                and info.state == ServiceInfo.ALIVE
             ):
                 if self._service_started_after(started_after_time):
                     return True
                 else:
-                    print("%s hasn't restarted yet" % (self._service_name))
+                    print(f"{self._service_name} hasn't restarted yet")
             else:
-                print("%s not healthy, waiting..." % (self._service_name))
+                print(f"{self._service_name} not healthy, waiting...")
             time.sleep(self.SLEEP_TIME)
-        print("max iterations hit, %s not healthy" % (self._service_name))
+        print(f"max iterations hit, {self._service_name} not healthy")
         return False
-
-
-# Container for storing metric values
-MetricValue = collections.namedtuple('MetricValue', 'service name labels value')
 
 
 def verify_gateway_metrics(test):

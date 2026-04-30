@@ -15,13 +15,13 @@ limitations under the License.
 package registry
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"context"
 	"github.com/golang/glog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -33,20 +33,21 @@ import (
 const (
 	ServiceRegistryServiceName = "service_registry"
 	ServiceRegistryModeEnvVar  = "SERVICE_REGISTRY_MODE"
-	DockerRegistryMode         = "docker"
 	K8sRegistryMode            = "k8s"
 	YamlRegistryMode           = "yaml"
 
-	HttpServerPort  = 8080
-	GrpcServicePort = 9180
+	HttpServerPort           = 8080
+	GrpcServicePort          = 9180
+	ProtectedGrpcServicePort = 9190
 
 	annotationFieldSeparator = ","
 )
 
 type ServiceRegistry struct {
 	sync.RWMutex
-	ServiceConnections map[string]*grpc.ClientConn
-	ServiceLocations   map[string]ServiceLocation
+	ServiceConnections          map[string]*grpc.ClientConn
+	ProtectedServiceConnections map[string]*grpc.ClientConn
+	ServiceLocations            map[string]ServiceLocation
 
 	cloudConnMu      sync.RWMutex
 	cloudConnections map[string]cloudConnection
@@ -71,10 +72,11 @@ var localKeepaliveParams = keepalive.ClientParameters{
 func New() *ServiceRegistry {
 	registryMode := os.Getenv(ServiceRegistryModeEnvVar)
 	return &ServiceRegistry{
-		ServiceConnections:  map[string]*grpc.ClientConn{},
-		ServiceLocations:    map[string]ServiceLocation{},
-		cloudConnections:    map[string]cloudConnection{},
-		serviceRegistryMode: registryMode,
+		ServiceConnections:          map[string]*grpc.ClientConn{},
+		ProtectedServiceConnections: map[string]*grpc.ClientConn{},
+		ServiceLocations:            map[string]ServiceLocation{},
+		cloudConnections:            map[string]cloudConnection{},
+		serviceRegistryMode:         registryMode,
 	}
 }
 
@@ -86,10 +88,11 @@ func NewWithDialOpts(opts ...grpc.DialOption) *ServiceRegistry {
 
 func NewWithMode(mode string) *ServiceRegistry {
 	return &ServiceRegistry{
-		ServiceConnections:  map[string]*grpc.ClientConn{},
-		ServiceLocations:    map[string]ServiceLocation{},
-		cloudConnections:    map[string]cloudConnection{},
-		serviceRegistryMode: mode,
+		ServiceConnections:          map[string]*grpc.ClientConn{},
+		ProtectedServiceConnections: map[string]*grpc.ClientConn{},
+		ServiceLocations:            map[string]ServiceLocation{},
+		cloudConnections:            map[string]cloudConnection{},
+		serviceRegistryMode:         mode,
 	}
 }
 
@@ -124,6 +127,7 @@ func (r *ServiceRegistry) RemoveService(service string) {
 
 	delete(r.ServiceLocations, service)
 	delete(r.ServiceConnections, service)
+	delete(r.ProtectedServiceConnections, service)
 }
 
 // RemoveServicesWithLabel removes all services from the registry which have
@@ -136,6 +140,7 @@ func (r *ServiceRegistry) RemoveServicesWithLabel(label string) {
 		if location.HasLabel(label) {
 			delete(r.ServiceLocations, service)
 			delete(r.ServiceConnections, service)
+			delete(r.ProtectedServiceConnections, service)
 		}
 	}
 }
@@ -143,7 +148,7 @@ func (r *ServiceRegistry) RemoveServicesWithLabel(label string) {
 // ListAllServices lists the names of all registered services.
 func (r *ServiceRegistry) ListAllServices() ([]string, error) {
 	switch r.serviceRegistryMode {
-	case DockerRegistryMode, K8sRegistryMode:
+	case K8sRegistryMode:
 		client, err := r.getServiceRegistryServiceClient()
 		if err != nil {
 			return []string{}, err
@@ -166,7 +171,7 @@ func (r *ServiceRegistry) ListAllServices() ([]string, error) {
 // the passed label.
 func (r *ServiceRegistry) FindServices(label string) ([]string, error) {
 	switch r.serviceRegistryMode {
-	case DockerRegistryMode, K8sRegistryMode:
+	case K8sRegistryMode:
 		client, err := r.getServiceRegistryServiceClient()
 		if err != nil {
 			return []string{}, err
@@ -189,11 +194,10 @@ func (r *ServiceRegistry) FindServices(label string) ([]string, error) {
 
 // GetServiceAddress returns the RPC address of the service.
 // The service needs to be added to the registry before this.
-func (r *ServiceRegistry) GetServiceAddress(service string) (string, error) {
+func (r *ServiceRegistry) GetServiceAddress(service string, serviceType protos.ServiceType) (string, error) {
 	service = strings.ToLower(service)
-
 	switch r.serviceRegistryMode {
-	case DockerRegistryMode, K8sRegistryMode:
+	case K8sRegistryMode:
 		// Fetching the service registry service address is a special case
 		// given that we cannot use the service registry service for discovering
 		// it's own address
@@ -208,7 +212,7 @@ func (r *ServiceRegistry) GetServiceAddress(service string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return registry_client.GetServiceAddress(client, service)
+		return registry_client.GetServiceAddress(client, service, serviceType)
 	case YamlRegistryMode:
 		fallthrough
 	default:
@@ -218,10 +222,18 @@ func (r *ServiceRegistry) GetServiceAddress(service string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("service %s not registered", service)
 		}
-		if location.Port == 0 {
-			return location.Host, nil
+		switch serviceType {
+		case protos.ServiceType_PROTECTED:
+			if location.ProtectedPort == 0 {
+				return location.Host, nil
+			}
+			return fmt.Sprintf("%s:%d", location.Host, location.ProtectedPort), nil
+		default:
+			if location.Port == 0 {
+				return location.Host, nil
+			}
+			return fmt.Sprintf("%s:%d", location.Host, location.Port), nil
 		}
-		return fmt.Sprintf("%s:%d", location.Host, location.Port), nil
 	}
 }
 
@@ -231,7 +243,7 @@ func (r *ServiceRegistry) GetHttpServerAddress(service string) (string, error) {
 	service = strings.ToLower(service)
 
 	switch r.serviceRegistryMode {
-	case DockerRegistryMode, K8sRegistryMode:
+	case K8sRegistryMode:
 		client, err := r.getServiceRegistryServiceClient()
 		if err != nil {
 			return "", err
@@ -247,7 +259,7 @@ func (r *ServiceRegistry) GetHttpServerAddress(service string) (string, error) {
 			return "", fmt.Errorf("service %s not registered", service)
 		}
 		if location.EchoPort == 0 {
-			return "", fmt.Errorf("service %s is not available", service)
+			return "", fmt.Errorf("service %s does not have an echo port configured", service)
 		}
 		return fmt.Sprintf("%s:%d", location.Host, location.EchoPort), nil
 	}
@@ -269,26 +281,35 @@ func (r *ServiceRegistry) GetServiceProxyAliases(service string) (map[string]int
 
 // GetServicePort returns the listening port for the RPC service.
 // The service needs to be added to the registry before this.
-func (r *ServiceRegistry) GetServicePort(service string) (int, error) {
+func (r *ServiceRegistry) GetServicePort(service string, serviceType protos.ServiceType) (int, error) {
 	r.RLock()
 	defer r.RUnlock()
 	service = strings.ToLower(service)
 
-	// TODO: Update Docker/K8s service registry to return standard gRPC port
+	// TODO: Update K8s service registry to return standard gRPC port
 	// once controller image is split
 	switch r.serviceRegistryMode {
-	case DockerRegistryMode, K8sRegistryMode, YamlRegistryMode:
+	case K8sRegistryMode, YamlRegistryMode:
 		fallthrough
 	default:
 		location, ok := r.ServiceLocations[service]
 		if !ok {
 			return 0, fmt.Errorf("service %s not registered", service)
 		}
-		if location.Port == 0 {
-			return 0, fmt.Errorf("service %s not available", service)
+		switch serviceType {
+		case protos.ServiceType_PROTECTED:
+			if location.ProtectedPort == 0 {
+				return 0, fmt.Errorf("service %s not available", service)
+			}
+			return location.ProtectedPort, nil
+		default:
+			if location.Port == 0 {
+				return 0, fmt.Errorf("service %s not available", service)
+			}
+			return location.Port, nil
 		}
-		return location.Port, nil
 	}
+	return 0, fmt.Errorf("service %s not available", service)
 }
 
 // GetEchoServerPort returns the listening port for the service's echo server.
@@ -301,7 +322,7 @@ func (r *ServiceRegistry) GetEchoServerPort(service string) (int, error) {
 	// TODO: Update Docker/K8s service registry to return standard HTTP port
 	// once controller image is split
 	switch r.serviceRegistryMode {
-	case DockerRegistryMode, K8sRegistryMode, YamlRegistryMode:
+	case K8sRegistryMode, YamlRegistryMode:
 		fallthrough
 	default:
 		location, ok := r.ServiceLocations[service]
@@ -320,7 +341,7 @@ func (r *ServiceRegistry) GetAnnotation(service, annotationName string) (string,
 	service = strings.ToLower(service)
 
 	switch r.serviceRegistryMode {
-	case DockerRegistryMode, K8sRegistryMode:
+	case K8sRegistryMode:
 		client, err := r.getServiceRegistryServiceClient()
 		if err != nil {
 			return "", err
@@ -366,36 +387,46 @@ func (r *ServiceRegistry) GetAnnotationList(service, annotationName string) ([]s
 
 // GetConnection provides a gRPC connection to a service in the registry.
 // The service needs to be added to the registry before this.
-func (r *ServiceRegistry) GetConnection(service string) (*grpc.ClientConn, error) {
-	return r.GetConnectionWithTimeout(service, GrpcMaxTimeoutSec*time.Second)
+func (r *ServiceRegistry) GetConnection(service string, serviceType protos.ServiceType) (*grpc.ClientConn, error) {
+	return r.GetConnectionWithTimeout(service, serviceType, GrpcMaxTimeoutSec*time.Second)
 }
 
 // GetConnectionWithTimeout is same as GetConnection, but caller can provide
 // their own timeout.
 // The service needs to be added to the registry before this.
-func (r *ServiceRegistry) GetConnectionWithTimeout(service string, timeout time.Duration) (*grpc.ClientConn, error) {
+func (r *ServiceRegistry) GetConnectionWithTimeout(service string, serviceType protos.ServiceType, timeout time.Duration) (*grpc.ClientConn, error) {
 	service = strings.ToLower(service)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return r.GetConnectionImpl(ctx, service, r.getGRPCDialOptions()...)
+	return r.GetConnectionImpl(ctx, service, serviceType, r.getGRPCDialOptions()...)
 }
 
 // GetConnectionWithOptions is same as GetConnection, but allows caller to
 // provide their own gRPC dial options.
-func (r *ServiceRegistry) GetConnectionWithOptions(service string, options ...grpc.DialOption) (*grpc.ClientConn, error) {
+func (r *ServiceRegistry) GetConnectionWithOptions(service string, serviceType protos.ServiceType, options ...grpc.DialOption) (*grpc.ClientConn, error) {
 	service = strings.ToLower(service)
 	ctx, cancel := context.WithTimeout(context.Background(), GrpcMaxTimeoutSec*time.Second)
 	defer cancel()
-	return r.GetConnectionImpl(ctx, service, options...)
+	return r.GetConnectionImpl(ctx, service, serviceType, options...)
 }
 
-func (r *ServiceRegistry) GetConnectionImpl(ctx context.Context, service string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+func (r *ServiceRegistry) GetConnectionImpl(ctx context.Context, service string, serviceType protos.ServiceType, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	service = strings.ToLower(service)
+
+	// Choose which connection to make based on service type
+	var serviceConnection map[string]*grpc.ClientConn
+	switch serviceType {
+	case protos.ServiceType_PROTECTED:
+		serviceConnection = r.ProtectedServiceConnections
+	default:
+		serviceConnection = r.ServiceConnections
+	}
 
 	// First try to get an existing connection with reader lock
 	r.RLock()
-	conn, ok := r.ServiceConnections[service]
+	conn, ok := serviceConnection[service]
 	r.RUnlock()
+
 	if ok && conn != nil {
 		return conn, nil
 	}
@@ -404,7 +435,7 @@ func (r *ServiceRegistry) GetConnectionImpl(ctx context.Context, service string,
 	// Each attempt to get client connection has a long timeout. Connecting
 	// without the lock prevents callers from timing out waiting for the
 	// lock to a bad connection.
-	addr, err := r.GetServiceAddress(service)
+	addr, err := r.GetServiceAddress(service, serviceType)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +448,7 @@ func (r *ServiceRegistry) GetConnectionImpl(ctx context.Context, service string,
 	defer r.Unlock()
 
 	// Re-check after taking the lock
-	conn, ok = r.ServiceConnections[service]
+	conn, ok = serviceConnection[service]
 	if ok && conn != nil {
 		// Another routine already added the connection for the service, clean up ours & return existing
 		err := newConn.Close()
@@ -427,12 +458,12 @@ func (r *ServiceRegistry) GetConnectionImpl(ctx context.Context, service string,
 		return conn, nil
 	}
 
-	r.ServiceConnections[service] = newConn
+	serviceConnection[service] = newConn
 	return newConn, nil
 }
 
 func (r *ServiceRegistry) getServiceRegistryServiceClient() (protos.ServiceRegistryClient, error) {
-	conn, err := r.GetConnection(ServiceRegistryServiceName)
+	conn, err := r.GetConnection(ServiceRegistryServiceName, protos.ServiceType_PROTECTED)
 	if err != nil {
 		return nil, err
 	}
@@ -445,7 +476,7 @@ func (r *ServiceRegistry) getGRPCDialOptions() []grpc.DialOption {
 		opts = append(opts, grpc.WithKeepaliveParams(localKeepaliveParams))
 	}
 	var timeoutInterceptor = TimeoutInterceptor
-	if r.serviceRegistryMode == K8sRegistryMode || r.serviceRegistryMode == DockerRegistryMode {
+	if r.serviceRegistryMode == K8sRegistryMode {
 		timeoutInterceptor = CloudClientTimeoutInterceptor
 	}
 	opts = append(opts, grpc.WithUnaryInterceptor(timeoutInterceptor))
@@ -456,7 +487,7 @@ func (r *ServiceRegistry) getGRPCDialOptions() []grpc.DialOption {
 func (r *ServiceRegistry) getServiceRegistryServiceAddress() string {
 	// Use hardcoded address for service_registry service as we can't
 	// dynamically discover the service registry service itself
-	return fmt.Sprintf("orc8r-service-registry:%d", GrpcServicePort)
+	return fmt.Sprintf("orc8r-service-registry:%d", ProtectedGrpcServicePort)
 }
 
 func (r *ServiceRegistry) addUnsafe(location ServiceLocation) {
@@ -465,6 +496,7 @@ func (r *ServiceRegistry) addUnsafe(location ServiceLocation) {
 	}
 	r.ServiceLocations[location.Name] = location
 	delete(r.ServiceConnections, location.Name)
+	delete(r.ProtectedServiceConnections, location.Name)
 }
 
 // ServiceLocation is an entry for the service registry which identifies a
@@ -476,6 +508,8 @@ type ServiceLocation struct {
 	Host string
 	// Port is the service's gRPC endpoint.
 	Port int
+	// ProtectedPort is the service's protected gRPC endpoint.
+	ProtectedPort int
 	// EchoPort is the service's HTTP endpoint for providing obsidian handlers.
 	EchoPort int
 	// ProxyAliases provides the list of host:port aliases for the service.
@@ -504,7 +538,11 @@ func (s ServiceLocation) String() string {
 		}
 		alsoKnown = " (also known as:" + aliases[:len(aliases)-1] + ")"
 	}
-	return fmt.Sprintf("%s @ %s:%d%s", s.Name, s.Host, s.Port, alsoKnown)
+	protected := ""
+	if s.ProtectedPort != 0 {
+		protected = fmt.Sprintf(" (protected: %s:%d)", s.Host, s.ProtectedPort)
+	}
+	return fmt.Sprintf("%s @ %s:%d%s%s", s.Name, s.Host, s.Port, protected, alsoKnown)
 }
 
 // GetClientConnection provides a gRPC connection to a service on the address addr.

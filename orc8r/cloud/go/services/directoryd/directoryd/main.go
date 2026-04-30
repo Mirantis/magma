@@ -17,8 +17,8 @@ limitations under the License.
 // GatewayDirectoryService RPC can be provided by a local Gateway/Device service as well as the cloud hosted service.
 // UE locations are reported directly from the relevant device/gateway.
 // Depending on a gateway/device capacity & resources, UE locations can be reported using GatewayDirectoryService RPC:
-//   1) to a locally run directoryd service, backed up by a local DB and synchronized with the cloud by state service
-//   2) to a cloud based directoryd service
+//  1. to a locally run directoryd service, backed up by a local DB and synchronized with the cloud by state service
+//  2. to a cloud based directoryd service
 //
 // Gateways/devices with an excess capacity to host and run local GatewayDirectoryService service & database (currently
 // python based & requiring 40-70MB extra RAM & storage) should prefer reporting path #1 due to its higher persistency,
@@ -38,7 +38,8 @@ import (
 	"magma/orc8r/cloud/go/orc8r"
 	"magma/orc8r/cloud/go/service"
 	"magma/orc8r/cloud/go/services/directoryd"
-	"magma/orc8r/cloud/go/services/directoryd/servicers"
+	directoryd_protos "magma/orc8r/cloud/go/services/directoryd/protos"
+	servicers "magma/orc8r/cloud/go/services/directoryd/servicers/protected"
 	dstorage "magma/orc8r/cloud/go/services/directoryd/storage"
 	"magma/orc8r/cloud/go/sqorc"
 	"magma/orc8r/cloud/go/storage"
@@ -58,7 +59,7 @@ func main() {
 		glog.Fatalf("Error opening db connection: %s", err)
 	}
 
-	fact := blobstore.NewEntStorage(dstorage.DirectorydTableBlobstore, db, sqorc.GetSqlBuilder())
+	fact := blobstore.NewSQLStoreFactory(dstorage.DirectorydTableBlobstore, db, sqorc.GetSqlBuilder())
 	err = fact.InitializeFactory()
 	if err != nil {
 		glog.Fatalf("Error initializing directory storage: %s", err)
@@ -72,7 +73,7 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Error creating initializing directory servicer: %s", err)
 	}
-	protos.RegisterDirectoryLookupServer(srv.GrpcServer, servicer)
+	directoryd_protos.RegisterDirectoryLookupServer(srv.ProtectedGrpcServer, servicer)
 	protos.RegisterGatewayDirectoryServiceServer(srv.GrpcServer, servicers.NewDirectoryUpdateServicer())
 
 	// Run service

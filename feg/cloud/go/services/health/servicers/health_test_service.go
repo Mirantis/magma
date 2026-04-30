@@ -1,9 +1,7 @@
 /*
 Copyright 2020 The Magma Authors.
-
 This source code is licensed under the BSD-style license found in the
 LICENSE file in the root directory of this source tree.
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,6 +15,8 @@ import (
 	"context"
 
 	fegprotos "magma/feg/cloud/go/protos"
+	protected_servicers "magma/feg/cloud/go/services/health/servicers/protected"
+	servicers "magma/feg/cloud/go/services/health/servicers/southbound"
 	"magma/feg/cloud/go/services/health/storage"
 	"magma/feg/cloud/go/services/health/test_utils"
 	"magma/orc8r/cloud/go/blobstore"
@@ -25,8 +25,9 @@ import (
 
 // A little Go "polymorphism" magic for testing
 type TestHealthServer struct {
-	HealthServer
-	Feg1 bool //boolean to simulate requests coming from more than 1 FeG
+	HealthServer      servicers.HealthServer
+	CloudHealthServer protected_servicers.CloudHealthServer
+	Feg1              bool //boolean to simulate requests coming from more than 1 FeG
 }
 
 // Health receiver for testHealthServer injects GW Identity into CTX if it's
@@ -47,14 +48,25 @@ func (srv *TestHealthServer) UpdateHealth(
 	return srv.HealthServer.UpdateHealth(ctx, req)
 }
 
-func NewTestHealthServer(mockFactory blobstore.BlobStorageFactory) (*TestHealthServer, error) {
+func (srv *TestHealthServer) GetHealth(ctx context.Context, req *fegprotos.GatewayStatusRequest) (*fegprotos.HealthStats, error) {
+	return srv.CloudHealthServer.GetHealth(ctx, req)
+}
+
+func (srv *TestHealthServer) GetClusterState(ctx context.Context, req *fegprotos.ClusterStateRequest) (*fegprotos.ClusterState, error) {
+	return srv.CloudHealthServer.GetClusterState(ctx, req)
+}
+
+func NewTestHealthServer(mockFactory blobstore.StoreFactory) (*TestHealthServer, error) {
 	store, err := storage.NewHealthBlobstore(mockFactory)
 	if err != nil {
 		return nil, err
 	}
 	return &TestHealthServer{
-		HealthServer: HealthServer{
-			store: store,
+		HealthServer: servicers.HealthServer{
+			Store: store,
+		},
+		CloudHealthServer: protected_servicers.CloudHealthServer{
+			Store: store,
 		},
 		Feg1: true,
 	}, nil

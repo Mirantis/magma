@@ -20,13 +20,13 @@ import (
 	"magma/feg/cloud/go/feg"
 	"magma/feg/cloud/go/protos"
 	"magma/feg/cloud/go/services/feg_relay"
-	"magma/feg/cloud/go/services/feg_relay/servicers"
+	fegrelay_servicers "magma/feg/cloud/go/services/feg_relay/servicers/southbound"
 	"magma/orc8r/cloud/go/test_utils"
 )
 
 // A little Go "polymorphism" magic for testing
 type testFegProxyServer struct {
-	servicers.FegToGwRelayServer
+	fegrelay_servicers.FegToGwRelayServer
 }
 
 func (srv *testFegProxyServer) CancelLocation(
@@ -37,7 +37,7 @@ func (srv *testFegProxyServer) CancelLocation(
 }
 
 func StartTestService(t *testing.T) {
-	srv, lis := test_utils.NewTestService(t, feg.ModuleName, feg_relay.ServiceName)
+	srv, lis, _ := test_utils.NewTestService(t, feg.ModuleName, feg_relay.ServiceName)
 	protos.RegisterS6AGatewayServiceServer(srv.GrpcServer, &testFegProxyServer{})
-	go srv.RunTest(lis)
+	go srv.RunTest(lis, nil)
 }

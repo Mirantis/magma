@@ -13,6 +13,7 @@ limitations under the License.
 
 from collections import namedtuple
 
+from lte.protos.apn_pb2 import AggregatedMaximumBitrate
 from lte.protos.pipelined_pb2 import (
     PDI,
     Action,
@@ -36,8 +37,8 @@ from magma.pipelined.policy_converters import convert_ipv4_str_to_ip_proto
 from magma.subscriberdb.sid import SIDUtils
 
 QoSEnforceRuleEntry = namedtuple(
-                         'QoSEnforceRuleEntry',
-                         ['imsi', 'rule_id', 'ipv4_dst', 'allow', 'priority', 'hard_timeout', 'direction'],
+    'QoSEnforceRuleEntry',
+    ['imsi', 'rule_id', 'ipv4_dst', 'allow', 'priority', 'hard_timeout', 'direction'],
 )
 
 
@@ -49,17 +50,17 @@ class CreateSessionUtil:
         This will anchor point for create sessions with PDR, FAR & QER.
         """
         self._set_session = \
-                  SessionSet(
-                      subscriber_id=subscriber_id, local_f_teid=local_f_teid,\
-                      session_version=session_version,\
-                      node_id=NodeID(node_id_type=NodeID.IPv4, node_id=node_id),\
-                      state=Fsm_state(state=Fsm_state.CREATED),
-                  )
+            SessionSet(
+                subscriber_id=subscriber_id, local_f_teid=local_f_teid,\
+                session_version=session_version,\
+                node_id=NodeID(node_id_type=NodeID.IPv4, node_id=node_id),\
+                state=Fsm_state(state=Fsm_state.CREATED),
+            )
 
     @staticmethod
     def CreateAddQERinPDR(
         qos_enforce_rule: QoSEnforceRuleEntry,
-        ue_ip_addr: str,
+        ue_ip_addr: str, apn_ambr: AggregatedMaximumBitrate,
     ) -> ActivateFlowsRequest:
 
         if qos_enforce_rule.allow == 'YES':
@@ -94,20 +95,20 @@ class CreateSessionUtil:
                     action=allow,
                 ),
             ]
-
         qos_enforce_rule = ActivateFlowsRequest(
-                                  sid=SIDUtils.to_pb(qos_enforce_rule.imsi),
-                                  ip_addr=ue_ip_addr,
-                                  policies=[
-                                      VersionedPolicy(
-                                          rule=PolicyRule(
-                                            id=qos_enforce_rule.rule_id,
-                                            priority=qos_enforce_rule.priority,
-                                            hard_timeout=qos_enforce_rule.hard_timeout,
-                                            flow_list=flow_list,
-                                          ), version=1,
-                                      ), ],
-                                request_origin=RequestOriginType(type=RequestOriginType.N4),
+            sid=SIDUtils.to_pb(qos_enforce_rule.imsi),
+            ip_addr=ue_ip_addr,
+            policies=[
+                VersionedPolicy(
+                    rule=PolicyRule(
+                        id=qos_enforce_rule.rule_id,
+                        priority=qos_enforce_rule.priority,
+                        hard_timeout=qos_enforce_rule.hard_timeout,
+                        flow_list=flow_list,
+                    ), version=1,
+                ), ],
+            request_origin=RequestOriginType(type=RequestOriginType.N4),
+            apn_ambr=apn_ambr,
         )
         return qos_enforce_rule
 
@@ -118,10 +119,10 @@ class CreateSessionUtil:
     ) -> DeactivateFlowsRequest:
 
         qos_enforce_rule = DeactivateFlowsRequest(
-                                  sid=SIDUtils.to_pb(qos_enforce_rule.imsi),
-                                  ip_addr=ue_ip_addr,
-                                  policies=[VersionedPolicyID(rule_id=qos_enforce_rule.rule_id)],
-                                  request_origin=RequestOriginType(type=RequestOriginType.N4),
+            sid=SIDUtils.to_pb(qos_enforce_rule.imsi),
+            ip_addr=ue_ip_addr,
+            policies=[VersionedPolicyID(rule_id=qos_enforce_rule.rule_id)],
+            request_origin=RequestOriginType(type=RequestOriginType.N4),
         )
 
         return qos_enforce_rule
@@ -136,7 +137,7 @@ class CreateSessionUtil:
                 fwd_parm=FwdParam(
                     dest_iface=0,
                     outr_head_cr=OuterHeaderCreation(
-                                 o_teid=o_teid, gnb_ipv4_adr=gnb_ip_addr,
+                        o_teid=o_teid, gnb_ipv4_adr=gnb_ip_addr,
                     ),
                 ),
             )
@@ -155,9 +156,9 @@ class CreateSessionUtil:
                 pdr_state=pdr_state,\
                 precedence=precedence,\
                 pdi=PDI(
-                                   src_interface=0,\
-                                   local_f_teid=local_f_teid,\
-                                   ue_ip_adr=ue_ip_addr,
+                    src_interface=0,\
+                    local_f_teid=local_f_teid,\
+                    ue_ipv4=ue_ip_addr,
                 ), \
                 o_h_remo_desc=0,
             )
@@ -166,7 +167,7 @@ class CreateSessionUtil:
             pdr_id=pdr_id, pdr_version=pdr_version,
             pdr_state=pdr_state,\
             precedence=precedence,\
-            pdi=PDI(src_interface=1, ue_ip_adr=ue_ip_addr),
+            pdi=PDI(src_interface=1, ue_ipv4=ue_ip_addr),
         )
 
     def CreateSessionMsg(
@@ -189,8 +190,8 @@ class CreateSessionUtil:
     def CreateSession(
         self, imsi_val: str, pdr_state: str = "ADD", in_teid: int = 0,
         out_teid: int = 0, ue_ip_addr: str = "", gnb_ip_addr: str = "",
-        del_rule_id: str = '', add_rule_id: str = '', ipv4_dst: str = None, allow: str = "YES",
-        priority: int = 10, hard_timeout: int = 0,
+        del_rule_id: str = '', add_rule_id: str = '', ipv4_dst: str = '', allow: str = "YES",
+        priority: int = 10, hard_timeout: int = 0, apn_ambr: AggregatedMaximumBitrate = None,
     ):
 
         pdr_id = 1
@@ -215,7 +216,7 @@ class CreateSessionUtil:
                 allow, priority, hard_timeout,
                 FlowMatch.UPLINK,
             )
-            uplink_qer_enforcer = CreateSessionUtil.CreateAddQERinPDR(uplink_qer_tuple, ue_ip_addr)
+            uplink_qer_enforcer = CreateSessionUtil.CreateAddQERinPDR(uplink_qer_tuple, ue_ip_addr, apn_ambr)
 
             downlink_qer_tuple = QoSEnforceRuleEntry(
                 imsi_val, add_rule_id, ipv4_dst,
@@ -223,7 +224,7 @@ class CreateSessionUtil:
                 FlowMatch.DOWNLINK,
             )
 
-            downlink_qer_enforcer = CreateSessionUtil.CreateAddQERinPDR(downlink_qer_tuple, ue_ip_addr)
+            downlink_qer_enforcer = CreateSessionUtil.CreateAddQERinPDR(downlink_qer_tuple, ue_ip_addr, apn_ambr)
 
         uplink_far = CreateSessionUtil.CreateFARinPDR(0, '')
         downlink_far = CreateSessionUtil.CreateFARinPDR(out_teid, gnb_ip_addr)

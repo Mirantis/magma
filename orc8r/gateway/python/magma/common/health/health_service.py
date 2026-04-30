@@ -32,6 +32,7 @@ from magma.common.health.entities import (
 from magma.common.service import MagmaService
 from magma.common.service_registry import ServiceRegistry
 from magma.configuration.mconfig_managers import load_service_mconfig_as_json
+from magma.configuration.mconfigs import SHARED_MCONFIG
 from magma.magmad.metrics import UNEXPECTED_SERVICE_RESTARTS
 from magma.magmad.service_poller import ServicePoller
 from orc8r.protos import common_pb2, magmad_pb2
@@ -85,8 +86,8 @@ class GenericHealthChecker:
         }
         res = {
             service_name: Errors(
-            log_level=configs[service_name].get('logLevel', 'INFO'),
-            error_count=0,
+                log_level=configs[service_name].get('logLevel', 'INFO'),
+                error_count=0,
             )
             for service_name in service_names
         }
@@ -99,7 +100,7 @@ class GenericHealthChecker:
                 'Or execute the command with sudo '
                 'permissions: `venvsudo`'.format(syslog_path),
             )
-        with open(syslog_path, 'r', encoding='utf-8') as f:
+        with open(syslog_path, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
                 for service_name in service_names:
                     if service_name not in line:
@@ -121,7 +122,10 @@ class GenericHealthChecker:
 
         configs = client.GetConfigs(common_pb2.Void())
 
-        service_names = [str(name) for name in configs.configs_by_key]
+        service_names = [
+            str(name) for name in configs.configs_by_key
+            if name != SHARED_MCONFIG
+        ]
         services_errors = self.get_error_summary(service_names=service_names)
 
         for service_name in service_names:

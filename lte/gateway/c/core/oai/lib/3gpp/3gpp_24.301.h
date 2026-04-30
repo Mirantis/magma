@@ -28,8 +28,7 @@
  * policies, either expressed or implied, of the FreeBSD Project.
  */
 
-#ifndef FILE_3GPP_24_301_SEEN
-#define FILE_3GPP_24_301_SEEN
+#pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -93,18 +92,18 @@
 #define UPLINK_GENERIC_NAS_TRANSPORT 0b01101001   /* 101 = 0x69 */
 
 // Table 9.8.2: Message types for EPS session management
-#define ACTIVATE_DEFAULT_EPS_BEARER_CONTEXT_REQUEST                            \
-  0b11000001                                                  /* 193 = 0xc1    \
+#define ACTIVATE_DEFAULT_EPS_BEARER_CONTEXT_REQUEST                         \
+  0b11000001                                                  /* 193 = 0xc1 \
                                                                */
 #define ACTIVATE_DEFAULT_EPS_BEARER_CONTEXT_ACCEPT 0b11000010 /* 194 = 0xc2 */
 #define ACTIVATE_DEFAULT_EPS_BEARER_CONTEXT_REJECT 0b11000011 /* 195 = 0xc3 */
-#define ACTIVATE_DEDICATED_EPS_BEARER_CONTEXT_REQUEST                          \
+#define ACTIVATE_DEDICATED_EPS_BEARER_CONTEXT_REQUEST \
   0b11000101 /* 197 = 0xc5 */
-#define ACTIVATE_DEDICATED_EPS_BEARER_CONTEXT_ACCEPT                           \
-  0b11000110 /* 198 = 0xc6                                                     \
+#define ACTIVATE_DEDICATED_EPS_BEARER_CONTEXT_ACCEPT \
+  0b11000110 /* 198 = 0xc6                           \
               */
-#define ACTIVATE_DEDICATED_EPS_BEARER_CONTEXT_REJECT                           \
-  0b11000111                                             /* 199 = 0xc7         \
+#define ACTIVATE_DEDICATED_EPS_BEARER_CONTEXT_REJECT                   \
+  0b11000111                                             /* 199 = 0xc7 \
                                                           */
 #define MODIFY_EPS_BEARER_CONTEXT_REQUEST 0b11001001     /* 201 = 0xc9 */
 #define MODIFY_EPS_BEARER_CONTEXT_ACCEPT 0b11001010      /* 202 = 0xca */
@@ -366,6 +365,7 @@ typedef struct nr_ue_security_capability_s {
 #define T3450_DEFAULT_VALUE 6
 #define T3460_DEFAULT_VALUE 6
 #define T3470_DEFAULT_VALUE 6
+#define TS6A_DEFAULT_VALUE 3
 
 //------------------------------------------------------------------------------
 // 10.3 Timers of EPS session management
@@ -506,4 +506,10 @@ typedef struct nr_ue_security_capability_s {
 #define ESM_CAUSE_MESSAGE_NOT_COMPATIBLE 101
 #define ESM_CAUSE_PROTOCOL_ERROR 111
 
-#endif /* FILE_3GPP_24_301_SEEN */
+#ifdef __cplusplus
+extern "C" {
+#endif
+const char* emm_cause_str(uint32_t);
+#ifdef __cplusplus
+}
+#endif

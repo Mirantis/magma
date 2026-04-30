@@ -16,8 +16,7 @@ MAGMA_MODULES := \
 	$(MAGMA_ROOT)/lte \
 	$(MAGMA_ROOT)/feg \
 	$(MAGMA_ROOT)/cwf \
-	$(MAGMA_ROOT)/wifi \
-	$(MAGMA_ROOT)/fbinternal
+	$(MAGMA_ROOT)/dp
 $(warning MAGMA_MODULES is undefined, using default: $(MAGMA_MODULES))
 endif
 
@@ -28,7 +27,7 @@ PROTO_INCLUDES := /usr/include
 endif
 export PROTO_INCLUDES
 
-SWAGGER_ROOT := $(MAGMA_ROOT)/orc8r/cloud/go/obsidian/swagger
+SWAGGER_ROOT := $(MAGMA_ROOT)/orc8r/cloud/go/services/obsidian/swagger
 SWAGGER_COMMON := swagger-common.yml
 SWAGGER_V1_ROOT := $(SWAGGER_ROOT)/v1
 SWAGGER_V1_YML := $(SWAGGER_V1_ROOT)/swagger.yml
@@ -37,7 +36,9 @@ SWAGGER_V1_SPECS_DIR := $(MAGMA_ROOT)/orc8r/cloud/swagger/specs
 SWAGGER_V1_PARTIAL_SPECS_DIR := $(SWAGGER_V1_SPECS_DIR)/partial
 SWAGGER_V1_COMMON_DIR := $(SWAGGER_V1_SPECS_DIR)/common
 SWAGGER_V1_STANDALONE_DIR := $(SWAGGER_V1_SPECS_DIR)/standalone
-SWAGGER_NMS_OUT := $(MAGMA_ROOT)/nms/packages/magmalte/generated/MagmaAPIBindings.js
+SWAGGER_NMS_OUT := $(MAGMA_ROOT)/nms/generated/
+
+OS_NAME := $(shell uname)
 
 export SWAGGER_ROOT
 export SWAGGER_COMMON
@@ -142,7 +143,7 @@ $(TOOLS_LIST): %_tools:
 
 tools_lint:
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
-		| sh -s -- -b $$(go env GOPATH)/bin v1.35.2
+		| sh -s -- -b $$(go env GOPATH)/bin v1.51.2
 
 ######################
 ## Swagger/API docs ##
@@ -150,7 +151,7 @@ tools_lint:
 
 swagger: swagger_directories $(SWAGGER_LIST)
 	cp $(MAGMA_ROOT)/orc8r/cloud/go/models/swagger-common.yml $(SWAGGER_V1_COMMON_DIR)/$(SWAGGER_COMMON)
-	combine_swagger --in=$(SWAGGER_V1_PARTIAL_SPECS_DIR) --common=$(SWAGGER_V1_COMMON_DIR)/$(SWAGGER_COMMON) --out=$(SWAGGER_V1_YML)
+	swaggergen --combine --in=$(SWAGGER_V1_PARTIAL_SPECS_DIR) --common=$(SWAGGER_V1_COMMON_DIR)/$(SWAGGER_COMMON) --out=$(SWAGGER_V1_YML)
 	swagger validate $(SWAGGER_V1_YML)
 
 swagger_directories:
@@ -167,30 +168,24 @@ $(SWAGGER_LIST): %_swagger:
 nms_fullgen: nms_prereqs nms_gen
 
 nms_prereqs:
-	$(MAKE) nms_prereqs_ubuntu || $(MAKE) nms_prereqs_osx
+ifeq ($(OS_NAME),Linux)
+	$(MAKE) nms_prereqs_ubuntu
+else ifeq ($(OS_NAME),Darwin)
+	$(MAKE) nms_prereqs_osx
+endif
 
-nms_prereqs_ubuntu: nms_node_ubuntu
-	NODE="$(shell which nodejs)"; ln -s $$NODE /usr/local/bin/node
-	# update nodejs to latest
-	curl -sL https://deb.nodesource.com/setup_lts.x | bash -
-	apt-get install -y nodejs
-	# get codegen dependency
+nms_prereqs_ubuntu:
+	curl -sL https://deb.nodesource.com/setup_18.x | bash -
+	apt install -y nodejs
 	npm install --global yarn
-	yarn add swagger-js-codegen
-
-nms_node_ubuntu:
-	# install pre-reqs
-	apt update
-	apt install -y nodejs npm
-	# symlink nodejs executable
-	mkdir -p /usr/local/bin
+	yarn
 
 nms_prereqs_osx:
 	node --version || brew install node
 	npm --version || brew install npm
 	yarn --version || npm install --global yarn
-	yarn add swagger-js-codegen
+	yarn
 
 nms_gen:
 	# generate Swagger API bindings for NMS
-	$(MAGMA_ROOT)/nms/packages/magmalte/scripts/generateAPIFromSwagger.sh $(SWAGGER_V1_YML) $(SWAGGER_NMS_OUT)
+	$(MAGMA_ROOT)/nms/scripts/generateAPIFromSwagger.sh -f -i $(SWAGGER_V1_YML) -o $(SWAGGER_NMS_OUT)

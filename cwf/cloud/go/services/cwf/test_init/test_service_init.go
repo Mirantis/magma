@@ -17,14 +17,14 @@ import (
 	"testing"
 
 	"magma/cwf/cloud/go/services/cwf"
-	"magma/cwf/cloud/go/services/cwf/servicers"
+	builder_servicers "magma/cwf/cloud/go/services/cwf/servicers/protected"
 	"magma/orc8r/cloud/go/orc8r"
 	builder_protos "magma/orc8r/cloud/go/services/configurator/mconfig/protos"
 	"magma/orc8r/cloud/go/test_utils"
 )
 
 func StartTestService(t *testing.T) {
-	StartTestServiceInternal(t, servicers.NewBuilderServicer())
+	StartTestServiceInternal(t, builder_servicers.NewBuilderServicer())
 }
 
 func StartTestServiceInternal(t *testing.T, builder builder_protos.MconfigBuilderServer) {
@@ -35,11 +35,11 @@ func StartTestServiceInternal(t *testing.T, builder builder_protos.MconfigBuilde
 		labels[orc8r.MconfigBuilderLabel] = "true"
 	}
 
-	srv, lis := test_utils.NewTestOrchestratorService(t, orc8r.ModuleName, cwf.ServiceName, labels, annotations)
+	srv, lis, plis := test_utils.NewTestOrchestratorService(t, orc8r.ModuleName, cwf.ServiceName, labels, annotations)
 
 	if builder != nil {
-		builder_protos.RegisterMconfigBuilderServer(srv.GrpcServer, builder)
+		builder_protos.RegisterMconfigBuilderServer(srv.ProtectedGrpcServer, builder)
 	}
 
-	go srv.RunTest(lis)
+	go srv.RunTest(lis, plis)
 }

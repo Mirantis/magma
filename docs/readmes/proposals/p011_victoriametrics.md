@@ -21,7 +21,7 @@ Magma is getting to the point where scaling is a primary concern. One of the
 areas that could be most impacted by larger scale is metrics, since there is a
 direct correlation with the number of subscribers/gateways and the amount of
 data coming through the system. We’ve been relying on a single Prometheus
-server coupled to our [prometheus-edge-hub](github.com/facebookincubator/prometheus-edge-hub)
+server coupled to our [prometheus-edge-hub](https://github.com/facebookincubator/prometheus-edge-hub)
 which has worked for all of the small and medium deployments so far, but we’re
 getting pretty close to the limit where this setup would not be able to ingest
 more data. In addition to this, partners have been wanting to run magma at a
@@ -79,10 +79,10 @@ memory usage.
 
 ![edge-hub test](assets/proposals/p011/edge-hub-test.png)
 
-|Pros | Cons |
-|-----|------|
+| Pros                            | Cons                                                     |
+| ------------------------------- | -------------------------------------------------------- |
 | No major change to architecture | Continue using edge-hub (increased resource consumption) |
-| | Have to continue developing/supporting this component |
+|                                 | Have to continue developing/supporting this component    |
 
 Continued investment in this component would likely lead to decent scaling improvements, but we’d run into a hard limit of memory usage fairly quickly.
 
@@ -94,11 +94,11 @@ This is actually something we looked into way back when this all started but it
 wasn’t open sourced back then. Now it is fully [open source](https://blog.usejournal.com/open-sourcing-victoriametrics-f31e34485c2b)
 with some [insane](https://valyala.medium.com/high-cardinality-tsdb-benchmarks-victoriametrics-vs-timescaledb-vs-influxdb-13e6ee64dd6b)
 [benchmarks](https://valyala.medium.com/prometheus-vs-victoriametrics-benchmark-on-node-exporter-metrics-4ca29c75590f)
-and [significant](https://victoriametrics.github.io/CaseStudies.html) community
+and significant `https://docs.victoriametrics.com/CaseStudies.html` community
 usage.
 
-The biggest benefit of VM is that it supports both [push](https://victoriametrics.github.io/Single-server-VictoriaMetrics#how-to-import-data-in-prometheus-exposition-format)
-and [pull](https://victoriametrics.github.io/Single-server-VictoriaMetrics#how-to-scrape-prometheus-exporters-such-as-node-exporter)
+The biggest benefit of VM is that it supports both `https://docs.victoriametrics.com/Single-server-VictoriaMetrics#how-to-import-data-in-prometheus-exposition-format`
+and `https://docs.victoriametrics.com/Single-server-VictoriaMetrics#how-to-scrape-prometheus-exporters-such-as-node-exporter`
 natively.
 
 This means we can completely get rid of prometheus-edge-hub and just push
@@ -116,24 +116,24 @@ only using <200% CPU.
 Based on VM’s data this capacity should scale nearly linearly for quite a
 while with more/faster CPUs.
 
-VM also offers a [cluster](https://victoriametrics.github.io/Cluster-VictoriaMetrics)
+VM also offers a cluster `https://docs.victoriametrics.com/Cluster-VictoriaMetrics`
 version which is very simply scaled horizontally behind a load balancer. Given
 how well it scales vertically I don’t think this is something we’ll likely have
 to look into for quite a while. Even then if we do I don’t think the
 engineering work would be significant.
 
 VictoriaMetrics integrates seamlessly with configmanager and the
-[alerting setup](https://victoriametrics.github.io/vmalert.html)
+[alerting setup](https://docs.victoriametrics.com/vmalert.html)
 is nearly identical to how Thanos does alerting, which I’ve already validated
 so there’s not much risk on that end.
 
 ![VictoriaMetrics test](assets/proposals/p011/victoriametrics-test.png)
 
-|Pros|Cons|
-|----|----|
-| Simple drop-in replacement| No longer using prometheus, which is more supported/used in the community |
-| Remove edge-hub ||
-| Lower resource usage compared to prometheus ||
+| Pros                                        | Cons                                                                      |
+| ------------------------------------------- | ------------------------------------------------------------------------- |
+| Simple drop-in replacement                  | No longer using prometheus, which is more supported/used in the community |
+| Remove edge-hub                             |                                                                           |
+| Lower resource usage compared to prometheus |                                                                           |
 
 ### Thanos Receive
 
@@ -149,11 +149,11 @@ line. In fact this usage is explicitly called out as a non-goal in the design
 doc for Prometheus remote-write. I didn’t perform a scale test with this for
 those reasons.
 
-|Pros|Cons|
-|----|----|
-|Remove edge-hub| Not the intended use-case, may run into weird bugs, won't have support |
-|Simple change on orc8r|Already seeing errors just during simple testing|
-|Thanos offers some benefits (e.g. remote object storage) that others don't provide|Thanos uses more resources than pure Prometheus or VictoriaMetrics|
+| Pros                                                                               | Cons                                                                   |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Remove edge-hub                                                                    | Not the intended use-case, may run into weird bugs, won't have support |
+| Simple change on orc8r                                                             | Already seeing errors just during simple testing                       |
+| Thanos offers some benefits (e.g. remote object storage) that others don't provide | Thanos uses more resources than pure Prometheus or VictoriaMetrics     |
 
 ### Conclusion
 
@@ -182,7 +182,7 @@ require more engineering work for a likely worse product.
 The implementation for this is very straightforward.
 
 - Deploy VictoriaMetrics in a single node configuration and then use the
-existing [remote exporter](https://github.com/magma/magma/blob/master/orc8r/cloud/go/services/orchestrator/servicers/exporter_servicer.go)
+existing [remote exporter](https://github.com/magma/magma/blob/master/orc8r/cloud/go/services/orchestrator/servicers/protected/exporter_servicer.go)
 to push metrics directly to VM.
 - Configure metricsd to direct queries to the VM query endpoint rather than
 Prometheus

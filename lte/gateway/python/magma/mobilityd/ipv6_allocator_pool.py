@@ -12,8 +12,10 @@ limitations under the License.
 """
 import logging
 import random
-from ipaddress import ip_address, ip_network
+from copy import deepcopy
 from typing import List, Optional
+
+from magma.mobilityd.utils import IPAddress, IPNetwork, log_error_and_raise
 
 from .ip_allocator_base import (
     IPAllocator,
@@ -26,18 +28,26 @@ from .mobility_store import MobilityStore
 
 IPV6_PREFIX_PART_LEN = 64
 IID_PART_LEN = 64
-MAX_IPV6_CONF_PREFIX_LEN = 48
-MAX_CALC_TRIES = 5
+MAX_IPV6_CONF_PREFIX_LEN = 58
+MAX_CALC_TRIES = 10
 
 
 class IPv6AllocatorPool(IPAllocator):
-    def __init__(self, store: MobilityStore, session_prefix_alloc_mode: str):
+    def __init__(
+        self, store: MobilityStore, session_prefix_alloc_mode: str,
+        ipv6_prefixlen: Optional[int] = MAX_IPV6_CONF_PREFIX_LEN,
+    ):
         super().__init__()
         self._store = store
-        self._assigned_ip_block = None
+        self._assigned_ip_block: Optional[IPNetwork] = None
         self._ipv6_session_prefix_alloc_mode = session_prefix_alloc_mode
+        self._ipv6_prefixlen = (
+            ipv6_prefixlen
+            if ipv6_prefixlen is not None
+            else MAX_IPV6_CONF_PREFIX_LEN
+        )
 
-    def add_ip_block(self, ipblock: ip_network):
+    def add_ip_block(self, ipblock: IPNetwork):
         """
         Adds IP block to the assigned IP block of the IPv6 allocator
 
@@ -51,18 +61,20 @@ class IPv6AllocatorPool(IPAllocator):
         ):
             raise OverlappedIPBlocksError(ipblock)
 
-        if ipblock.prefixlen > MAX_IPV6_CONF_PREFIX_LEN:
-            msg = "IPv6 block exceeds maximum allowed prefix length"
-            logging.error(msg)
-            raise InvalidIPv6NetworkError(msg)
+        if ipblock.prefixlen > self._ipv6_prefixlen:
+            log_error_and_raise(
+                InvalidIPv6NetworkError,
+                "IPv6 block exceeds maximum allowed prefix length",
+            )
 
         # For now only one IPv6 network is supported
         self._assigned_ip_block = ipblock
+        self._store.assigned_ip_blocks.add(ipblock)
 
     def remove_ip_blocks(
-        self, ipblocks: List[ip_network],
+        self, ipblocks: List[IPNetwork],
         force: bool = False,
-    ) -> List[ip_network]:
+    ) -> List[IPNetwork]:
         """
         Removes assigned IP block (as it only supports one for now)
 
@@ -85,7 +97,7 @@ class IPv6AllocatorPool(IPAllocator):
             if allocated_ip_block_set:
                 return []
 
-        removed_blocks = []
+        removed_blocks: List[IPNetwork] = []
         # Clear allocated session prefix and IID store
         self._store.allocated_iid.clear()
         self._store.sid_session_prefix_allocated.clear()
@@ -109,6 +121,8 @@ class IPv6AllocatorPool(IPAllocator):
             self._assigned_ip_block,
         )
         self._assigned_ip_block = None
+        self._store.assigned_ip_blocks -= removed_blocks
+
         return removed_blocks
 
     def alloc_ip_address(self, sid: str, _) -> IPDesc:
@@ -133,7 +147,7 @@ class IPv6AllocatorPool(IPAllocator):
         if not session_prefix_part:
             logging.error('Could not get IPv6 session prefix for sid: %s', sid)
             raise MaxCalculationError(
-                'Could not get IPv6 session prefix for sid: %s', sid,
+                'Could not get IPv6 session prefix for sid: %s' % sid,
             )
 
         # Get interface identifier from 64 bits fixed length
@@ -141,7 +155,7 @@ class IPv6AllocatorPool(IPAllocator):
         if not iid_part:
             logging.error('Could not get IPv6 IID for sid: %s', sid)
             raise MaxCalculationError(
-                'Could not get IPv6 IID for sid: %s', sid,
+                'Could not get IPv6 IID for sid: %s' % sid,
             )
 
         ipv6_addr = ipv6_addr_part + (session_prefix_part * iid_part)
@@ -163,11 +177,13 @@ class IPv6AllocatorPool(IPAllocator):
         """
         sid = ip_desc.sid
         ip_addr = ip_desc.ip
+        if not self._assigned_ip_block or not ip_addr:
+            return
         ipv6_addr_part = int(next(self._assigned_ip_block.hosts()))
 
         session_prefix = self._store.sid_session_prefix_allocated.get(sid)
         if not session_prefix:
-            raise IPNotInUseError('IP %s not allocated', ip_addr)
+            raise IPNotInUseError('IP %s not allocated' % ip_addr)
 
         if ip_addr in self._assigned_ip_block and session_prefix:
             # Extract IID part of the given IPv6 prefix and session prefix
@@ -179,7 +195,7 @@ class IPv6AllocatorPool(IPAllocator):
                 del self._store.sid_session_prefix_allocated[sid]
                 del self._store.allocated_iid[sid]
             else:
-                raise IPNotInUseError('IP %s not allocated', ip_addr)
+                raise IPNotInUseError('IP %s not allocated' % ip_addr)
 
     def _get_ipv6_iid_part(self, sid: str, length: int = 64) -> Optional[int]:
         """
@@ -192,7 +208,7 @@ class IPv6AllocatorPool(IPAllocator):
 
         Returns: IID N bits
         """
-        for i in range(MAX_CALC_TRIES):
+        for _ in range(MAX_CALC_TRIES):
             rand_iid_bits = random.getrandbits(length)
             if rand_iid_bits not in self._store.allocated_iid.values():
                 self._store.allocated_iid[sid] = float(rand_iid_bits)
@@ -209,13 +225,16 @@ class IPv6AllocatorPool(IPAllocator):
 
         Returns: session prefix N bits
         """
+        if not self._assigned_ip_block:
+            return None
         session_prefix_len = IPV6_PREFIX_PART_LEN - self._assigned_ip_block.prefixlen
         session_prefix_allocated = self._store.sid_session_prefix_allocated.get(
             sid,
         )
         # TODO: Support multiple alloc modes
+        # TODO: Improve performance of iP allocation for smaller ipv6-blocks
         if self._ipv6_session_prefix_alloc_mode == IPv6SessionAllocType.RANDOM:
-            for i in range(MAX_CALC_TRIES):
+            for _ in range(MAX_CALC_TRIES):
                 session_prefix_part = random.getrandbits(session_prefix_len)
                 if session_prefix_part != session_prefix_allocated:
                     self._store.sid_session_prefix_allocated[
@@ -224,13 +243,17 @@ class IPv6AllocatorPool(IPAllocator):
                     return session_prefix_part
         return None
 
-    def list_added_ip_blocks(self) -> List[ip_network]:
+    def list_added_ip_blocks(self) -> List[IPNetwork]:
         """
         Returns: assigned IP blocks on the allocator
         """
-        return [self._assigned_ip_block]
+        ret = []
+        for ipblock in self._store.assigned_ip_blocks:
+            if ipblock.version == 6:
+                ret.append(ipblock)
+        return list(deepcopy(ret))
 
-    def list_allocated_ips(self, ipblock: ip_network) -> List[ip_address]:
+    def list_allocated_ips(self, ipblock: IPNetwork) -> List[IPAddress]:
         raise NotImplementedError
 
 

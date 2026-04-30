@@ -52,15 +52,15 @@ First define some necessary variables
 ```bash
 export PUBLISH=${MAGMA_ROOT}/orc8r/tools/docker/publish.sh  # or add to path
 export REGISTRY=registry.hub.docker.com/REGISTRY  # or desired registry
-export MAGMA_TAG=1.6.0-master  # or desired tag
+export MAGMA_TAG=1.8.0-master  # or desired tag
 ```
 
-Checkout the v1.6 release branch
+Checkout the desired Git target, e.g. the v1.8 branch
 
 ```bash
 cd ${MAGMA_ROOT}
 git fetch origin
-git checkout -b v1.6 origin/v1.6
+git checkout -b v1.8 origin/v1.8  # or desired Git target, e.g. master
 ```
 
 Build and publish Orchestrator images
@@ -68,15 +68,24 @@ Build and publish Orchestrator images
 ```bash
 cd ${MAGMA_ROOT}/orc8r/cloud/docker
 ./build.py --all
-for image in controller nginx ; do ${PUBLISH} -r ${REGISTRY} -i ${image} -v ${MAGMA_TAG} ; done
+for image in controller nginx ; do ${PUBLISH} -r ${REGISTRY} -i ${image} -v ${MAGMA_TAG} -u '' -p '' ; done
+```
+
+Optionally, to build fluentd images for the Orchestrator, uncomment the line `docker-compose.logging.yml` in `build.py`.
+Build and publish fluentd images
+
+```bash
+cd ${MAGMA_ROOT}/orc8r/cloud/docker
+./build.py --all
+for image in fluentd-forward fluentd-daemon ; do ${PUBLISH} -r ${REGISTRY} -i ${image} -v ${MAGMA_TAG} -u '' -p '' ; done
 ```
 
 Build and publish NMS images
 
 ```bash
-cd ${MAGMA_ROOT}/nms/packages/magmalte
-docker-compose build magmalte
-COMPOSE_PROJECT_NAME=magmalte ${PUBLISH} -r ${REGISTRY} -i magmalte -v ${MAGMA_TAG}
+cd ${MAGMA_ROOT}/nms
+COMPOSE_PROJECT_NAME=magmalte docker compose --compatibility build magmalte
+COMPOSE_PROJECT_NAME=magmalte ${PUBLISH} -r ${REGISTRY} -i magmalte -v ${MAGMA_TAG} -u '' -p ''
 ```
 
 ## Build and publish Helm charts

@@ -24,6 +24,7 @@ import socketserver
 import subprocess
 import sys
 import threading
+import time
 import traceback
 
 import iperf3
@@ -142,7 +143,7 @@ class TrafficTestServerDispatcher(socketserver.TCPServer):
             if daemon else logging.StreamHandler()
         log_handler.setFormatter(
             logging.Formatter(
-            log_format, log_time_format,
+                log_format, log_time_format,
             ),
         )
 
@@ -395,7 +396,7 @@ class TrafficTestServer(socketserver.StreamRequestHandler):
                     self.log.error(
                         ''.join(
                             traceback.format_exception(
-                            type(e), e, sys.exc_info()[2],
+                                type(e), e, sys.exc_info()[2],
                             ),
                         ),
                     )
@@ -495,6 +496,22 @@ class TrafficTestServer(socketserver.StreamRequestHandler):
         self.log.debug('Driver %d successfully received START', d_id)
 
 
+class _ThreadSafeCounter(object):
+    ''' A simple thread save counter. '''
+
+    def __init__(self):
+        self._counter = 0
+        self._lock = threading.Lock()
+
+    def inc(self):
+        with self._lock:
+            self._counter += 1
+
+    def get_value(self):
+        with self._lock:
+            return self._counter
+
+
 class TrafficTestDriver(object):
     ''' Driver for creating the iperf3 instances, monitoring them, caching the
     results, and reporting the results '''
@@ -516,14 +533,22 @@ class TrafficTestDriver(object):
         self._server = server
         self._instances = instances
         self._results = None
+        self._trfserver_ipv6 = '3001::2'
+        self._trfserver_ipv4 = '192.168.129.42'
+        self._agw_ipv6 = '3001::10'
+        self._agw_ip_sub = 64
 
         self._setup_iperf3()
 
-    def _get_macs(self):
+    def _get_macs(self, version=4):
         ''' Retrieves the MAC addresses of the associated test servers, based
         on the information of the instances '''
         ip = pyroute2.IPRoute()
-        mac = ip.link('get', index=ip.link_lookup(ifname='eth2')[0])[0] \
+        if version == 4:
+            intf = 'eth2'
+        else:
+            intf = 'eth3'
+        mac = ip.link('get', index=ip.link_lookup(ifname=intf)[0])[0] \
             .get_attr('IFLA_ADDRESS')
 
         return (mac,) * len(self._instances)
@@ -535,7 +560,7 @@ class TrafficTestDriver(object):
             TrafficTestDriver._port += 1
             return TrafficTestDriver._port
 
-    def _run_iperf3(self, results_buffer, iperf):
+    def _run_iperf3(self, results_buffer, iperf, iperf_instances_counter):
         ''' Runs the given iperf3 and writes the results into the given list
         buffer by appending the result to it
 
@@ -556,12 +581,20 @@ class TrafficTestDriver(object):
             results_buffer (list): the results buffer to which the
                 iperf3.TestResult object to should be appended
             iperf (iperf3.IPerf3): the iperf3 object to run
+            iperf_instances_counter (_ThreadSafeCounter): shared variable to count
+                started iperf instances
         '''
         # Constructing the subprocess call
         params = ('-B', iperf.bind_address, '-p', str(iperf.port), '-J')
+        if ipaddress.ip_address(iperf.bind_address).version == 6:
+            params += ('-6',)
         if 'c' == iperf.role:
             params = ('-c', iperf.server_hostname) + params
             params += ('-b', str(iperf.bandwidth), '-t', str(iperf.duration))
+            # For ipv6 there is delay in configuring ipv6 address on eth3
+            # interface of test vm, so sleep for 5 secs
+            if ipaddress.ip_address(iperf.bind_address).version == 6:
+                time.sleep(5)
             if 'udp' == iperf.protocol:
                 params += ('-u',)
         else:
@@ -572,6 +605,7 @@ class TrafficTestDriver(object):
         # Make the iperf3 call and spin off the subprocess
         self._server.log.debug('Running iperf3 command: %s', ' '.join(params))
         with subprocess.Popen(params, stdout=subprocess.PIPE) as proc:
+            iperf_instances_counter.inc()
             result_str = proc.stdout.read().decode('utf-8')
             results_buffer += [iperf3.TestResult(result_str)]
         self._barrier.wait()
@@ -583,12 +617,26 @@ class TrafficTestDriver(object):
         for instance in self._instances:
             if instance.is_uplink:
                 iperf = iperf3.Server()
-                iperf.bind_address = '192.168.129.42'
+                ip_str = ipaddress.ip_address(instance.ip)
+                if ip_str.version == 4:
+                    print("Running ipv4")
+                    iperf.bind_address = self._trfserver_ipv4
+                else:
+                    print("Running ipv6")
+                    iperf.bind_address = self._trfserver_ipv6
+                    os.system('sudo /sbin/ip -6 route add %s/%d dev eth3' % (self._agw_ipv6, self._agw_ip_sub))
+                    os.system('sudo /sbin/ip -6 route add %s via %s dev eth3' % (instance.ip.exploded, self._agw_ipv6))
                 iperf.port = TrafficTestDriver._get_port()
             else:
                 iperf = iperf3.Client()
                 iperf.bandwidth = 10 ** 7  # 10 Mbps
-                iperf.bind_address = '192.168.129.42'
+                ip_str = ipaddress.ip_address(instance.ip)
+                if ip_str.version == 4:
+                    iperf.bind_address = self._trfserver_ipv4
+                else:
+                    iperf.bind_address = self._trfserver_ipv6
+                    os.system('sudo /sbin/ip -6 route add %s/%d dev eth3' % (self._agw_ipv6, self._agw_ip_sub))
+                    os.system('sudo /sbin/ip -6 route add %s via %s dev eth3' % (instance.ip.exploded, self._agw_ipv6))
                 iperf.duration = instance.duration
                 iperf.port = instance.port
                 iperf.protocol = 'udp' if instance.is_udp else 'tcp'
@@ -612,7 +660,14 @@ class TrafficTestDriver(object):
         ports = (
             iperf.port if 's' == iperf.role else 0 for iperf in self._iperfs
         )
-        macs = self._get_macs()
+        # For now multiple UEs with mixed ip addresses is not supported
+        # so check the version of the first ip address
+        # TODO: Add support for handling multiple UE with mixed ipv4 and ipv6
+        # addresses
+        for iperf in self._iperfs:
+            ip_version = ipaddress.ip_address(iperf.bind_address).version
+            break
+        macs = self._get_macs(ip_version)
 
         # Reshape into argument tuples
         tuples = zip(ips, ports, macs)
@@ -635,10 +690,11 @@ class TrafficTestDriver(object):
         )
         results = ()
         threads = ()
+        iperf_instances_counter = _ThreadSafeCounter()
         for iperf in self._iperfs:
             buf = []
             thread = threading.Thread(
-                target=self._run_iperf3, args=(buf, iperf),
+                target=self._run_iperf3, args=(buf, iperf, iperf_instances_counter),
             )
             results += (buf,)
             threads += (thread,)
@@ -647,6 +703,17 @@ class TrafficTestDriver(object):
             'Driver %d has started %d iperf3 servers',
             id(self), len(self._iperfs),
         )
+
+        # Wait for iperf instances to be started - It can happen that test data is sent
+        # before the respective iperf instances are started.
+        waited = 0
+        WAITING_TIME = 0.1
+        MAX_WAITING_TIME = 10
+        while True:
+            if iperf_instances_counter.get_value() == len(threads) or waited > MAX_WAITING_TIME:
+                break
+            time.sleep(WAITING_TIME)
+            waited += WAITING_TIME
 
         # Send STARTED message to let client know that we've spun everything up
         self._server.send_resp(

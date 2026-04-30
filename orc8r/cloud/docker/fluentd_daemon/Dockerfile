@@ -1,10 +1,21 @@
-FROM fluent/fluentd:v1.7.1-debian-1.0
+# Copyright 2023 The Magma Authors.
+
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+FROM fluent/fluentd:v1.14.6-debian-1.0
 
 USER root
 WORKDIR /home/fluent
-ENV PATH /fluentd/vendor/bundle/ruby/2.6.0/bin:$PATH
-ENV GEM_PATH /fluentd/vendor/bundle/ruby/2.6.0
-ENV GEM_HOME /fluentd/vendor/bundle/ruby/2.6.0
+ENV PATH /fluentd/vendor/bundle/ruby/2.7.0/bin:$PATH
+ENV GEM_PATH /fluentd/vendor/bundle/ruby/2.7.0
+ENV GEM_HOME /fluentd/vendor/bundle/ruby/2.7.0
 # skip runtime bundler installation
 ENV FLUENTD_DISABLE_BUNDLER_INJECTION 1
 

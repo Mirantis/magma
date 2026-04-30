@@ -13,6 +13,7 @@ limitations under the License.
 import subprocess
 from typing import Dict, NamedTuple
 
+from magma.common.sentry import EXCLUDE_FROM_ERROR_MONITORING
 from magma.pipelined.app.base import ControllerType, MagmaController
 from magma.pipelined.app.dpi import DPIController
 from magma.pipelined.imsi import encode_imsi
@@ -34,15 +35,16 @@ class IPFIXController(MagmaController):
     APP_NAME = "ipfix"
     APP_TYPE = ControllerType.LOGICAL
 
-    IPFIXConfig = NamedTuple(
-        'IPFIXConfig',
-        [
-            ('enabled', bool), ('collector_ip', str), ('collector_port', int),
-            ('probability', int), ('collector_set_id', int),
-            ('obs_domain_id', int), ('obs_point_id', int), ('cache_timeout', int),
-            ('sampling_port', int),
-        ],
-    )
+    class IPFIXConfig(NamedTuple):
+        enabled: bool
+        collector_ip: str
+        collector_port: int
+        probability: int
+        collector_set_id: int
+        obs_domain_id: int
+        obs_point_id: int
+        cache_timeout: int
+        sampling_port: int
 
     def __init__(self, *args, **kwargs):
         super(IPFIXController, self).__init__(*args, **kwargs)
@@ -83,11 +85,11 @@ class IPFIXController(MagmaController):
         collector_port = mconfig.ipdr_export_dst.port
         if not mconfig.ipdr_export_dst.ip:
             if 'collector_ip' in config_dict['ipfix']:
-                self.logger.error("Missing IPDR dest IP, using val from .yml")
+                self.logger.error("Missing IPDR dest IP, using val from .yml", extra=EXCLUDE_FROM_ERROR_MONITORING)
                 collector_ip = config_dict['ipfix']['collector_ip']
                 collector_port = config_dict['ipfix']['collector_port']
             else:
-                self.logger.error("Missing mconfig IPDR dest IP")
+                self.logger.error("Missing mconfig IPDR dest IP", extra=EXCLUDE_FROM_ERROR_MONITORING)
                 return self.IPFIXConfig(
                     enabled=False, probability=0,
                     collector_ip='', collector_port=0, collector_set_id=0,
@@ -96,7 +98,7 @@ class IPFIXController(MagmaController):
                 )
 
         if collector_port == 0:
-            self.logger.error("Missing mconfig IPDR dest port")
+            self.logger.error("Missing mconfig IPDR dest port", extra=EXCLUDE_FROM_ERROR_MONITORING)
             return self.IPFIXConfig(
                 enabled=False, probability=0,
                 collector_ip='', collector_port=0, collector_set_id=0,

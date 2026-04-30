@@ -131,8 +131,7 @@ After installation, the next step is to register the gateway with the Orchestrat
 To do so:
 
 ```console
-INSTALL_HOST [~/]$ cd /var/opt/magma/docker
-INSTALL_HOST [/var/opt/magma/docker]$ docker-compose exec magmad /usr/local/bin/show_gateway_info.py
+INSTALL_HOST [~/]$ docker compose exec magmad /usr/local/bin/show_gateway_info.py
 ```
 
 This will output a hardware ID and a challenge key. This information must be
@@ -143,16 +142,16 @@ To register the FeG, go to the Orchestrator's Swagger UI in your browser.
 (i.e. <https://controller.url.sample:9443/swagger/v1/ui/>).
 
 Now, create a Federation Network. This is found at `/feg` under the
-**Federation Networks** section. Then register the gateway under the
-**Federation Gateway** section at `/feg/{network_id}/gateways` using the
-network ID of the Federation Network and the hardware ID and challenge key
+**Federation Networks** section. If you have not registered any gateways before, you
+must set up a tier under the **Orchestrator** section at `/networks/{network_id}/tiers`.
+Then register the gateway under the **Federation Gateway** section at `/feg/{network_id}/gateways`
+using the network ID of the Federation Network and the hardware ID and challenge key
 from the previous step.
 
 To verify that the gateway was correctly registered, run:
 
 ```console
-INSTALL_HOST [~/]$ cd /var/opt/magma/docker
-INSTALL_HOST [/var/opt/magma/docker]$ docker-compose exec magmad /usr/local/bin/checkin_cli.py
+INSTALL_HOST [~/]$ docker compose exec magmad /usr/local/bin/checkin_cli.py
 ```
 
 ## Upgrades

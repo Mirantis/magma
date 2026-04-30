@@ -36,7 +36,6 @@ return_codes = Enum(
 )
 STATELESS_SERVICE_CONFIGS = [
     ("mme", "use_stateless", True),
-    ("mobilityd", "persist_to_redis", True),
     ("pipelined", "clean_restart", False),
     ("pipelined", "redis_enabled", True),
     ("sessiond", "support_stateless", True),
@@ -104,6 +103,7 @@ def clear_redis_state():
     ]:
         for key in redis_client.scan_iter(key_regex):
             redis_client.delete(key)
+        redis_client.save()
 
 
 def flushall_redis():
@@ -174,10 +174,10 @@ def ovs_reset_bridges():
     else:
         non_nat_sgi_interface = service_config['nat_iface']
         sgi_management_iface_ip_addr = service_config.get(
-           'sgi_management_iface_ip_addr', mconfig.sgi_management_iface_ip_addr,
+            'sgi_management_iface_ip_addr', mconfig.sgi_management_iface_ip_addr,
         )
         sgi_management_iface_gw = service_config.get(
-           'sgi_management_iface_gw', mconfig.sgi_management_iface_gw,
+            'sgi_management_iface_gw', mconfig.sgi_management_iface_gw,
         )
 
     sgi_bridge_name = service_config.get('uplink_bridge', "uplink_br0")

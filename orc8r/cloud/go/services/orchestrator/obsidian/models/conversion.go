@@ -15,17 +15,20 @@ package models
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-openapi/swag"
-	"github.com/pkg/errors"
+	"github.com/golang/glog"
 	"github.com/thoas/go-funk"
 
 	"magma/orc8r/cloud/go/models"
 	"magma/orc8r/cloud/go/orc8r"
+	"magma/orc8r/cloud/go/services/bootstrapper"
 	"magma/orc8r/cloud/go/services/configurator"
 	"magma/orc8r/cloud/go/storage"
-	merrors "magma/orc8r/lib/go/errors"
+	"magma/orc8r/lib/go/merrors"
 )
 
 func (m *Network) ToConfiguratorNetwork() configurator.Network {
@@ -144,6 +147,11 @@ func (m *MagmadGateway) GetMagmadGateway() *MagmadGateway {
 }
 
 func (m *MagmadGateway) GetAdditionalWritesOnCreate() []configurator.EntityWriteOperation {
+	var physicalID string
+	if m.Device != nil {
+		physicalID = m.Device.HardwareID
+	}
+
 	return []configurator.EntityWriteOperation{
 		configurator.NetworkEntity{
 			Type:        orc8r.MagmadGatewayType,
@@ -151,7 +159,7 @@ func (m *MagmadGateway) GetAdditionalWritesOnCreate() []configurator.EntityWrite
 			Name:        string(m.Name),
 			Description: string(m.Description),
 			Config:      m.Magmad,
-			PhysicalID:  m.Device.HardwareID,
+			PhysicalID:  physicalID,
 		},
 	}
 }
@@ -239,8 +247,47 @@ func (m *MagmadGateway) FromBackendModels(ent configurator.NetworkEntity, device
 	if err == nil {
 		m.Tier = TierID(tierTK.Key)
 	}
+	err = PopulateRegistrationInfo(context.Background(), m, ent.NetworkID)
+	if err != nil {
+		// ignore err and continue returning the rest of the gateway
+		glog.V(2).Infof("failed to populate registration info because %v+", err)
+	}
 
 	return m
+}
+
+func PopulateRegistrationInfos(ctx context.Context, gateways map[string]*MagmadGateway, networkID string) error {
+	for _, gateway := range gateways {
+		err := PopulateRegistrationInfo(ctx, gateway, networkID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PopulateRegistrationInfo will populate the given gateway's RegistrationInfo if its device is nil
+func PopulateRegistrationInfo(ctx context.Context, gateway *MagmadGateway, networkID string) error {
+	if gateway.Device != nil {
+		return nil
+	}
+
+	regToken, err := bootstrapper.GetToken(ctx, networkID, string(gateway.ID), true)
+	if err != nil {
+		return err
+	}
+
+	regInfo, err := bootstrapper.GetGatewayRegistrationInfo(ctx)
+	if err != nil {
+		return err
+	}
+
+	gateway.RegistrationInfo = &models.RegistrationInfo{
+		DomainName:        &regInfo.DomainName,
+		RegistrationToken: &regToken,
+		RootCa:            &regInfo.RootCa,
+	}
+	return nil
 }
 
 func (m *MagmadGateway) ToEntityUpdateCriteria(existingEnt configurator.NetworkEntity) []configurator.EntityUpdateCriteria {
@@ -337,7 +384,7 @@ func (m *TierID) ToUpdateCriteria(ctx context.Context, networkID string, gateway
 
 	exists, err := configurator.DoesEntityExist(ctx, networkID, orc8r.UpgradeTierEntityType, tierID)
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to look up tier")
+		return nil, fmt.Errorf("Failed to look up tier: %w", err)
 	}
 	if !exists {
 		return nil, fmt.Errorf("Tier %s does not exist", tierID)
@@ -450,7 +497,7 @@ func (m *TierVersion) FromBackendModels(ctx context.Context, networkID string, k
 	if err != nil {
 		return err
 	}
-	*m = iConfig.(*Tier).Version
+	*m = *iConfig.(*Tier).Version
 	return nil
 }
 
@@ -460,7 +507,7 @@ func (m *TierVersion) ToUpdateCriteria(ctx context.Context, networkID string, ke
 		return []configurator.EntityUpdateCriteria{}, err
 	}
 	tier := iConfig.(*Tier)
-	tier.Version = *m
+	tier.Version = m
 	return []configurator.EntityUpdateCriteria{
 		{Type: orc8r.UpgradeTierEntityType, Key: key, NewConfig: tier},
 	}, nil
@@ -578,6 +625,31 @@ func (m *GatewayVpnConfigs) FromBackendModels(ctx context.Context, networkID str
 	}
 	*m = *config.(*MagmadGatewayConfigs).Vpn
 	return nil
+}
+
+const (
+	// Number of check-in intervals used for gateway health checks. If the
+	// last check-in of a gateway was longer ago than N check-in intervals,
+	// this indicates a problem.
+	graceFactor = 5
+
+	// Check-in interval that is used if no config can be found
+	defaultCheckinInterval = time.Minute
+)
+
+func LastGatewayCheckInWasRecent(gatewayStatus *GatewayStatus, magmadConfig *MagmadGatewayConfigs) bool {
+	if gatewayStatus == nil {
+		return false
+	}
+	checkinTime := time.UnixMilli(int64(gatewayStatus.CheckinTime))
+
+	var checkinInterval time.Duration
+	if magmadConfig != nil {
+		checkinInterval = time.Duration(int64(magmadConfig.CheckinInterval)) * time.Second
+	} else {
+		checkinInterval = defaultCheckinInterval
+	}
+	return time.Now().Before(checkinTime.Add(graceFactor * checkinInterval))
 }
 
 func getGatewayTKs(gateways []models.GatewayID) storage.TKs {

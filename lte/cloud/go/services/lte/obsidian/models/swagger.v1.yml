@@ -32,6 +32,8 @@ magma-gen-meta:
       filename: gateway_dns_records_swaggergen.go
     - go-struct-name: GatewayHEConfig
       filename: gateway_he_config_swaggergen.go
+    - go-struct-name: GatewayNgcConfigs
+      filename: gateway_ngc_configs_swaggergen.go
     - go-struct-name: DNSConfigRecord
       filename: dns_config_record_swaggergen.go
     - go-struct-name: LteGateway
@@ -68,6 +70,8 @@ magma-gen-meta:
       filename: cellular_gateway_pool_record_swaggergen.go
     - go-struct-name: CellularGatewayPoolRecords
       filename: cellular_gateway_pool_records_swaggergen.go
+    - go-struct-name: NetworkNGCConfigs
+      filename: network_ngc_configs_swaggergen.go
 
 info:
   title: LTE Network Management
@@ -352,6 +356,38 @@ paths:
           schema:
             type: string
             example: feg_network
+      responses:
+        '204':
+          description: Success
+        default:
+          $ref: './orc8r-swagger-common.yml#/responses/UnexpectedError'
+
+  /lte/{network_id}/cellular/ngc:
+    get:
+      summary: Get NGC configuration of LTE Network
+      tags:
+        - LTE Networks
+      parameters:
+        - $ref: './orc8r-swagger-common.yml#/parameters/network_id'
+      responses:
+        '200':
+          description: NGC configuration of the network
+          schema:
+            $ref: '#/definitions/network_ngc_configs'
+        default:
+          $ref: './orc8r-swagger-common.yml#/responses/UnexpectedError'
+    put:
+      summary: Update NGC configuration of LTE network
+      tags:
+        - LTE Networks
+      parameters:
+        - $ref: './orc8r-swagger-common.yml#/parameters/network_id'
+        - name: config
+          in: body
+          description: New NGC configuration for the network
+          required: true
+          schema:
+            $ref: '#/definitions/network_ngc_configs'
       responses:
         '204':
           description: Success
@@ -1066,6 +1102,39 @@ paths:
           description: Success
         default:
           $ref: './orc8r-swagger-common.yml#/responses/UnexpectedError'
+  /lte/{network_id}/gateways/{gateway_id}/cellular/ngc:
+    get:
+      summary: Get gateway NGC configuration
+      tags:
+        - LTE Gateways
+      parameters:
+        - $ref: './orc8r-swagger-common.yml#/parameters/network_id'
+        - $ref: './orc8r-swagger-common.yml#/parameters/gateway_id'
+      responses:
+        '204':
+          description: NGC configuration
+          schema:
+            $ref: '#/definitions/gateway_ngc_configs'
+        default:
+          $ref: './orc8r-swagger-common.yml#/responses/UnexpectedError'
+    put:
+      summary: Update gateway NGC configuration
+      tags:
+        - LTE Gateways
+      parameters:
+        - $ref: './orc8r-swagger-common.yml#/parameters/network_id'
+        - $ref: './orc8r-swagger-common.yml#/parameters/gateway_id'
+        - name: config
+          in: body
+          description: New NGC configuration
+          required: true
+          schema:
+            $ref: '#/definitions/gateway_ngc_configs'
+      responses:
+        '204':
+          description: Success
+        default:
+          $ref: './orc8r-swagger-common.yml#/responses/UnexpectedError'
 
   /lte/{network_id}/gateways/{gateway_id}/cellular/non_eps:
     get:
@@ -1603,6 +1672,48 @@ definitions:
         $ref: '#/definitions/network_epc_configs'
       feg_network_id:
        $ref: '#/definitions/feg_network_id'
+      ngc:
+        $ref: '#/definitions/network_ngc_configs'
+
+  suci_profile:
+    description: SUCI profile for a network. These attributes are defined as per the SUCI encryption/decryption mechanisms specified in the 3GPP TS 33.501.
+    type: object
+    properties:
+      home_network_public_key_identifier:
+        type: integer
+        format: uint32
+        minimum: 0
+        maximum: 255
+        description: HPLMN Public Key Identifier
+        x-nullable: false
+      home_network_public_key:
+        type: string
+        format: byte
+        description: HPLMN Public Key
+        x-nullable: false
+      home_network_private_key:
+        type: string
+        format: byte
+        description: HPLMN Private Key
+        x-nullable: false
+      protection_scheme:
+        type: string
+        description: ECIES Protection scheme
+        x-nullable: false
+        enum:
+          - "ProfileA"
+          - "ProfileB"
+
+  network_ngc_configs:
+    type: object
+    description: NextGeneration Core configuration for network
+    properties:
+      suci_profiles:
+        type: array
+        description: List of SuciProfiles shall be configured only for 5G
+        items:
+          $ref: '#/definitions/suci_profile'
+        minItems: 1
 
   feg_network_id:
     description: Name of the federated network serving this LTE network. Blank for non federated
@@ -1710,8 +1821,6 @@ definitions:
         type: string
         format: byte
         example: EREREREREREREREREREREQ==
-        minLength: 15
-        maxLength: 16
         x-nullable: false
       lte_auth_amf:
         type: string
@@ -1759,11 +1868,6 @@ definitions:
         type: boolean
         example: true
         default: false
-      node_identifier:
-        type: string
-        description: Node Identifier for 5G Standalone (SA) at a network level
-        format: ipv4
-        example: '192.168.200.1'
       congestion_control_enabled:
         description: Network configuration flag for congestion control on EPC
         type: boolean
@@ -1855,10 +1959,10 @@ definitions:
     type: object
     description: Full description of an LTE gateway
     required:
-      - device
       - id
       - name
       - description
+      - checked_in_recently
       - magmad
       - tier
       - cellular
@@ -1866,12 +1970,16 @@ definitions:
     properties:
       device:
         $ref: './orc8r-swagger.yml#/definitions/gateway_device'
+      registration_info:
+        $ref: './orc8r-swagger-common.yml#/definitions/registration_info'
       id:
         $ref: './orc8r-swagger-common.yml#/definitions/gateway_id'
       name:
         $ref: './orc8r-swagger-common.yml#/definitions/gateway_name'
       description:
         $ref: './orc8r-swagger-common.yml#/definitions/gateway_description'
+      checked_in_recently:
+        $ref: './orc8r-swagger-common.yml#/definitions/gateway_checked_in_recently'
       magmad:
         $ref: './orc8r-swagger.yml#/definitions/magmad_gateway_configs'
       tier:
@@ -1889,7 +1997,6 @@ definitions:
     type: object
     description: LTE gateway object with read-only fields omitted
     required:
-      - device
       - id
       - name
       - description
@@ -1928,6 +2035,8 @@ definitions:
         $ref: '#/definitions/gateway_epc_configs'
       ran:
         $ref: '#/definitions/gateway_ran_configs'
+      ngc:
+        $ref: '#/definitions/gateway_ngc_configs'
       non_eps_service:
         $ref: '#/definitions/gateway_non_eps_configs'
       dns:
@@ -2013,6 +2122,11 @@ definitions:
         type: string
         minLength: 5
         maxLength: 49
+      node_identifier:
+        type: string
+        description: UPF Node Identifier
+        format: ipv4
+        example: '192.168.200.1'
       sgi_management_iface_vlan:
         type: string
         description: VLAN ID for management interface traffic on the AGW
@@ -2030,6 +2144,16 @@ definitions:
         description: IP address of gateway for management interface on the AGW
         minLength: 5
         maxLength: 49
+      sgi_management_iface_ipv6_addr:
+        description: IPv6 address for management interface on the AGW in CIDR format
+        type: string
+        format: cidr
+        example: '2001:4860:4860:0:0:0:0:8888/64'
+      sgi_management_iface_ipv6_gw:
+        description: IPv6 address of gateway for management interface on the AGW
+        type: string
+        format: ipv6
+        example: '2001:4860:4860:0:0:0:0:1'
       congestion_control_enabled:
         description: Flag to enable or disable congestion control on MME
         type: boolean
@@ -2165,6 +2289,48 @@ definitions:
           - 'BASE64'
           - 'HEX2BIN'
         example: 'BASE64'
+
+  gateway_ngc_configs:
+    description: NextGeneration Core configuration for gateway
+    type: object
+    properties:
+      amf_name:
+        type: string
+        x-nullable: false
+        description: FQDN (Fully Qualified Domain Name) of the AMF as defined in clause 28.3.2.5 of 3GPP TS 23.003.
+        example: "amf.example.org"
+      amf_set_id:
+        type: string
+        pattern: '^[0-3][A-Fa-f0-9]{0,2}$'
+        x-nullable: false
+        description: String identifying the AMF Set ID (10 bits), range is 0-3FF, as specified in clause 2.10.1 of 3GPP TS 23.003.
+        example: 1
+      amf_region_id:
+        type: string
+        pattern: '^[A-Fa-f0-9]{1,2}$'
+        x-nullable: false
+        description: String identifying the AMF Region ID (8 bits), range is 0-FF, as specified in clause 2.10.1 of 3GPP TS 23.003.
+        example: 1
+      amf_pointer:
+        type: string
+        pattern: '^[0-3][A-Fa-f0-9]{0,1}$'
+        x-nullable: false
+        description: String identifying the AMF Pointer (6 bits), range is 0-3F, as specified in clause 2.10.1 of 3GPP TS 23.003.
+        example: 0
+      amf_default_sst:
+        type: integer
+        format: uint32
+        minimum: 0
+        maximum: 255
+        x-nullable: false
+        description: AMF Default Slice Service Type. Values 0 to 127 correspond to the standardized SST range. Values 128 to 255 correspond to the Operator-specific range. See clause 28.4.2 of 3GPP TS 23.003. Standardized values are defined in clause 5.15.2.2 of 3GPP TS 23.501.
+        example: 1
+      amf_default_sd:
+        type: string
+        pattern: '^[A-Fa-f0-9]{1,6}$'
+        x-nullable: false
+        description: AMF Default Slice Descriptor. This is an optional parameter that complements the Slice/Service type(s) to allow to differentiate amongst multiple Network Slices of the same Slice/Service type. This IE shall be absent if no SD value is associated with the SST. Range is 0-FFFFFF. See clause 28.4.2 of 3GPP TS 23.003.
+        example: ffffff
 
   subscriberdb_sync_interval:
     description: Interval in seconds between gateway requests to sync its subscriberdb with the cloud.
@@ -2429,6 +2595,19 @@ definitions:
         $ref: '#/definitions/aggregated_maximum_bitrate'
       qos_profile:
         $ref: '#/definitions/qos_profile'
+      pdn_type:
+        type: integer
+        format: uint32
+        enum:
+          - 0
+          - 1
+          - 2
+          - 3
+        description: Value identifier for PDN type (0=IPv4 1=IPv6 2=IPv4v6 3=IPv4orv6)
+      is_default:
+        type: boolean
+        default: false
+        description: Is this the default APN?
 
   apn_name:
     type: string

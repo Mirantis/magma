@@ -15,6 +15,7 @@ package models
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 
@@ -22,7 +23,6 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
-	"github.com/pkg/errors"
 
 	"magma/lte/cloud/go/lte"
 	"magma/orc8r/cloud/go/services/configurator"
@@ -68,6 +68,11 @@ func (m *NetworkCellularConfigs) ValidateModel(ctx context.Context) error {
 	if err := m.Ran.ValidateModel(ctx); err != nil {
 		return err
 	}
+	if m.Ngc != nil {
+		if err := m.Ngc.ValidateModel(ctx); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -78,10 +83,10 @@ func (m FegNetworkID) ValidateModel(ctx context.Context) error {
 	if !swag.IsZero(m) {
 		exists, err := configurator.DoesNetworkExist(ctx, string(m))
 		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("Failed to search for network %s", string(m)))
+			return fmt.Errorf("Failed to search for network %s: %w", string(m), err)
 		}
 		if !exists {
-			return errors.New(fmt.Sprintf("Network: %s does not exist", string(m)))
+			return fmt.Errorf("Network: %s does not exist", string(m))
 		}
 	}
 	return nil
@@ -102,6 +107,25 @@ func (m *NetworkEpcConfigs) ValidateModel(context.Context) error {
 		if name == "" {
 			return errors.New("profile name should be non-empty")
 		}
+	}
+	return nil
+}
+
+func (m *NetworkNgcConfigs) ValidateModel(context.Context) error {
+	if err := m.Validate(strfmt.Default); err != nil {
+		return err
+	}
+	if m.SuciProfiles != nil {
+		if err := m.ValidateSuciProfiles(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *NetworkNgcConfigs) ValidateSuciProfiles() error {
+	if err := m.Validate(strfmt.Default); err != nil {
+		return err
 	}
 	return nil
 }
@@ -127,14 +151,14 @@ func (m *NetworkRanConfigs) ValidateModel(context.Context) error {
 	}
 
 	if tddConfigSet && band.Mode != lte.TDDMode {
-		return errors.Errorf("band %d not a TDD band", band.ID)
+		return fmt.Errorf("band %d not a TDD band", band.ID)
 	}
 	if fddConfigSet {
 		if band.Mode != lte.FDDMode {
-			return errors.Errorf("band %d not a FDD band", band.ID)
+			return fmt.Errorf("band %d not a FDD band", band.ID)
 		}
 		if !band.EarfcnULInRange(m.FddConfig.Earfcnul) {
-			return errors.Errorf("EARFCNUL=%d invalid for band %d (%d, %d)", m.FddConfig.Earfcnul, band.ID, band.StartEarfcnUl, band.StartEarfcnDl)
+			return fmt.Errorf("EARFCNUL=%d invalid for band %d (%d, %d)", m.FddConfig.Earfcnul, band.ID, band.StartEarfcnUl, band.StartEarfcnDl)
 		}
 	}
 
@@ -249,6 +273,10 @@ func (m *GatewayCellularConfigs) ValidateModel(ctx context.Context) error {
 }
 
 func (m *GatewayRanConfigs) ValidateModel(context.Context) error {
+	return m.Validate(strfmt.Default)
+}
+
+func (m *GatewayNgcConfigs) ValidateModel(context.Context) error {
 	return m.Validate(strfmt.Default)
 }
 

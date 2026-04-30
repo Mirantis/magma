@@ -11,6 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 from lte.protos.pipelined_pb2 import RuleModResult
+from magma.common.sentry import EXCLUDE_FROM_ERROR_MONITORING
 from magma.pipelined.app.base import ControllerType, MagmaController
 from magma.pipelined.app.enforcement_stats import EnforcementStatsController
 from magma.pipelined.app.policy_mixin import PolicyMixin
@@ -26,7 +27,6 @@ from magma.pipelined.policy_converters import (
     get_eth_type,
     get_ue_ip_match_args,
 )
-from magma.pipelined.qos.common import QosManager
 from magma.pipelined.qos.qos_meter_impl import MeterManager
 from magma.pipelined.redirect import RedirectException, RedirectionManager
 from magma.pipelined.utils import Utils
@@ -70,8 +70,9 @@ class EnforcementController(PolicyMixin, RestartMixin, MagmaController):
             self._service_manager.allocate_scratch_tables(self.APP_NAME, 1)[0]
         self._bridge_ip_address = kwargs['config']['bridge_ip_address']
         self._redirect_manager = None
-        self._qos_mgr = None
+        self._qos_mgr = kwargs['qos_manager']
         self._clean_restart = kwargs['config']['clean_restart']
+        self.is_stateless = kwargs['config']['redis_enabled']
         self._redirect_manager = RedirectionManager(
             self._bridge_ip_address,
             self.logger,
@@ -90,7 +91,7 @@ class EnforcementController(PolicyMixin, RestartMixin, MagmaController):
             datapath: ryu datapath struct
         """
         self._datapath = datapath
-        self._qos_mgr = QosManager.get_qos_manager(datapath, self.loop, self._config)
+        self._qos_mgr.init_impl(datapath)
 
     def cleanup_on_disconnect(self, datapath):
         """
@@ -220,8 +221,6 @@ class EnforcementController(PolicyMixin, RestartMixin, MagmaController):
 
         flow_adds = []
         try:
-            if local_f_teid_ng:
-                version = self._session_rule_version_mapper.get_version(imsi, ip_addr, rule.id)
             flow_adds = self._get_rule_match_flow_msgs(
                 imsi, msisdn, uplink_tunnel, ip_addr, apn_ambr, rule,
                 version, shard_id, local_f_teid_ng,
@@ -234,7 +233,7 @@ class EnforcementController(PolicyMixin, RestartMixin, MagmaController):
         except MagmaDPDisconnectedError:
             self.logger.error(
                 "Datapath disconnected, failed to install rule %s"
-                "for imsi %s", rule, imsi,
+                "for imsi %s", rule, imsi, extra=EXCLUDE_FROM_ERROR_MONITORING,
             )
             return RuleModResult.FAILURE
         return self._wait_for_rule_responses(imsi, ip_addr, rule, chan)
@@ -359,3 +358,12 @@ class EnforcementController(PolicyMixin, RestartMixin, MagmaController):
         else:
             for rule_id in rule_ids:
                 self._deactivate_flow_for_rule(imsi, ip_addr, rule_id)
+
+    def _skip_extra_flows_removal_stateless(self):
+        """
+        Returns redis_enabled flag value
+        Traffic is not getting resumed on service restart in case of stateless.
+        It is due to extra flows - enforcement table entries getting deleted.
+        This will decide to remove extra flows or not.
+        """
+        return self.is_stateless

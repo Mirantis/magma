@@ -1,286 +1,135 @@
----
-name: cloud-workflow
+# Copyright 2022 The Magma Authors.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-on:  # yamllint disable-line rule:truthy
+# owner: @magma/approvers-cloud
+# purpose: Orc8r linting and testing
+# remediation: https://magma.github.io/magma/docs/next/orc8r/dev_testing
+
+name: Orc8r Lint & Test
+
+on:
   push:
     branches:
       - master
+      - 'v1.*'
   pull_request:
     branches:
       - master
-    types: [opened, reopened, synchronize]
+      - 'v1.*'
+    types: [ opened, reopened, synchronize ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   path_filter:
-    runs-on: ubuntu-latest
-    # Map a step output to a job output
+    runs-on: ubuntu-20.04
     outputs:
-      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+      should_not_skip: ${{ steps.changes.outputs.filesChanged }}
     steps:
-      - id: skip_check
-        uses: fkirc/skip-duplicate-actions@master
+      # Need to get git on push event
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3.1.0
+        if: github.event_name == 'push'
+      - uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # pin@v2.11.1
+        id: changes
         with:
-          # Only run the main job for changes including the following paths
-          paths: '["cwf/cloud/**", "fbinternal/cloud/**", "feg/cloud/**", "lte/cloud/**", "orc8r/cloud/**", "orc8r/lib/**", "wifi/cloud/**"]'
-
+          filters: |
+            filesChanged:
+              - ".github/workflows/cloud-workflow.yml"
+              - "lte/protos/**"
+              - "cwf/cloud/**"
+              - "feg/cloud/**"
+              - "lte/cloud/**"
+              - "orc8r/**"
+              - "dp/cloud/**"
+              - "dp/protos/**"
+      - name: Save should_not_skip output
+        if: always()
+        run: |
+          mkdir -p ./pr
+          echo -n ${{ steps.changes.outputs.filesChanged == 'false' }} > ./pr/skipped
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # pin@v4
+        if: always()
+        with:
+          name: pr
+          path: pr/
   # Fail if checked-in generated code doesn't match output from
   # generation command.
-  insync-checkin:
+  cloud-tests:
     needs: path_filter
-    if: ${{ needs.path_filter.outputs.should_skip != 'true' }}
-    name: insync checkin job
-    runs-on: ubuntu-latest
+    if: ${{ needs.path_filter.outputs.should_not_skip == 'true' }}
+    name: cloud-tests
+    runs-on: ubuntu-20.04
     env:
       MAGMA_ROOT: "${{ github.workspace }}"
+      GO111MODULE: 'on'
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3.1.0
+      - uses: actions/setup-python@13ae5bb136fac2878aff31522b9efb785519f984 # pin@v4.3.0
         with:
-          python-version: '3.7'
-      - name: Run build.py
+          python-version: '3.8.10'
+      - name: deploy-sync-checkin
+        if: always()
+        id: deploy-sync-checkin
         run: |
-            cd ${MAGMA_ROOT}/orc8r/cloud/docker
-            python3 build.py --generate
-            sudo chown -R $USER $MAGMA_ROOT/*
-            git add .
-            echo GIT_STATUS=$(git status) >> $GITHUB_ENV
-            git status
-            git diff-index --quiet HEAD
-      - name: Extract commit title
-        if: failure() && github.ref == 'refs/heads/master'
-        id: commit
-        run: |
-          str="$(jq '.head_commit.message' $GITHUB_EVENT_PATH)"    # get the head_commit message
-          echo ::set-output name=title::${str%%\\n*} | tr -d '"'
-      - name: Notify failure to Slack
-        if: failure() && github.ref == 'refs/heads/master'
-        uses: rtCamp/action-slack-notify@v2.2.0
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_CI }}
-          SLACK_TITLE: "Github action insync-checkin failed"
-          SLACK_USERNAME: "Cloud workflow"
-          SLACK_MESSAGE: "COMMIT TITLE:\n ${{steps.commit.outputs.title}}\n\n\n GIT STATUS OUTPUT:\n ${{env.GIT_STATUS}}"
-          SLACK_ICON_EMOJI: ":boom:"
-          SLACK_COLOR: "#FF0000"
-          SLACK_FOOTER: ' '
-  # Fail if terraform variables, helm charts and orcl is out of sync
-  # Ensure all Helm chart values are in-sync across Orc8r deployment mechanisms
-  deploy-sync-checkin:
-    needs: path_filter
-    if: ${{ needs.path_filter.outputs.should_skip != 'true' }}
-    name: deploy sync job
-    runs-on: ubuntu-latest
-    env:
-      MAGMA_ROOT: "${{ github.workspace }}"
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.7'
-      - name: Run build.py
-        run: |
-            cd ${MAGMA_ROOT}/orc8r/cloud/deploy/orc8r_deployer/docker
-            ./run_deployer.bash --deploy-dir /tmp/deploy_dir --build --test check_all
-      - name: Extract commit title
-        id: commit
-        run: |
-          str="$(jq '.head_commit.message' $GITHUB_EVENT_PATH)"    # get the head_commit message
-          echo ::set-output name=title::${str%%\\n*} | tr -d '"'
-      - name: Notify failure to Slack
-        if: failure() && github.ref == 'refs/heads/master'
-        uses: rtCamp/action-slack-notify@v2.2.0
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_CI }}
-          SLACK_TITLE: "Github action deploy-sync-checkin failed"
-          SLACK_MESSAGE: "${{ steps.commit.outputs.title}}"
-          SLACK_USERNAME: "Cloud workflow"
-          SLACK_ICON_EMOJI: ":boom:"
-          SLACK_COLOR: "#FF0000"
-          SLACK_FOOTER: ' '
-  # Fail if code doesn't pass formatting requirements.
-  # Upload test coverage statistics.
-  cloud-lint:
-    needs: path_filter
-    if: ${{ needs.path_filter.outputs.should_skip != 'true' }}
-    name: cloud lint job
-    runs-on: ubuntu-latest
-    env:
-      MAGMA_ROOT: "${{ github.workspace }}"
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.7'
+          cd ${MAGMA_ROOT}/orc8r/cloud/deploy/orc8r_deployer/docker
+          ./run_deployer.bash --deploy-dir /tmp/deploy_dir --build --test check_all
       - name: Lint cloud Go code
+        if: always()
+        id: cloud-lint-lint
         run: |
-            cd ${MAGMA_ROOT}/orc8r/cloud/docker
-            python3 build.py --lint
+          cd ${MAGMA_ROOT}/orc8r/cloud/docker
+          python3 build.py --lint
       - name: Generate test coverage
+        if: always() && steps.cloud-lint-lint.outcome=='success'
+        id: cloud-lint-cov
         run: |
-            cd ${MAGMA_ROOT}/orc8r/cloud/docker
-            python3 build.py --coverage
-      - uses: codecov/codecov-action@v1
+          cd ${MAGMA_ROOT}/orc8r/cloud/docker
+          python3 build.py --coverage
+      - uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70 # pin@v3.1.1
+        if: always() && steps.cloud-lint-cov.outcome=='success'
+        id: cloud-lint-codecov
         with:
           files: '${{ env.MAGMA_ROOT}}/orc8r/cloud/coverage/all.gocov'
           flags: cloud_lint
-      - name: Extract commit title
-        id: commit
-        if: failure() && github.ref == 'refs/heads/master'
-        run: |
-          str="$(jq '.head_commit.message' $GITHUB_EVENT_PATH)"    # get the head_commit message
-          echo ::set-output name=title::${str%%\\n*} | tr -d '"'
-      - name: Notify failure to Slack
-        if: failure() && github.ref == 'refs/heads/master'
-        uses: rtCamp/action-slack-notify@v2.2.0
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_CI }}
-          SLACK_TITLE: "Github action cloud-lint failed"
-          SLACK_MESSAGE: "${{ steps.commit.outputs.title}}"
-          SLACK_USERNAME: "Cloud workflow"
-          SLACK_ICON_EMOJI: ":boom:"
-          SLACK_COLOR: "#FF0000"
-          SLACK_FOOTER: ' '
-  cloud-test:
-    needs: path_filter
-    if: ${{ needs.path_filter.outputs.should_skip != 'true' }}
-    name: cloud test job
-    runs-on: ubuntu-latest
-    env:
-      MAGMA_ROOT: "${{ github.workspace }}"
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.7'
       - name: Run tests cloud Go
+        if: always()
+        id: cloud-test
         run: |
-            cd ${MAGMA_ROOT}/orc8r/cloud/docker
-            python3 build.py --tests --up
-            ls ${MAGMA_ROOT}/orc8r/cloud/test-results
+          cd ${MAGMA_ROOT}/orc8r/cloud/docker
+          python3 build.py --tests --up
+          ls ${MAGMA_ROOT}/orc8r/cloud/test-results
         timeout-minutes: 15
       - name: Upload Test Results
         if: always()
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # pin@v4
         with:
           name: Unit Test Results
           path: "${{ env.MAGMA_ROOT}}/orc8r/cloud/test-results/*"
-      - name: Extract commit title
-        id: commit
-        if: failure() && github.ref == 'refs/heads/master'
-        run: |
-          str="$(jq '.head_commit.message' $GITHUB_EVENT_PATH)"    # get the head_commit message
-          echo ::set-output name=title::${str%%\\n*} | tr -d '"'
-      - name: Notify failure to Slack
-        if: failure() && github.ref == 'refs/heads/master'
-        uses: rtCamp/action-slack-notify@v2.2.0
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_CI }}
-          SLACK_TITLE: "Github action cloud-test failed"
-          SLACK_MESSAGE: "${{ steps.commit.outputs.title}}"
-          SLACK_USERNAME: "Cloud workflow"
-          SLACK_ICON_EMOJI: ":boom:"
-          SLACK_COLOR: "#FF0000"
-          SLACK_FOOTER: ' '
-  cloud-upload:
-    needs: path_filter
-    if: ${{ needs.path_filter.outputs.should_skip == 'false' && github.ref == 'refs/heads/master' }}
-    name: cloud upload job
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install SwaggerHub CLI
-        run: npm install --global swaggerhub-cli
-      - name: Publish SwaggerHub API
-        env:
-          MAGMA_ROOT: "${{ github.workspace }}"
-          SWAGGERHUB_API_KEY: "${{ secrets.SWAGGERHUB_API_KEY }}"
-        run: |
-          swaggerhub api:unpublish MagmaCore/Magma/1.0.0
-          swaggerhub api:update MagmaCore/Magma/1.0.0 --file ${MAGMA_ROOT}/orc8r/cloud/go/obsidian/swagger/v1/swagger.yml --published=publish --visibility=public --setdefault
-      - name: Extract commit title
-        id: commit
-        if: failure() && github.ref == 'refs/heads/master'
-        run: |
-          str="$(jq '.head_commit.message' $GITHUB_EVENT_PATH)"    # get the head_commit message
-          echo ::set-output name=title::${str%%\\n*} | tr -d '"'
-      - name: Notify failure to Slack
-        if: failure() && github.ref == 'refs/heads/master'
-        uses: rtCamp/action-slack-notify@v2.2.0
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_CI }}
-          SLACK_TITLE: "Github action cloud-upload failed"
-          SLACK_MESSAGE: "${{ steps.commit.outputs.title}}"
-          SLACK_USERNAME: "Cloud workflow"
-          SLACK_ICON_EMOJI: ":boom:"
-          SLACK_COLOR: "#FF0000"
-          SLACK_FOOTER: ' '
-  orc8r-build:
-    needs:
-      - path_filter
-      - insync-checkin
-      - deploy-sync-checkin
-      - cloud-lint
-      - cloud-test
-    if: ${{ needs.path_filter.outputs.should_skip == 'false' }}
-    name: orc8r build job
-    runs-on: ubuntu-latest
-    env:
-      MAGMA_ROOT: "${{ github.workspace }}"
-      DOCKER_REGISTRY: "${{ secrets.DOCKER_REGISTRY }}"
-      DOCKER_USERNAME: "${{ secrets.DOCKER_USERNAME }}"
-      DOCKER_PASSWORD: "${{ secrets.DOCKER_PASSWORD }}"
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run apt-get update
-        run: sudo apt-get update
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-go@c4a742cab115ed795e34d4513e2cf7d472deb55f # pin@v3.3.1
+        if: always()
+        id: gateway_test_init
         with:
-          python-version: '3.7'
-      - name: Run build.py
+          go-version: '1.21.12'
+      - name: Download dependencies
+        if: always() && steps.gateway_test_init.outcome=='success'
+        id: gateway_test_dep
         run: |
-            cd ${MAGMA_ROOT}/orc8r/cloud/docker
-            python3 build.py --all --nocache --parallel
-      - name: Tag and push to Docker Registry
-        if: github.ref == 'refs/heads/master'
-        # yamllint disable rule:line-length
+          cd cwf/gateway
+          go mod download
+      - name: Gateway go tests
+        if: always() && steps.gateway_test_dep.outcome=='success'
+        id: gateway_test
         run: |
-            ./ci-scripts/tag-push-docker.sh --images 'nginx|controller' --tag "${GITHUB_SHA:0:8}" --tag-latest true --project orc8r
-      - name: Tag and push to Jfrog Registry
-        if: github.ref == 'refs/heads/master'
-        env:
-          DOCKER_REGISTRY: "${{ secrets.JFROG_DOCKER_ORC8R_REGISTRY }}"
-          DOCKER_USERNAME: "${{ secrets.JFROG_USERNAME }}"
-          DOCKER_PASSWORD: "${{ secrets.JFROG_PASSWORD }}"
-        run: |
-            ./ci-scripts/tag-push-docker.sh --images 'nginx|controller' --tag "${GITHUB_SHA:0:8}" --tag-latest true --project orc8r
-      - name: Extract commit title
-        if: github.ref == 'refs/heads/master'
-        id: commit
-        run: |
-          str="$(jq '.head_commit.message' $GITHUB_EVENT_PATH)"    # get the head_commit message
-          echo ::set-output name=title::${str%%\\n*} | tr -d '"'
-      - name: Notify failure to Slack
-        if: failure() && github.ref == 'refs/heads/master'
-        uses: rtCamp/action-slack-notify@v2.2.0
-        # yamllint enable
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          SLACK_TITLE: "Github action orc8r-build failed"
-          SLACK_USERNAME: "Cloud workflow"
-          SLACK_MESSAGE: "${{ steps.commit.outputs.title}}"
-          SLACK_ICON_EMOJI: ":boom:"
-          SLACK_COLOR: "#FF0000"
-          SLACK_FOOTER: ' '
-      # Notify ci channel when push succeeds
-      - name: Notify success to Slack
-        if: success() && github.ref == 'refs/heads/master'
-        uses: rtCamp/action-slack-notify@v2.2.0
-        env:
-          SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL_ARTIFACTS }}
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_OSS }}
-          SLACK_TITLE: "*Orchestrator images have been published*"
-          SLACK_MESSAGE: "${{ steps.commit.outputs.title}}"
-          SLACK_USERNAME: "Cloud workflow"
-          SLACK_ICON_EMOJI: ":heavy_check_mark:"
-          SLACK_COLOR: "#00FF00"
-          SLACK_FOOTER: ' '
+          cd ${MAGMA_ROOT}/orc8r/gateway/go
+          go test ./...
+          go vet ./...

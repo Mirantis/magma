@@ -19,15 +19,15 @@
 #include <glog/logging.h>
 
 extern "C" {
-#include "conversions.h"
-#include "ApnAggregateMaximumBitRate.h"
-#include "3gpp_23.003.h"
-#include "log.h"
+#include "lte/gateway/c/core/oai/common/conversions.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_23.003.h"
+#include "lte/gateway/c/core/oai/common/log.h"
 }
 
-TEST(
-    test_bit_rate_value_to_eps_qos_for_apnambr_extended2_test,
-    bit_rate_value_to_eps_qos_for_apnambr_extended2_test) {
+#include "lte/gateway/c/core/oai/tasks/nas/ies/ApnAggregateMaximumBitRate.hpp"
+
+TEST(test_bit_rate_value_to_eps_qos_for_apnambr_extended2_test,
+     bit_rate_value_to_eps_qos_for_apnambr_extended2_test) {
   ApnAggregateMaximumBitRate apn_testing;
 
   bit_rate_value_to_eps_qos(&apn_testing, 0, 0, BPS);
@@ -381,10 +381,4 @@ TEST(
   ASSERT_EQ(apn_testing.apnambrfordownlink_extended, 0);
   ASSERT_EQ(apn_testing.apnambrforuplink_extended2, 255);
   ASSERT_EQ(apn_testing.apnambrfordownlink_extended2, 255);
-}
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  OAILOG_INIT("MME", OAILOG_LEVEL_DEBUG, MAX_LOG_PROTOS);
-  return RUN_ALL_TESTS();
 }

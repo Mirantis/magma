@@ -11,11 +11,13 @@
  * limitations under the License.
  */
 
+#include "lte/gateway/c/session_manager/ShardTracker.hpp"
+
+#include <stddef.h>
+#include <memory>
+#include <set>
 #include <string>
 #include <vector>
-#include <set>
-
-#include "ShardTracker.h"
 
 namespace magma {
 

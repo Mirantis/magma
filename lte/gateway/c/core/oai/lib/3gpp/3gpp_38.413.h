@@ -13,11 +13,11 @@
 
 #pragma once
 
-#include "3gpp_23.003.h"
-#include "3gpp_38.401.h"
-#include "bstrlib.h"
-#include "n11_messages_types.h"
-#include "TrackingAreaIdentity.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_23.003.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_38.401.h"
+#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
+#include "lte/gateway/c/core/oai/include/n11_messages_types.h"
+#include "lte/gateway/c/core/oai/include/TrackingAreaIdentity.h"
 
 #define MAX_NO_OF_PDUSESSIONS 16
 #define MAX_QosFlow 16
@@ -83,11 +83,29 @@ typedef struct pdusession_setup_item_s {
                                                     // Setup Request
 } pdusession_setup_item_t;
 
+typedef struct pdusession_modify_item_s {
+  bstring nas_pdu;  // 5GC – UE or UE – 5GC message that is transferred without
+                    // interpretation in the NG-RAN node  /*optional*/
+  Ngap_PDUSessionID_t
+      Pdu_Session_ID;  // PDU Session for a UE. The definition and use of the
+                       // PDU Session ID is specified in TS 23.501 [9].
+  Ngap_SNSSAI_t Ngap_s_nssai;  // S-NSSAI as defined in TS 23.003 [23].
+  pdu_session_resource_modify_request_transfer_t
+      PDU_Session_Resource_Modify_Request_Transfer;  // Containing the PDU
+                                                     // Session Resource
+                                                     // Modify Request
+} pdusession_modify_item_t;
+
 typedef struct Ngap_PDUSession_Resource_Setup_Request_List_s {
   uint16_t no_of_items;
   pdusession_setup_item_t item[MAX_NO_OF_PDUSESSIONS];
 
 } Ngap_PDUSession_Resource_Setup_Request_List_t;
+
+typedef struct Ngap_PDUSession_Resource_Modify_Request_List_s {
+  uint16_t no_of_items;
+  pdusession_modify_item_t item[MAX_NO_OF_PDUSESSIONS];
+} Ngap_PDUSession_Resource_Modify_Request_List_t;
 
 typedef struct response_gtp_tunnel_s {
   char transportLayerAddress[4];
@@ -130,11 +148,50 @@ typedef struct pdusession_resource_failed_To_setup_item_s {
                                                          // Setup Request
 } pdusession_resource_failed_To_setup_item_t;
 
+typedef struct pdusession_resource_failed_To_modify_item_s {
+  Ngap_PDUSessionID_t
+      Pdu_Session_ID;  // PDU Session for a UE. The definition and use of the
+                       // PDU Session ID is specified in TS 23.501 [9].
+  pdu_session_resource_modify_unsuccessful_transfer_t
+      PDU_Session_Resource_modify_Unsuccessful_Transfer;  // Containing the PDU
+                                                          // Session Resource
+                                                          // Setup Request
+} pdusession_resource_failed_To_modify_item_t;
+
 typedef struct Ngap_PDUSession_Resource_Failed_To_Setup_List_s {
   uint16_t no_of_items;
   pdusession_resource_failed_To_setup_item_t item[MAX_NO_OF_PDUSESSIONS];
 
 } Ngap_PDUSession_Resource_Failed_To_Setup_List_t;
+
+typedef struct Ngap_PDUSession_Resource_Failed_To_Modify_List_s {
+  uint16_t no_of_items;
+  pdusession_resource_failed_To_modify_item_t item[MAX_NO_OF_PDUSESSIONS];
+} Ngap_PDUSession_Resource_Failed_To_Modify_List_t;
+
+typedef struct Ngap_PduSession_Resource_Modify_Response_Transfer_s {
+  response_gtp_tunnel_t dl_ng_u_up_tnl_info;
+  response_gtp_tunnel_t ul_ng_u_up_tnl_info;
+  qos_flow_add_or_modify_response_list_t qos_flow_add_or_modify_response_list;
+  qos_flow_request_list_t additional_dl_qos_flow_per_tnl_info;
+  qos_flow_list_cause_t qos_flow_failed_to_add_or_modify_list;
+  qos_flow_request_list_t additional_ng_u_up_tnl_info;
+} Ngap_PduSession_Resource_Modify_Response_Transfer_t;
+
+typedef struct pdusession_modify_response_item_s {
+  Ngap_PDUSessionID_t
+      Pdu_Session_ID;  // PDU Session for a UE. The definition and use of the
+                       // PDU Session ID is specified in TS 23.501 [9].
+  Ngap_PduSession_Resource_Modify_Response_Transfer_t
+      PDU_Session_Resource_Mpdify_Response_Transfer;  // Containing the PDU
+                                                      // Session Resource
+                                                      // Modify Response
+} pdusession_modify_response_item_t;
+
+typedef struct Ngap_PDUSession_Resource_Modify_Response_List_s {
+  uint16_t no_of_items;
+  pdusession_modify_response_item_t item[MAX_NO_OF_PDUSESSIONS];
+} Ngap_PDUSession_Resource_Modify_Response_List_t;
 
 typedef struct pdusession_resource_released_item_t_s {
   Ngap_PDUSessionID_t
@@ -245,6 +302,9 @@ typedef struct Ngap_initial_context_setup_request_s {
   ran_ue_ngap_id_t
       ran_ue_ngap_id;  // This IE uniquely identifies the UE association over
                        // the NG interface within the NG-RAN node
+  ngap_ue_aggregate_maximum_bit_rate_t
+      ue_aggregate_max_bit_rate;  // UE_AGGREGATED_BITRATE as specified in
+                                  // as specified in 38.413 [9.3.1.58]
   guamfi_t Ngap_guami;
   Ngap_PDUSessionID_t
       Pdu_Session_ID;  // PDU Session for a UE. The definition and use of the

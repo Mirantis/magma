@@ -12,24 +12,15 @@
 # limitations under the License.
 ################################################################################
 
-OUTPUT_DIR=bin
-WHICH_FBGO=$(command -v fbgo)
-WHICH_GO=$(command -v go)
-if [ -z "${WHICH_FBGO}" ]; then
-    GO=${WHICH_GO}
-else
-    GO=${WHICH_FBGO}
-fi
-
 function lint {
     LINTER=$(which golangci-lint)
     if [ -z "$LINTER" ]; then
-        echo ERROR :: Could not find 'golangci-lint' executable
-        echo To install, run 'brew install golangci/tap/golangci-lint'
-        exit 1
+        echo "-> installing golangci " && \
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+        | sudo sh -s -- -b /usr/sbin/ v1.51.2;
     fi
 
-    golangci-lint run -c ../../ci/.golangci.yml
+    golangci-lint run -c "$MAGMA_ROOT"/.golangci.yml
 
     if [ $? -ne 0 ]; then
         echo Lint failed.
@@ -38,15 +29,15 @@ function lint {
 }
 
 function build {
-    ${GO} build .
+    go build .
 }
 
 function gen {
-    ${GO} generate ./...
+    go generate ./...
 }
 
 function clean {
-    rm -rf ${OUTPUT_DIR}
+    rm ./radius
 }
 
 function start {
@@ -60,18 +51,19 @@ function pretty {
 }
 
 function test {
-    find . | grep _test\.go | sed 's/\(.*\)\/.*/\1/' | xargs -L1 "${GO}" "test"
+    # Run tests sequentially to avoid radius server cross-talk between tests.
+    gotestsum -- -p 1 ./...
 }
 
 function e2e {
     pushd ../integration/lb/sim || exit
     echo Building E2E test containers for LB with simulator
-    docker-compose build
+    docker compose --compatibility build
     echo Starting E2E test containers for LB with simulator
     echo Automatically terminating after 60 secs...
-    docker-compose up &
+    docker compose --compatibility up &
     sleep 60s
-    docker-compose down
+    docker compose down
     popd || exit
 }
 

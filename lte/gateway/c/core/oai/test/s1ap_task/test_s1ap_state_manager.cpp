@@ -13,10 +13,10 @@
 #include <gtest/gtest.h>
 
 extern "C" {
-#include "log.h"
+#include "lte/gateway/c/core/oai/common/log.h"
 }
 
-#include "s1ap_state_manager.h"
+#include "lte/gateway/c/core/oai/tasks/s1ap/s1ap_state_manager.hpp"
 
 namespace magma {
 namespace lte {
@@ -26,7 +26,7 @@ namespace lte {
  * Regression test for issue #8581.
  */
 TEST(test_s1ap_state_manager, free_state_idempotent) {
-  S1apStateManager::getInstance().init(2, 2, false);
+  S1apStateManager::getInstance().init(false);
   S1apStateManager::getInstance().free_state();
   S1apStateManager::getInstance().free_state();
 }

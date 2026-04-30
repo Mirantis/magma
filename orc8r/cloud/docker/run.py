@@ -41,7 +41,7 @@ def main() -> None:
         if args.thanos:
             f.append('thanos')
         file_args = _make_file_args(f)
-        compose_line = 'COMPOSE_FILE={}  {}\n'.format(
+        compose_line = 'COMPOSE_FILE={}  \n{}\n'.format(
             ':'.join(file_args),
             DO_NOT_COMMIT,
         )
@@ -50,12 +50,22 @@ def main() -> None:
     if args.print:
         return
 
-    # Ensure build context exists, otherwise docker-compose throws an error
+    if args.clear_db:
+        try:
+            cmd = ['docker', 'compose', 'down']
+            subprocess.run(cmd, check=True)
+            cmd = ['docker', 'volume', 'rm', '--force', 'orc8r_pgdata']
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as err:
+            exit(err.returncode)
+        return
+
+    # Ensure build context exists, otherwise docker compose throws an error
     pathlib.Path(HOST_BUILD_CTX).mkdir(parents=True, exist_ok=True)
 
-    cmd = ['docker-compose', 'up', '-d']
+    cmd = ['docker', 'compose', '--compatibility', 'up', '-d']
     if args.down:
-        cmd = ['docker-compose', 'down']
+        cmd = ['docker', 'compose', 'down']
 
     print("Running '%s'..." % ' '.join(cmd))
     try:
@@ -125,6 +135,12 @@ def _parse_args() -> argparse.Namespace:
         '--down', '-d',
         action='store_true',
         help='Stop running containers',
+    )
+
+    parser.add_argument(
+        '--clear-db',
+        action='store_true',
+        help='Clear all content on the database',
     )
 
     args = parser.parse_args()

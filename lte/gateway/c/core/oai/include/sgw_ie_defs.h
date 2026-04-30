@@ -24,12 +24,12 @@
 
 #ifndef FILE_SGW_IE_DEFS_SEEN
 #define FILE_SGW_IE_DEFS_SEEN
-#include "common_types.h"
-#include "3gpp_23.003.h"
-#include "3gpp_24.007.h"
-#include "3gpp_24.008.h"
-#include "3gpp_29.274.h"
-#include "TrackingAreaIdentity.h"
+#include "lte/gateway/c/core/oai/common/common_types.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_23.003.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_24.007.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_24.008.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_29.274.h"
+#include "lte/gateway/c/core/oai/include/TrackingAreaIdentity.h"
 
 typedef uint8_t DelayValue_t;
 typedef uint32_t SequenceNumber_t;
@@ -174,29 +174,50 @@ typedef struct {
   uint8_t mnc[3];
 } ServingNetwork_t;
 
-#define FTEID_T_2_IP_ADDRESS_T(fte_p, ip_p)                                    \
-  do {                                                                         \
-    if ((fte_p)->ipv4) {                                                       \
-      (ip_p)->pdn_type                    = IPv4;                              \
-      (ip_p)->address.ipv4_address.s_addr = (fte_p)->ipv4_address.s_addr;      \
-    }                                                                          \
-    if ((fte_p)->ipv6) {                                                       \
-      if ((fte_p)->ipv4) {                                                     \
-        (ip_p)->pdn_type = IPv4_AND_v6;                                        \
-      } else {                                                                 \
-        (ip_p)->pdn_type = IPv6;                                               \
-      }                                                                        \
-      memcpy(                                                                  \
-          &(ip_p)->address.ipv6_address, &(fte_p)->ipv6_address,               \
-          sizeof((fte_p)->ipv6_address));                                      \
-    }                                                                          \
+#define FTEID_T_2_PROTO_IP(fte_p, ip_p)                            \
+  do {                                                             \
+    if ((fte_p)->ipv4) {                                           \
+      (ip_p)->set_pdn_type(IPv4);                                  \
+      char ip4_str[INET_ADDRSTRLEN];                               \
+      inet_ntop(AF_INET, (&(fte_p)->ipv4_address.s_addr), ip4_str, \
+                INET_ADDRSTRLEN);                                  \
+      (ip_p)->set_ipv4_addr(ip4_str);                              \
+    }                                                              \
+    if ((fte_p)->ipv6) {                                           \
+      if ((fte_p)->ipv4) {                                         \
+        (ip_p)->set_pdn_type(IPv4_AND_v6);                         \
+      } else {                                                     \
+        (ip_p)->set_pdn_type(IPv6);                                \
+      }                                                            \
+      char ip6_str[INET6_ADDRSTRLEN];                              \
+      inet_ntop(AF_INET6, &((fte_p)->ipv6_address), ip6_str,       \
+                INET6_ADDRSTRLEN);                                 \
+      (ip_p)->set_ipv6_addr(ip6_str);                              \
+    }                                                              \
+  } while (0)
+
+#define FTEID_T_2_IP_ADDRESS_T(fte_p, ip_p)                               \
+  do {                                                                    \
+    if ((fte_p)->ipv4) {                                                  \
+      (ip_p)->pdn_type = IPv4;                                            \
+      (ip_p)->address.ipv4_address.s_addr = (fte_p)->ipv4_address.s_addr; \
+    }                                                                     \
+    if ((fte_p)->ipv6) {                                                  \
+      if ((fte_p)->ipv4) {                                                \
+        (ip_p)->pdn_type = IPv4_AND_v6;                                   \
+      } else {                                                            \
+        (ip_p)->pdn_type = IPv6;                                          \
+      }                                                                   \
+      memcpy(&(ip_p)->address.ipv6_address, &(fte_p)->ipv6_address,       \
+             sizeof((fte_p)->ipv6_address));                              \
+    }                                                                     \
   } while (0)
 
 typedef enum {
-  TARGET_ID_RNC_ID       = 0,
+  TARGET_ID_RNC_ID = 0,
   TARGET_ID_MACRO_ENB_ID = 1,
-  TARGET_ID_CELL_ID      = 2,
-  TARGET_ID_HOME_ENB_ID  = 3
+  TARGET_ID_CELL_ID = 2,
+  TARGET_ID_HOME_ENB_ID = 3
   /* Other values are spare */
 } target_type_t;
 
@@ -236,8 +257,8 @@ typedef struct {
 
 typedef enum SelectionMode_e {
   MS_O_N_P_APN_S_V = 0,  ///< MS or network provided APN, subscribed verified
-  MS_P_APN_S_N_V   = 1,  ///< MS provided APN, subscription not verified
-  N_P_APN_S_N_V    = 2,  ///< Network provided APN, subscription not verified
+  MS_P_APN_S_N_V = 1,    ///< MS provided APN, subscription not verified
+  N_P_APN_S_N_V = 2,     ///< Network provided APN, subscription not verified
 } SelectionMode_t;
 
 typedef struct {
@@ -499,8 +520,8 @@ typedef struct bearer_contexts_to_be_removed_s {
 
 typedef struct ebi_list_s {
   uint32_t num_ebi;
-#define RELEASE_ACCESS_BEARER_MAX_BEARERS 8
-  ebi_t ebis[RELEASE_ACCESS_BEARER_MAX_BEARERS];
+#define MAX_BEARERS 11
+  ebi_t ebis[MAX_BEARERS];
 } ebi_list_t;
 
 //-------------------------------------
@@ -551,7 +572,7 @@ typedef struct bearer_context_within_delete_bearer_response_s {
             ///< precedence over the PCO IE in the message body if they
 } bearer_context_within_delete_bearer_response_t;
 
-#define MSG_DELETE_BEARER_REQUEST_MAX_FAILED_BEARER_CONTEXTS                   \
+#define MSG_DELETE_BEARER_REQUEST_MAX_FAILED_BEARER_CONTEXTS \
   11  // todo: find optimum number
 
 typedef struct bearer_contexts_within_delete_bearer_response_s {

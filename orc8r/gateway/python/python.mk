@@ -16,14 +16,7 @@
 ###############################################################################
 
 # virtualenv bin and build dirs
-PYTHON_VERSION=3.5
-OS_DISTRO := $(shell lsb_release -si)
-OS_VERSION := $(shell lsb_release -rs)
-ifeq ($(OS_DISTRO),Ubuntu)
-	ifeq ($(OS_VERSION),20.04)
-    	PYTHON_VERSION=3.8
-	endif
-endif
+PYTHON_VERSION=3.8
 
 BIN := $(PYTHON_BUILD)/bin
 SRC := $(MAGMA_ROOT)
@@ -54,16 +47,20 @@ $(SITE_PACKAGES_DIR)/setuptools: install_virtualenv
 	$(VIRT_ENV_PIP_INSTALL) "setuptools==49.6.0"  # newer than 41.0.1
 
 py_patches:
-	patch --dry-run -N -s -f $(SITE_PACKAGES_DIR)/aioeventlet.py <$(PATCHES_DIR)/aioeventlet.py38.patch 2>/dev/null \
-	&&  (patch -N -s -f $(SITE_PACKAGES_DIR)/aioeventlet.py <$(PATCHES_DIR)/aioeventlet.py38.patch && echo "aioeventlet was patched" ) \
-	|| ( true && echo "skipping aioeventlet patch since it was already applied")
-
 	patch --dry-run -N -s -f $(SITE_PACKAGES_DIR)/ryu/ofproto/nx_actions.py <$(PATCHES_DIR)/ryu_ipfix_args.patch 2>/dev/null \
 	&&  (patch -N -s -f $(SITE_PACKAGES_DIR)/ryu/ofproto/nx_actions.py <$(PATCHES_DIR)/ryu_ipfix_args.patch && echo "ryu was patched" ) \
 	|| ( true && echo "skipping ryu patch since it was already applied")
 
-	patch --dry-run -N -s -f $(SITE_PACKAGES_DIR)/ryu/ofproto/nx_actions.py <$(PATCHES_DIR)/0001-Set-unknown-dpid-ofctl-log-to-debug.patch 2>/dev/null \
-	&&  (patch -N -s -f $(SITE_PACKAGES_DIR)/ryu/ofproto/nx_actions.py <$(PATCHES_DIR)/0001-Set-unknown-dpid-ofctl-log-to-debug.patch && echo "ryu was patched" ) \
+	patch --dry-run -N -s -f $(SITE_PACKAGES_DIR)/ryu/app/ofctl/service.py <$(PATCHES_DIR)/0001-Set-unknown-dpid-ofctl-log-to-debug.patch 2>/dev/null \
+	&&  (patch -N -s -f $(SITE_PACKAGES_DIR)/ryu/app/ofctl/service.py <$(PATCHES_DIR)/0001-Set-unknown-dpid-ofctl-log-to-debug.patch && echo "ryu was patched" ) \
+	|| ( true && echo "skipping ryu patch since it was already applied")
+
+	patch --dry-run -N -s -f $(SITE_PACKAGES_DIR)/ryu/ofproto/nicira_ext.py <$(PATCHES_DIR)/0002-QFI-value-set-in-Openflow-controller-using-RYU.patch 2>/dev/null \
+	&&  (patch -N -s -f $(SITE_PACKAGES_DIR)/ryu/ofproto/nicira_ext.py <$(PATCHES_DIR)/0002-QFI-value-set-in-Openflow-controller-using-RYU.patch && echo "ryu was patched" ) \
+	|| ( true && echo "skipping ryu patch since it was already applied")
+
+	patch --dry-run -N -s -f $(SITE_PACKAGES_DIR)/ryu/ofproto/nx_match.py <$(PATCHES_DIR)/0003-QFI-value-set-in-Openflow-controller-using-RYU.patch 2>/dev/null \
+ 	&&  (patch -N -s -f $(SITE_PACKAGES_DIR)/ryu/ofproto/nx_match.py <$(PATCHES_DIR)/0003-QFI-value-set-in-Openflow-controller-using-RYU.patch && echo "ryu was patched" ) \
 	|| ( true && echo "skipping ryu patch since it was already applied")
 
 	$(VIRT_ENV_PIP_INSTALL) --force-reinstall git+https://github.com/URenko/aioh2.git
@@ -105,14 +102,14 @@ $(PROTO_LIST): %_protos:
 	@echo "Generating python code for $* .proto files"
 	@mkdir -p $(PYTHON_BUILD)/gen
 	@echo "$(PYTHON_BUILD)/gen" > $(SITE_PACKAGES_DIR)/magma_gen.pth
-	$(BIN)/python $(SRC)/protos/gen_protos.py $(SRC)/$*/protos/ $(MAGMA_ROOT),$(MAGMA_ROOT)/orc8r/protos/prometheus $(SRC) $(PYTHON_BUILD)/gen/
+	$(BIN)/python$(PYTHON_VERSION) $(SRC)/protos/gen_protos.py $(SRC)/$*/protos/ $(MAGMA_ROOT),$(MAGMA_ROOT)/orc8r/protos/prometheus $(SRC) $(PYTHON_BUILD)/gen/
 
 prometheus_proto:
-	$(BIN)/python $(SRC)/protos/gen_prometheus_proto.py $(MAGMA_ROOT) $(PYTHON_BUILD)/gen
+	$(BIN)/python$(PYTHON_VERSION) $(SRC)/protos/gen_prometheus_proto.py $(MAGMA_ROOT) $(PYTHON_BUILD)/gen
 
 # If you update the version here, you probably also want to update it in setup.py
 $(BIN)/grpcio-tools: install_virtualenv
-	$(VIRT_ENV_PIP_INSTALL) "grpcio-tools>=1.16.1"
+	$(VIRT_ENV_PIP_INSTALL) "grpcio-tools>=1.46.3,<1.49.0"
 
 .test: .tests .sudo_tests
 
@@ -122,21 +119,21 @@ CODECOV_DIR := /var/tmp/codecovs
 .tests:
 ifdef TESTS
 ifndef SKIP_NON_SUDO_TESTS
-	$(eval NAME ?= $(shell $(BIN)/python setup.py --name))
-	. $(PYTHON_BUILD)/bin/activate; $(BIN)/nosetests --with-xunit --xunit-file=$(RESULTS_DIR)/tests_$(NAME).xml --with-coverage --cover-erase --cover-branches --cover-package=magma --cover-xml --cover-xml-file=$(CODECOV_DIR)/cover_$(NAME).xml -s $(TESTS)
+	$(eval NAME ?= $(shell $(BIN)/python$(PYTHON_VERSION) setup.py --name))
+	. $(PYTHON_BUILD)/bin/activate; $(BIN)/pytest --junit-xml=$(RESULTS_DIR)/tests_$(NAME).xml --cov=magma --cov-branch --cov-report xml:$(CODECOV_DIR)/cover_$(NAME).xml $(TESTS)
 endif
 endif
 
 .sudo_tests:
 ifdef SUDO_TESTS
 ifndef SKIP_SUDO_TESTS
-	$(eval NAME ?= $(shell $(BIN)/python setup.py --name))
-	. $(PYTHON_BUILD)/bin/activate; sudo $(BIN)/nosetests --with-xunit --xunit-file=$(RESULTS_DIR)/sudo_$(NAME).xml --with-coverage --cover-branches --cover-package=magma --cover-xml --cover-xml-file=$(CODECOV_DIR)/cover_$(NAME).xml -s $(SUDO_TESTS)
+	$(eval NAME ?= $(shell $(BIN)/python$(PYTHON_VERSION) setup.py --name))
+	. $(PYTHON_BUILD)/bin/activate; sudo $(BIN)/pytest --junit-xml=$(RESULTS_DIR)/sudo_$(NAME).xml --cov=magma --cov-branch --cov-report xml:$(CODECOV_DIR)/cover_sudo_$(NAME).xml $(SUDO_TESTS)
 endif
 endif
 
 install_egg: install_virtualenv setup.py
-	$(eval NAME ?= $(shell $(BIN)/python setup.py --name))
+	$(eval NAME ?= $(shell $(BIN)/python$(PYTHON_VERSION) setup.py --name))
 	@echo "Installing egg link for $(NAME)"
 	$(VIRT_ENV_PIP_INSTALL) --no-build-isolation -e .[dev]
 

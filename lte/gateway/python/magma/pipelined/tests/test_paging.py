@@ -35,8 +35,7 @@ from magma.pipelined.tests.pipelined_test_util import (
     stop_ryu_app_thread,
     wait_after_send,
 )
-from ryu.lib import hub
-from scapy.all import *
+from scapy.all import IP, TCP, UDP, Ether
 from scapy.contrib.gtp import GTP_U_Header
 
 
@@ -98,6 +97,8 @@ class PagingTest(unittest.TestCase):
                 'clean_restart': True,
                 'paging_timeout': 30,
                 'classifier_controller_id': 5,
+                'enable_nat': True,
+                'ovs_uplink_port_name': "patch-up",
             },
             mconfig=PipelineD(),
             loop=None,
@@ -126,8 +127,9 @@ class PagingTest(unittest.TestCase):
 
         ue_ip_addr = "192.168.128.30"
         self.classifier_controller.install_paging_flow(
+            200,
             IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            200, True,
+            True,
         )
 
         snapshot_verifier = SnapshotVerifier(
@@ -161,8 +163,9 @@ class PagingTest(unittest.TestCase):
 
         ue_ip_addr = "192.168.128.30"
         self.classifier_controller.install_paging_flow(
+            200,
             IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            200, True,
+            True,
         )
         # Create a set of packets
         pkt_sender = ScapyPacketInjector(self.BRIDGE)

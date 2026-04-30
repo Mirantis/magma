@@ -12,10 +12,11 @@ limitations under the License.
 """
 import argparse
 import json
-from typing import List
+from typing import List, Optional
 
 from google.protobuf import json_format
 from load_tests.common import (
+    PROTO_DIR,
     benchmark_grpc_request,
     generate_subs,
     make_full_request_type,
@@ -31,18 +32,15 @@ from lte.protos.session_manager_pb2 import (
 )
 from lte.protos.subscriberdb_pb2 import SubscriberID
 
-PROTO_DIR = 'lte/protos'
 TEST_APN = 'magma.ipv4'
 CREATE_SESSION_FILENAME = '/tmp/create_session_data.json'
 END_SESSION_FILENAME = '/tmp/end_session_data.json'
 SESSIOND_PORT = '0.0.0.0:50065'
-IMPORT_PATH = '/home/vagrant/magma'
-RESULTS_PATH = '/var/tmp'
 PROTO_PATH = PROTO_DIR + '/session_manager.proto'
 SERVICE_NAME = 'magma.lte.LocalSessionManager'
 
 
-def _handle_create_session_benchmarking(subs: List[SubscriberID]):
+def _handle_create_session_benchmarking(subs: List[SubscriberID], import_path: Optional[str] = None):
     _build_create_session_data(subs)
     request_type = 'CreateSession'
     benchmark_grpc_request(
@@ -52,6 +50,7 @@ def _handle_create_session_benchmarking(subs: List[SubscriberID]):
         make_output_file_path(request_type),
         len(subs),
         SESSIOND_PORT,
+        import_path=import_path,
     )
 
 
@@ -78,7 +77,7 @@ def _build_create_session_data(subs: List[SubscriberID]):
         json.dump(reqs, file, separators=(',', ':'))
 
 
-def _handle_end_session_benchmarking(subs: List[SubscriberID]):
+def _handle_end_session_benchmarking(subs: List[SubscriberID], import_path: Optional[str] = None):
     _build_end_session_data(subs)
     request_type = 'EndSession'
     benchmark_grpc_request(
@@ -88,6 +87,7 @@ def _handle_end_session_benchmarking(subs: List[SubscriberID]):
         make_output_file_path(request_type),
         len(subs),
         SESSIOND_PORT,
+        import_path=import_path,
     )
 
 
@@ -129,11 +129,14 @@ def _create_parser() -> argparse.ArgumentParser:
 
     # Add arguments
     for cmd in (parser_create, parser_end):
-        cmd.add_argument("--num", default=5, help="--num")
+        cmd.add_argument("--num", default=5, help="number of requests")
         cmd.add_argument(
             '--service_name',
             default='magma.lte.LocalSessionManager',
             help='proto service name',
+        )
+        cmd.add_argument(
+            '--import_path', default=None, help='Protobuf import path directory',
         )
 
     # Add function callbacks
@@ -154,12 +157,10 @@ def main():
 
     subs = generate_subs(int(args.num))
     if args.cmd == 'create':
-        _handle_create_session_benchmarking(subs)
+        _handle_create_session_benchmarking(subs, args.import_path)
 
     elif args.cmd == 'end':
-        _handle_end_session_benchmarking(subs)
-
-    print('Done')
+        _handle_end_session_benchmarking(subs, args.import_path)
 
 
 if __name__ == "__main__":

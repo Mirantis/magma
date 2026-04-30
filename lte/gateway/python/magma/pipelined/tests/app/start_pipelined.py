@@ -20,6 +20,7 @@ from enum import Enum
 
 from magma.pipelined.app.base import MagmaController
 from magma.pipelined.internal_ip_allocator import InternalIPAllocator
+from magma.pipelined.qos.common import QosManager
 from magma.pipelined.tests.app.exceptions import ServiceRunningError
 from ryu.base.app_manager import AppManager
 from ryu.lib import hub
@@ -58,8 +59,14 @@ Controller = namedtuple('Controller', ['name', 'app_future'])
 
 
 class PipelinedController(Enum):
-    InOut = Controller(
-        'magma.pipelined.app.inout', 'inout',
+    Ingress = Controller(
+        'magma.pipelined.app.ingress', 'ingress',
+    )
+    Middle = Controller(
+        'magma.pipelined.app.middle', 'middle',
+    )
+    Egress = Controller(
+        'magma.pipelined.app.egress', 'egress',
     )
     Arp = Controller(
         'magma.pipelined.app.arp', 'arpd',
@@ -210,8 +217,6 @@ class StartThread(object):
             self._test_setup.service_manager.session_rule_version_mapper
         contexts['interface_to_prefix_mapper'] = \
             self._test_setup.service_manager.interface_to_prefix_mapper
-        contexts['tunnel_id_mapper'] = \
-            self._test_setup.service_manager.tunnel_id_mapper
         contexts['restart_info_store'] = \
             self._test_setup.service_manager.restart_info_store
         contexts['app_futures'] = app_futures
@@ -220,6 +225,8 @@ class StartThread(object):
         contexts['loop'] = self._test_setup.loop
         contexts['rpc_stubs'] = self._test_setup.rpc_stubs
         contexts['service_manager'] = self._test_setup.service_manager
+        contexts['ebpf_manager'] = None
+        contexts['qos_manager'] = QosManager(self._test_setup.loop, self._test_setup.config)
 
         logging.basicConfig(
             level=logging.INFO,

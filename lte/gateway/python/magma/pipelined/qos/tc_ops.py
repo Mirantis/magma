@@ -10,6 +10,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+# pylint: disable=unnecessary-ellipsis
 
 from __future__ import (
     absolute_import,
@@ -19,6 +20,7 @@ from __future__ import (
 )
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 
 class TcOpsBase(ABC):
@@ -30,8 +32,8 @@ class TcOpsBase(ABC):
 
     @abstractmethod
     def create_htb(
-        self, iface: str, qid: str, max_bw: str, rate: str,
-        parent_qid: str = None,
+        self, iface: str, qid: str, max_bw: int, rate: str,
+        units: str, parent_qid: Optional[str] = None,
     ) -> int:
         """
         Create HTB scheduler

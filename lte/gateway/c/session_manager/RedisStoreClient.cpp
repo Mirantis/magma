@@ -11,28 +11,29 @@
  * limitations under the License.
  */
 
-#include "RedisStoreClient.h"
-#include <folly/Range.h>              // for operator<<, StringPiece
-#include <folly/dynamic-inl.h>        // for dynamic::dynamic, dynamic::~dyn...
-#include <folly/dynamic.h>            // for dynamic
-#include <folly/json.h>               // for parseJson, toJson
-#include <glog/logging.h>             // for COMPACT_GOOGLE_LOG_INFO, LogMes...
-#include <yaml-cpp/yaml.h>            // IWYU pragma: keep
-#include <stddef.h>                   // for size_t
-#include <stdint.h>                   // for uint32_t
-#include <algorithm>                  // for max
-#include <cpp_redis/core/client.hpp>  // for client, client::connect_state
-#include <cpp_redis/core/reply.hpp>   // for reply
-#include <cpp_redis/misc/error.hpp>   // for redis_error
-#include <future>                     // for future
-#include <ostream>                    // for operator<<, basic_ostream, size_t
-#include <unordered_map>              // for _Node_iterator, unordered_map
-#include <utility>                    // for move, pair
-#include <vector>                     // for vector
-#include "includes/ServiceConfigLoader.h"  // for ServiceConfigLoader
-#include "SessionState.h"                  // for SessionState
-#include "StoredState.h"    // for deserialize_stored_session, ser...
-#include "magma_logging.h"  // for MERROR, MLOG
+#include "lte/gateway/c/session_manager/RedisStoreClient.hpp"
+
+#include <cpp_redis/core/client.hpp>
+#include <cpp_redis/core/reply.hpp>
+#include <cpp_redis/misc/error.hpp>
+#include <folly/Range.h>
+#include <folly/dynamic.h>
+#include <folly/json.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <yaml-cpp/yaml.h>  // IWYU pragma: keep
+#include <future>
+#include <ostream>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "lte/gateway/c/session_manager/SessionState.hpp"
+#include "lte/gateway/c/session_manager/StoredState.hpp"
+#include "orc8r/gateway/c/common/config/ServiceConfigLoader.hpp"
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
+
 namespace magma {
 class StaticRuleStore;
 }
@@ -40,16 +41,16 @@ class StaticRuleStore;
 namespace magma {
 namespace lte {
 
-RedisStoreClient::RedisStoreClient(
-    std::shared_ptr<cpp_redis::client> client, const std::string& redis_table,
-    std::shared_ptr<StaticRuleStore> rule_store)
+RedisStoreClient::RedisStoreClient(std::shared_ptr<cpp_redis::client> client,
+                                   const std::string& redis_table,
+                                   std::shared_ptr<StaticRuleStore> rule_store)
     : client_(client), redis_table_(redis_table), rule_store_(rule_store) {}
 
 bool RedisStoreClient::try_redis_connect() {
   ServiceConfigLoader loader;
   auto config = loader.load_service_config("redis");
-  auto port   = config["port"].as<uint32_t>();
-  auto addr   = config["bind"].as<std::string>();
+  auto port = config["port"].as<uint32_t>();
+  auto addr = config["bind"].as<std::string>();
   try {
     client_->connect(
         addr, port,
@@ -126,7 +127,7 @@ SessionMap RedisStoreClient::read_all_sessions() {
       MLOG(MERROR) << "Non string key found in sessions from redis";
       continue;
     }
-    auto key         = key_reply.as_string();
+    auto key = key_reply.as_string();
     auto value_reply = array[i + 1];
     if (!value_reply.is_string()) {
       MLOG(MERROR) << "RedisStoreClient: Unable to get value for key " << key;

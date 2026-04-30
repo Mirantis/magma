@@ -22,6 +22,8 @@ from ryu.lib import hub
 
 UPLINK_OVS_BRIDGE_NAME = 'uplink_br0'
 
+SOLICITED_NODE_MULTICAST = 'ff02::1:ff00:0/104'
+
 
 class UplinkBridgeController(MagmaController):
     """
@@ -39,7 +41,7 @@ class UplinkBridgeController(MagmaController):
     DEFAULT_DEV_VLAN_OUT = 'vlan_pop_out'
     SGI_INGRESS_FLOW_UPDATE_FREQ = 60
 
-    UplinkConfig = namedtuple(
+    UplinkBridgeConfig = namedtuple(
         'UplinkBridgeConfig',
         [
             'uplink_bridge', 'uplink_eth_port_name', 'uplink_patch',
@@ -47,7 +49,7 @@ class UplinkBridgeController(MagmaController):
             'sgi_management_iface_vlan', 'sgi_management_iface_ip_addr',
             'dev_vlan_in', 'dev_vlan_out', 'ovs_vlan_workaround',
             'sgi_management_iface_gw', 'sgi_management_iface_ipv6_addr',
-            'sgi_management_iface_gw_ipv6',
+            'sgi_management_iface_ipv6_gw', 'sgi_ip_monitoring',
         ],
     )
 
@@ -58,8 +60,9 @@ class UplinkBridgeController(MagmaController):
         self.logger.info("uplink bridge app config: %s", self.config)
         self._clean_restart = kwargs['config']['clean_restart']
         self._sgi_ip_mon = None
+        self._datapath = None
 
-    def _get_config(self, config_dict) -> namedtuple:
+    def _get_config(self, config_dict) -> UplinkBridgeConfig:
 
         enable_nat = config_dict.get('enable_nat', True)
         bridge_name = config_dict.get('uplink_bridge', UPLINK_OVS_BRIDGE_NAME)
@@ -91,9 +94,10 @@ class UplinkBridgeController(MagmaController):
         dev_vlan_out = config_dict.get('dev_vlan_out', self.DEFAULT_DEV_VLAN_OUT)
         ovs_vlan_workaround = config_dict.get('ovs_vlan_workaround', True)
         sgi_management_iface_gw = config_dict.get('sgi_management_iface_gw', "")
-        sgi_management_iface_gw_ipv6 = config_dict.get('sgi_management_iface_gw_ipv6', "")
+        sgi_management_iface_ipv6_gw = config_dict.get('sgi_management_iface_ipv6_gw', "")
+        sgi_ip_monitoring = config_dict.get('sgi_ip_monitoring', True)
 
-        return self.UplinkConfig(
+        return self.UplinkBridgeConfig(
             enable_nat=enable_nat,
             uplink_bridge=bridge_name,
             uplink_eth_port_name=uplink_eth_port_name,
@@ -107,10 +111,12 @@ class UplinkBridgeController(MagmaController):
             dev_vlan_out=dev_vlan_out,
             ovs_vlan_workaround=ovs_vlan_workaround,
             sgi_management_iface_gw=sgi_management_iface_gw,
-            sgi_management_iface_gw_ipv6=sgi_management_iface_gw_ipv6,
+            sgi_management_iface_ipv6_gw=sgi_management_iface_ipv6_gw,
+            sgi_ip_monitoring=sgi_ip_monitoring,
         )
 
     def initialize_on_connect(self, datapath):
+        self._datapath = datapath
 
         if self.config.enable_nat is True:
             self._delete_all_flows()
@@ -250,6 +256,13 @@ class UplinkBridgeController(MagmaController):
             actions = "output:LOCAL"
             self._install_flow(flows.MEDIUM_PRIORITY + 1, match, actions)
 
+        # forward the node solicite msg to local machine
+        match = "in_port=%s,ipv6,ipv6_dst=%s" % (
+                self.config.uplink_eth_port_name,
+                SOLICITED_NODE_MULTICAST,
+        )
+        self._install_flow(flows.MEDIUM_PRIORITY + 1, match, "output:LOCAL")
+
     def _delete_all_flows(self):
         if self.config.uplink_bridge is None:
             return
@@ -331,7 +344,7 @@ class UplinkBridgeController(MagmaController):
             netifaces.AF_INET,
         )
         self._set_sgi_gw_ip(
-            if_name, self.config.sgi_management_iface_gw_ipv6,
+            if_name, self.config.sgi_management_iface_ipv6_gw,
             netifaces.AF_INET6,
         )
 
@@ -447,6 +460,9 @@ class UplinkBridgeController(MagmaController):
         flush_ip = ["ip", ver, "addr", "flush", "dev", if_name]
         subprocess.check_call(flush_ip)
 
+        flush_ip = ["ip", ver, "route", "flush", "dev", if_name]
+        subprocess.check_call(flush_ip)
+
     def _cleanup_ipv4_and_ipv6(self, if_name: str):
         self._cleanup_if(if_name=if_name, flush=True, af_inet=netifaces.AF_INET)
         self._cleanup_if(if_name=if_name, flush=True, af_inet=netifaces.AF_INET6)
@@ -458,11 +474,12 @@ class UplinkBridgeController(MagmaController):
 
         # Kill dhclient if running.
         pgrep_out = subprocess.Popen(
-            ["pgrep", "-f", "dhclient.*" + if_name],
+            ["pgrep", "-f", "^/sbin/dhclient.*" + if_name],
             stdout=subprocess.PIPE,
         )
-        for pid in pgrep_out.stdout.readlines():
-            subprocess.check_call(["kill", pid.strip()])
+        if pgrep_out.stdout is not None:
+            for pid in pgrep_out.stdout.readlines():
+                subprocess.check_call(["kill", pid.strip()])
 
     def _restart_dhclient(self, if_name: str, af_inet: int):
         if af_inet != netifaces.AF_INET:
@@ -494,7 +511,7 @@ class UplinkBridgeController(MagmaController):
         if af_inet != netifaces.AF_INET:
             self.logger.debug("DHCP for IPv6 is not supported: %s", if_name)
             return
-        release_eth_ip = ["dhclient", "-r", if_name]
+        release_eth_ip = ["/sbin/dhclient", "-r", if_name]
         try:
             subprocess.check_call(release_eth_ip)
         except subprocess.CalledProcessError as ex:
@@ -521,9 +538,11 @@ class UplinkBridgeController(MagmaController):
             self.logger.debug("DHCP for IPv6 is not supported: %s", if_name)
             return
 
-        setup_dhclient = ["dhclient", if_name]
+        setup_dhclient = ["/sbin/dhclient", if_name]
         try:
             subprocess.check_call(setup_dhclient)
+            # delay to get DHCP address
+            hub.sleep(2)
         except subprocess.CalledProcessError as ex:
             self.logger.info(
                 "could not release dhcp lease: %s, %s",
@@ -536,7 +555,7 @@ class UplinkBridgeController(MagmaController):
         self._start_dhclient_if(if_name, af_inet)
 
         self.logger.info("SGi DHCP: restart for %s done", if_name)
-        while True:
+        while self.config.sgi_ip_monitoring:
             # keep updating flow to handle IP address change.
 
             self._set_sgi_ipv4_and_v6_ingress_flows()

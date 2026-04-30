@@ -19,7 +19,7 @@ import s1ap_types
 import s1ap_wrapper
 
 
-class TestSecondaryPdnConnReqMultiUe(unittest.TestCase):
+class TestAttachDetachSecondaryPdnMultiUe(unittest.TestCase):
     """Test secondary pdn connection with multiple UEs"""
 
     def setUp(self):
@@ -30,7 +30,7 @@ class TestSecondaryPdnConnReqMultiUe(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_secondary_pdn_conn_req_multi_ue(self):
+    def test_attach_detach_secondary_pdn_multi_ue(self):
         """attach/detach + PDN Connectivity Requests with 4 UEs"""
         num_ues = 4
         ue_ids = []
@@ -89,9 +89,7 @@ class TestSecondaryPdnConnReqMultiUe(unittest.TestCase):
             self._s1ap_wrapper.sendPdnConnectivityReq(ue_id, apn)
             # Receive PDN CONN RSP/Activate default EPS bearer context request
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value
             act_def_bearer_req = response.cast(s1ap_types.uePdnConRsp_t)
 
             print(
@@ -133,10 +131,7 @@ class TestSecondaryPdnConnReqMultiUe(unittest.TestCase):
 
             # Receive UE_DEACTIVATE_BER_REQ
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value
 
             print(
                 "******************* Received deactivate eps bearer context"

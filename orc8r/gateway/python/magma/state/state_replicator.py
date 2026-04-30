@@ -14,13 +14,19 @@ limitations under the License.
 
 import json
 import logging
+from typing import Any, Dict, Set
 
 import grpc
 import jsonpickle
 from google.protobuf.json_format import MessageToDict
 from magma.common.grpc_client_manager import GRPCClientManager
-from magma.common.rpc_utils import grpc_async_wrapper, print_grpc
+from magma.common.rpc_utils import (
+    grpc_async_wrapper,
+    indicates_connection_error,
+    print_grpc,
+)
 from magma.common.sdwatchdog import SDWatchdogTask
+from magma.common.sentry import EXCLUDE_FROM_ERROR_MONITORING
 from magma.common.service import MagmaService
 from magma.state.garbage_collector import GarbageCollector
 from magma.state.keys import make_mem_key, make_scoped_device_id
@@ -90,10 +96,10 @@ class StateReplicator(SDWatchdogTask):
         # Garbage collector to propagate deletions back to Orchestrator
         self._garbage_collector = garbage_collector
         # In memory mapping of states to version
-        self._state_versions = {}
+        self._state_versions: Dict[str, Any] = {}
         # Set of keys from current replication iteration - used to track
         # keys to delete from _state_versions dict
-        self._state_keys_from_current_iteration = set()
+        self._state_keys_from_current_iteration: Set[str] = set()
         # Redis clients for each type of state to replicate
         self._redis_dicts = []
         self._redis_dicts.extend(get_proto_redis_dicts(service.config))
@@ -122,6 +128,7 @@ class StateReplicator(SDWatchdogTask):
                 logging.error(
                     "GRPC call failed for initial state re-sync: %s",
                     err,
+                    extra=EXCLUDE_FROM_ERROR_MONITORING if indicates_connection_error(err) else None,
                 )
                 return
         request = await self._collect_states_to_replicate()
@@ -259,7 +266,11 @@ class StateReplicator(SDWatchdogTask):
             print_grpc(response, self._print_grpc_payload)
 
         except grpc.RpcError as err:
-            logging.error("GRPC call failed for state replication: %s", err)
+            logging.error(
+                "GRPC call failed for state replication: %s",
+                err,
+                extra=EXCLUDE_FROM_ERROR_MONITORING if indicates_connection_error(err) else None,
+            )
         else:
             unreplicated_states = set()
             for idAndError in response.unreportedStates:
@@ -288,7 +299,7 @@ class StateReplicator(SDWatchdogTask):
 
     async def _cleanup_deleted_keys(self):
         deleted_keys = set(self._state_versions) - \
-                       self._state_keys_from_current_iteration
+            self._state_keys_from_current_iteration
         for key in deleted_keys:
             del self._state_versions[key]
         self._state_keys_from_current_iteration = set()

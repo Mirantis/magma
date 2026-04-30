@@ -17,6 +17,7 @@ from ctypes import c_ulong
 from functools import lru_cache
 from socket import AF_INET, AF_INET6, inet_ntop
 from struct import pack
+from typing import Tuple
 
 import psutil
 from magma.kernsnoopd import metrics
@@ -92,7 +93,7 @@ class ByteCounter(EBPFHandler):
         return psutil.Process(pid=pid).cmdline()
 
     @lru_cache(maxsize=1024)
-    def _ip_addr_to_str(self, family: int, daddr: (int, int)) -> str:
+    def _ip_addr_to_str(self, family: int, daddr: Tuple[int, int]) -> str:
         """
         _ip_addr_to_str returns a string representation of an IPv4 or IPv6
         address. It caches results in an LRU cache to reduce cost of conversion
@@ -110,6 +111,8 @@ class ByteCounter(EBPFHandler):
         elif family == AF_INET6:
             # noinspection PyTypeChecker
             return inet_ntop(AF_INET6, self.Addr(*daddr))
+        else:
+            raise Exception("No valid socket family given!")
 
     def handle(self, bpf):
         """
@@ -130,8 +133,11 @@ class ByteCounter(EBPFHandler):
                 # TODO: destination service name inference does not work
                 # get destination service from host and port
                 logging.debug(
-                    f'{service_name} sent {count.value} bytes to '
-                    f'({d_host}, {key.dport})',
+                    '%s sent %s bytes to (%s, %s)',
+                    service_name,
+                    count.value,
+                    d_host,
+                    key.dport,
                 )
                 _inc_service_counter(service_name, '', count.value)
             except ValueError:
@@ -161,8 +167,9 @@ class ByteCounter(EBPFHandler):
             # get python service name from command line args
             # e.g. "python3 -m magma.state.main"
             cmdline = self._get_cmdline(key.pid)
-            if cmdline[2].startswith('magma.'):
-                return cmdline[2].split('.')[1]
+            python_service = self._get_service_from_cmdline(cmdline)
+            if python_service:
+                return python_service
         # key.pid process has exited or was not a Python service
         except (psutil.NoSuchProcess, IndexError):
             binary_name = key.comm.decode()
@@ -170,6 +177,11 @@ class ByteCounter(EBPFHandler):
                 # was a non-Python service
                 return binary_name
         raise ValueError('Could not infer service name from key %s' % key.comm)
+
+    def _get_service_from_cmdline(self, cmdline):
+        if cmdline[2].startswith('magma.'):
+            return cmdline[2].split('.')[1]
+        return None
 
 
 def _inc_service_counter(source_service, dest_service, count) -> None:

@@ -21,7 +21,9 @@ import grpc
 import snowflake
 from google.protobuf import json_format
 from google.protobuf.json_format import MessageToJson
-from google.protobuf.struct_pb2 import Struct
+from google.protobuf.struct_pb2 import (  # pylint: disable=no-name-in-module
+    Struct,
+)
 from magma.common.rpc_utils import return_void, set_grpc_err
 from magma.common.service import MagmaService
 from magma.common.service_registry import ServiceRegistry
@@ -32,7 +34,10 @@ from magma.common.stateless_agw import (
 )
 from magma.configuration.mconfig_managers import MconfigManager
 from magma.magmad.check.network_check import ping, traceroute
-from magma.magmad.generic_command.command_executor import CommandExecutor
+from magma.magmad.generic_command.command_executor import (
+    CommandExecutionException,
+    CommandExecutor,
+)
 from magma.magmad.service_manager import ServiceManager
 from orc8r.protos import magmad_pb2, magmad_pb2_grpc
 
@@ -101,7 +106,7 @@ class MagmadRpcServicer(magmad_pb2_grpc.MagmadServicer):
         """
         async def run_reboot():
             await asyncio.sleep(1)
-            os.system('reboot')
+            os.system('/usr/bin/echo b > /proc/sysrq-trigger')
 
         logging.info("Remote reboot triggered! Rebooting gateway...")
         self._loop.create_task(run_reboot())
@@ -221,6 +226,17 @@ class MagmadRpcServicer(magmad_pb2_grpc.MagmadServicer):
                 context,
                 grpc.StatusCode.DEADLINE_EXCEEDED,
                 'Command timed out',
+            )
+        except CommandExecutionException as e:
+            logging.warning(
+                'Error running command %s! %s: %s',
+                request.command, e.__class__.__name__, e,
+            )
+            future.cancel()
+            set_grpc_err(
+                context,
+                grpc.StatusCode.INVALID_ARGUMENT,
+                str(e),
             )
         except Exception as e:  # pylint: disable=broad-except
             logging.error(

@@ -12,12 +12,13 @@ limitations under the License.
 """
 import logging
 import subprocess
-import threading
 import unittest
 import warnings
 from concurrent.futures import Future
+from typing import Optional
 
 from magma.pipelined.bridge_util import BridgeTools
+from magma.pipelined.ifaces import get_mac_address_from_iface
 from magma.pipelined.tests.app.start_pipelined import (
     PipelinedController,
     TestSetup,
@@ -184,9 +185,6 @@ class UplinkBridgeWithNonNATTest(unittest.TestCase):
             cls.VLAN_DEV_OUT, "71",
         )
 
-        # dummy uplink interface
-        vlan = "10"
-
         BridgeTools.create_internal_iface(
             cls.UPLINK_BRIDGE,
             cls.UPLINK_DHCP, None,
@@ -212,7 +210,6 @@ class UplinkBridgeWithNonNATTest(unittest.TestCase):
         BridgeTools.destroy_bridge(cls.UPLINK_BRIDGE)
 
     def testFlowSnapshotMatch(self):
-        cls = self.__class__
         assert_bridge_snapshot_match(
             self, self.UPLINK_BRIDGE, self.service_manager,
             include_stats=False,
@@ -301,8 +298,6 @@ class UplinkBridgeWithNonNATTestVlan(unittest.TestCase):
             cls.VLAN_DEV_OUT, "71",
         )
 
-        # validate vlan id set
-        vlan = "10"
         BridgeTools.create_bridge(cls.UPLINK_BRIDGE, cls.UPLINK_BRIDGE)
 
         BridgeTools.create_internal_iface(
@@ -330,7 +325,6 @@ class UplinkBridgeWithNonNATTestVlan(unittest.TestCase):
         BridgeTools.destroy_bridge(cls.UPLINK_BRIDGE)
 
     def testFlowSnapshotMatch(self):
-        cls = self.__class__
         assert_bridge_snapshot_match(
             self, self.UPLINK_BRIDGE, self.service_manager,
             include_stats=False,
@@ -508,7 +502,7 @@ class UplinkBridgeWithNonNATTest_IP_VLAN_GW(unittest.TestCase):
                 'sgi_management_iface_vlan': cls.VLAN_TAG,
                 'sgi_management_iface_ip_addr': cls.SGi_IP,
                 'sgi_management_iface_gw': cls.SGi_GW,
-                'sgi_management_iface_gw_ipv6': cls.SGi_IPv6_GW,
+                'sgi_management_iface_ipv6_gw': cls.SGi_IPv6_GW,
                 'dev_vlan_in': "test_v_in",
                 'dev_vlan_out': "test_v_out",
                 'sgi_management_iface_ipv6_addr': 'fe80::48a3:2cff:aaaa:dd47/10',
@@ -632,7 +626,6 @@ class UplinkBridgeWithNonNatUplinkConnect_Static_IP_Test(unittest.TestCase):
 
         check_connectivity(cls.ROUTER_IP, cls.UPLINK_ETH_PORT)
         BridgeTools.add_ovs_port(cls.UPLINK_BRIDGE, cls.UPLINK_ETH_PORT, "200")
-        print("create uplink br: done")
 
         # this is setup after AGW boot up in NATed mode.
         uplink_bridge_controller_reference = Future()
@@ -688,6 +681,7 @@ class UplinkBridgeWithNonNatUplinkConnect_Static_IP_Test(unittest.TestCase):
         BridgeTools.destroy_bridge(cls.BRIDGE)
         BridgeTools.destroy_bridge(cls.UPLINK_BRIDGE)
         BridgeTools.destroy_bridge(cls.NET_SW_BR)
+        subprocess.check_call(["ip", "link", "del", "dev", "testv1_in"])
 
     def testFlowSnapshotMatch(self):
         cls = self.__class__
@@ -819,7 +813,6 @@ class UplinkBridgeTestFlowRestore(unittest.TestCase):
 # DHCP based test
 
 
-@unittest.skip
 class UplinkBridgeWithNonNatUplinkConnect_Test(unittest.TestCase):
     BRIDGE = 'testing_br'
     IFACE = 'testing_br'
@@ -830,20 +823,20 @@ class UplinkBridgeWithNonNatUplinkConnect_Test(unittest.TestCase):
     UPLINK_DHCP = "tino_dhcp"
     SCRIPT_PATH = "/home/vagrant/magma/lte/gateway/python/magma/mobilityd/"
     UPLINK_ETH_PORT = "upb_ul_0"
-    UPLINK_BRIDGE = 'upt_br0'
+    UPLINK_BRIDGE = 'upt_br1'
     UPLINK_PATCH = 'test_patch_p2'
     ROUTER_IP = "10.55.0.211"
 
     @classmethod
-    def _setup_vlan_network(cls, vlan: str):
+    def _setup_vlan_network(cls, vlan: str, br_mac):
         setup_vlan_switch = cls.SCRIPT_PATH + "scripts/setup-uplink-vlan-sw.sh"
         subprocess.check_call([setup_vlan_switch, cls.NET_SW_BR, "upb"])
-        cls._setup_vlan(vlan)
+        cls._setup_vlan(vlan, br_mac)
 
     @classmethod
-    def _setup_vlan(cls, vlan):
+    def _setup_vlan(cls, vlan, br_mac):
         setup_vlan_switch = cls.SCRIPT_PATH + "scripts/setup-uplink-vlan-srv.sh"
-        subprocess.check_call([setup_vlan_switch, cls.NET_SW_BR, vlan, "55"])
+        subprocess.check_call([setup_vlan_switch, cls.NET_SW_BR, vlan, "55", br_mac])
 
     @classmethod
     def setUpClass(cls):
@@ -858,9 +851,11 @@ class UplinkBridgeWithNonNatUplinkConnect_Test(unittest.TestCase):
         warnings.simplefilter('ignore')
         cls.service_manager = create_service_manager([])
 
-        cls._setup_vlan_network("0")
-
         BridgeTools.create_bridge(cls.UPLINK_BRIDGE, cls.UPLINK_BRIDGE)
+        br_mac = get_mac_address_from_iface(cls.UPLINK_BRIDGE)
+
+        cls._setup_vlan_network("0", br_mac)
+
         BridgeTools.create_internal_iface(
             cls.UPLINK_BRIDGE,
             cls.UPLINK_DHCP, None,
@@ -869,6 +864,22 @@ class UplinkBridgeWithNonNatUplinkConnect_Test(unittest.TestCase):
             cls.UPLINK_BRIDGE,
             cls.UPLINK_PATCH, None,
         )
+        flush_ip_cmd = [
+            "ip",
+            "addr", "flush",
+            "dev",
+            cls.UPLINK_BRIDGE,
+        ]
+        subprocess.check_call(flush_ip_cmd)
+
+        set_ip_cmd = [
+            "ip",
+            "addr", "replace",
+            "fe80::b0a6:34ff:fee0:b640",
+            "dev",
+            cls.UPLINK_BRIDGE,
+        ]
+        subprocess.check_call(set_ip_cmd)
 
         check_connectivity(cls.ROUTER_IP, cls.UPLINK_ETH_PORT)
 
@@ -906,6 +917,7 @@ class UplinkBridgeWithNonNatUplinkConnect_Test(unittest.TestCase):
                 'ovs_vlan_workaround': True,
                 'dev_vlan_in': "testv1_in",
                 'dev_vlan_out': "testv1_out",
+                'sgi_ip_monitoring': False,
             },
             mconfig=None,
             loop=None,
@@ -926,6 +938,8 @@ class UplinkBridgeWithNonNatUplinkConnect_Test(unittest.TestCase):
         BridgeTools.destroy_bridge(cls.BRIDGE)
         BridgeTools.destroy_bridge(cls.UPLINK_BRIDGE)
         BridgeTools.destroy_bridge(cls.NET_SW_BR)
+        subprocess.check_call(["ip", "link", "del", "dev", "testv1_in"])
+        subprocess.check_call(["pkill", "-f", "dhclient.*_br"])
 
     def testFlowSnapshotMatch(self):
         cls = self.__class__
@@ -936,7 +950,6 @@ class UplinkBridgeWithNonNatUplinkConnect_Test(unittest.TestCase):
         self.assertEqual(get_ovsdb_port_tag(cls.UPLINK_BRIDGE), '[]')
         # after Non NAT init, router shld be accessible.
         # manually start DHCP client on up-br
-        threading.Event().wait(.5)
         check_connectivity(cls.ROUTER_IP, cls.UPLINK_BRIDGE)
 
 
@@ -976,17 +989,18 @@ def check_connectivity_v6(dst: str):
         logging.warning("Error while ping: %s", e)
 
 
-def validate_routing_table(dst: str, dev_name: str) -> str:
+def validate_routing_table(dst: str, dev_name: str) -> Optional[str]:
     dump1 = subprocess.Popen(
         ["ip", "r", "get", dst],
         stdout=subprocess.PIPE,
     )
+    assert dump1.stdout is not None
     for line in dump1.stdout.readlines():
         if "dev" not in str(line):
             continue
         try:
             if dev_name in str(line):
-                return
+                return None
         except ValueError:
             pass
     logging.error("could not find route to %s via %s", dst, dev_name)
@@ -994,6 +1008,7 @@ def validate_routing_table(dst: str, dev_name: str) -> str:
         ["ovs-ofctl", "dump-flows", dev_name],
         stdout=subprocess.PIPE,
     )
+    assert dump1.stdout is not None
     for line in dump1.stdout.readlines():
         print("pbs: %s", line)
     assert 0

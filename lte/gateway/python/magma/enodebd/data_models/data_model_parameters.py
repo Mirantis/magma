@@ -32,6 +32,13 @@ class ParameterName():
     SERIAL_NUMBER = 'Serial number'
     CELL_ID = 'Cell ID'
 
+    ANTENNA_HEIGHT = 'Antenna height'
+    ANTENNA_HEIGHT_TYPE = 'Antenna height type'
+    ANTENNA_GAIN = 'Antenna gain'
+
+    CBSD_CATEGORY = 'CBSD category'
+    INDOOR_DEPLOYMENT = 'Indoor deployment'
+
     # Capabilities
     DUPLEX_MODE_CAPABILITY = 'Duplex mode capability'
     BAND_CAPABILITY = 'Band capability'
@@ -45,6 +52,8 @@ class ParameterName():
     UL_BANDWIDTH = 'UL bandwidth'
     SUBFRAME_ASSIGNMENT = 'Subframe assignment'
     SPECIAL_SUBFRAME_PATTERN = 'Special subframe pattern'
+    POWER_SPECTRAL_DENSITY = 'Power Spectral Density'
+    RADIO_ENABLE = "Radio Enable"
 
     # Other LTE parameters
     ADMIN_STATE = 'Admin state'
@@ -84,6 +93,11 @@ class ParameterName():
     PERF_MGMT_UPLOAD_URL = 'Perf mgmt upload URL'
     PERF_MGMT_USER = 'Perf mgmt username'
     PERF_MGMT_PASSWORD = 'Perf mgmt password'
+
+    SAS_ENABLED = 'SAS enabled'
+    SAS_FCC_ID = 'SAS FCC ID'
+    SAS_USER_ID = 'SAS User ID'
+    SAS_RADIO_ENABLE = 'SAS Radio Enable'
 
 
 class TrParameterType():

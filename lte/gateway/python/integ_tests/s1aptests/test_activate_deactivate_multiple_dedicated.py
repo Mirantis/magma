@@ -32,7 +32,7 @@ class TestActivateDeactivateMultipleDedicated(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_activate_deactivate_multiplededicated(self):
+    def test_activate_deactivate_multiple_dedicated(self):
         """attach/detach + multiple dedicated bearer test with a single UE"""
         num_dedicated_bearers = 10
         bearer_ids = []
@@ -74,8 +74,8 @@ class TestActivateDeactivateMultipleDedicated(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
+            assert (
+                response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             )
             act_ded_ber_ctxt_req = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
@@ -111,10 +111,11 @@ class TestActivateDeactivateMultipleDedicated(unittest.TestCase):
             bearer_ids,
         )
         for i in range(num_dedicated_bearers):
+            time.sleep(0.1)
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value,
+            assert (
+                response.msg_type
+                == s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value
             )
 
             print("******************* Received deactivate eps bearer context")
@@ -124,8 +125,8 @@ class TestActivateDeactivateMultipleDedicated(unittest.TestCase):
             )
 
             print(
-                "********************** Deleted dedicated bearer with"
-                "with bearer id",
+                "********************** Deleted dedicated bearer with "
+                "bearer id",
                 bearer_ids[i],
             )
         # Verify if flow rules are deleted for dedicated bearers

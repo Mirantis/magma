@@ -51,11 +51,14 @@ message CreateSessionRequestPgw {
     PdnAddressAllocation paa = 9;
 
     string apn = 10;
-    Ambr ambr = 11;                      //Aggregate Maximum BitRate
+    // Aggregate Maximum BitRate
+    Ambr ambr = 11;
     SelectionModeType selection_mode = 12;
 
-    BearerContext bearer_context = 13;   // Contains AGW user plane FTEID
-    uint32 c_agw_teid = 14;              // AGW control plane TEID
+    // Contains AGW user plane F-TEID
+    BearerContext bearer_context = 13;
+    // AGW control plane TEID (injected by feg relay)
+    uint32 c_agw_teid = 14;
 
     ProtocolConfigurationOptions protocol_configuration_options = 15;
     bytes indication_flag = 16;
@@ -165,11 +168,14 @@ message CreateSessionResponsePgw {
     // subscriber_ip
     PdnAddressAllocation paa = 2;
     uint32 apn_restriction = 3;
+    // AGW control plane TEID (was injected by feg relay during create session)
     uint32 c_agw_teid = 4;
     Fteid c_pgw_fteid = 5;
     BearerContext bearer_context = 6;
     ProtocolConfigurationOptions protocol_configuration_options = 7;
     GtpError gtp_error = 8;
+    // AGW user plane TEID (was injected by feg relay during create session)
+    uint32 u_agw_teid = 9;
 }
 
 message DeleteSessionRequestPgw {
@@ -195,6 +201,8 @@ message CreateBearerRequestPgw {
     ProtocolConfigurationOptions protocol_configuration_options = 5;
     BearerContext bearer_context = 6;
     bytes indication_flag = 7;
+    // AGW user plane TEID (will be injected by feg relay)
+    uint32 u_agw_teid = 8;
     // TODO: PGW-FQ-CSID-1
 }
 

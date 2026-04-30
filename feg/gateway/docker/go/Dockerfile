@@ -1,15 +1,34 @@
+# Copyright 2023 The Magma Authors.
+
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # -----------------------------------------------------------------------------
 # Development image for test, precommit, etc.
 # -----------------------------------------------------------------------------
-ARG baseImage="ubuntu:bionic"
-FROM ${baseImage} as base
+ARG baseImage="ubuntu:focal"
+FROM ${baseImage} AS base
 
 # Add the magma apt repo
 RUN apt-get update && \
     apt-get install -y apt-utils software-properties-common apt-transport-https
-COPY orc8r/tools/ansible/roles/pkgrepo/files/jfrog.pub /tmp/jfrog.pub
-RUN apt-key add /tmp/jfrog.pub && \
-    apt-add-repository "deb https://facebookconnectivity.jfrog.io/artifactory/list/dev/ xenial main"
+# Add the magma apt repo
+COPY keys/linux_foundation_registry_key.asc /etc/apt/trusted.gpg.d/magma.asc
+
+#[TODO_GPG_KEY_WORKAROUND]Temporary steps to be removed once GPG public key issue has been fixed.
+#RUN add-apt-repository "deb https://linuxfoundation.jfrog.io/artifactory/magma-packages-test focal-ci main"
+RUN echo "deb [trusted=yes] https://linuxfoundation.jfrog.io/artifactory/magma-packages-test focal-ci main" \
+    > /etc/apt/sources.list.d/magma.list
+
+#[TODO_GPG_KEY_WORKAROUND]Temporary steps to be removed once GPG public key issue has been fixed.
+RUN echo "Acquire::AllowInsecureRepositories true;" > /etc/apt/apt.conf.d/99AllowInsecureRepositories && \
+    echo "APT::Get::AllowUnauthenticated true;" >> /etc/apt/apt.conf.d/99AllowInsecureRepositories
 
 # Install the runtime deps.
 RUN apt-get update && apt-get install -y \
@@ -39,13 +58,17 @@ RUN apt-get update && apt-get install -y \
     vim \
     virtualenv
 
-# Install Golang 1.13.
+# Golang
 WORKDIR /usr/local
-RUN curl https://facebookconnectivity.jfrog.io/artifactory/generic/go1.13.4.linux-amd64.tar.gz -O && \
-    tar xf go1.13.4.linux-amd64.tar.gz && \
-    cp -r go/bin/* /usr/local/bin/
+ARG GOLANG_VERSION="1.21.0"
+RUN GO_TARBALL="go${GOLANG_VERSION}.linux-amd64.tar.gz" \
+ && curl https://golang.org/dl/${GO_TARBALL} --remote-name --location \
+ && tar -xzf ${GO_TARBALL} \
+ && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+ && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+ && rm ${GO_TARBALL}
 
-# Install protobuf compiler.
+# Install protobuf compiler.y
 RUN curl -Lfs https://github.com/protocolbuffers/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip -o protoc3.zip && \
     unzip protoc3.zip -d protoc3 && \
     mv protoc3/bin/protoc /bin/protoc && \
@@ -65,9 +88,10 @@ ENV GOPROXY https://proxy.golang.org
 
 RUN printenv > /etc/environment
 
-COPY feg/radius/lib/go/ /radius/lib/go
-COPY feg/radius/src/go.* /radius/src/
-WORKDIR /radius/src
+COPY feg/radius/lib/go/ $MAGMA_ROOT/feg/radius/lib/go
+COPY feg/radius/src/go.* $MAGMA_ROOT/feg/radius/src/
+COPY orc8r/lib/go/go.* $MAGMA_ROOT/orc8r/lib/go/
+WORKDIR $MAGMA_ROOT/feg/radius/src
 RUN go mod download
 
 # Copy just the go.mod and go.sum files to download the golang deps.
@@ -77,19 +101,20 @@ COPY lte/cloud/go/go.* $MAGMA_ROOT/lte/cloud/go/
 COPY feg/cloud/go/go.* $MAGMA_ROOT/feg/cloud/go/
 COPY feg/cloud/go/protos/go.* $MAGMA_ROOT/feg/cloud/go/protos/
 COPY feg/gateway/go.* $MAGMA_ROOT/feg/gateway/
-COPY orc8r/lib/go/go.* $MAGMA_ROOT/orc8r/lib/go/
 COPY orc8r/lib/go/protos/go.* $MAGMA_ROOT/orc8r/lib/go/protos/
 COPY orc8r/cloud/go/go.* $MAGMA_ROOT/orc8r/cloud/go/
 COPY orc8r/gateway/go/go.* $MAGMA_ROOT/orc8r/gateway/go/
 WORKDIR $MAGMA_ROOT/feg/gateway
-RUN go mod download; exit 0
+RUN go mod download
+
 # Install protoc-gen-go
-RUN go install github.com/golang/protobuf/protoc-gen-go; exit 0
-RUN go get -u github.com/vektra/mockery/v2/.../; exit 0
+RUN go install github.com/golang/protobuf/protoc-gen-go \
+ && go get -u github.com/vektra/mockery/v2/.../ \
+ && go get github.com/deepmap/oapi-codegen/cmd/oapi-codegen
 
 # Symlink python scripts.
-RUN ln -s /build/python/bin/generate_service_config.py /usr/local/bin/generate_service_config.py
-RUN ln -s /build/python/bin/generate_nghttpx_config.py /usr/local/bin/generate_nghttpx_config.py
+RUN ln -s /build/python/bin/generate_service_config.py /usr/local/bin/generate_service_config.py \
+ && ln -s /build/python/bin/generate_nghttpx_config.py /usr/local/bin/generate_nghttpx_config.py
 
 # Build the code.
 COPY feg $MAGMA_ROOT/feg
@@ -101,7 +126,7 @@ COPY orc8r/gateway/go $MAGMA_ROOT/orc8r/gateway/go
 # -----------------------------------------------------------------------------
 # Builder image with binaries
 # -----------------------------------------------------------------------------
-FROM base as builder
+FROM base AS builder
 # Enable make gen if proto gen is required
 # RUN make -C $MAGMA_ROOT/feg/gateway gen
 RUN make -C $MAGMA_ROOT/feg/gateway build
@@ -112,13 +137,13 @@ RUN ./run.sh build
 # -----------------------------------------------------------------------------
 # Go-cache base image
 # -----------------------------------------------------------------------------
-FROM ubuntu:bionic as gocache
+FROM ${baseImage} AS gocache
 COPY --from=builder /root/.cache /root/.cache
 
 # -----------------------------------------------------------------------------
 # Production image
 # -----------------------------------------------------------------------------
-FROM ubuntu:bionic AS gateway_go
+FROM ${baseImage} AS gateway_go
 ARG MAGMA_BUILD_BRANCH=unknown
 ARG MAGMA_BUILD_TAG=unknown
 ARG MAGMA_BUILD_COMMIT_HASH=unknonw

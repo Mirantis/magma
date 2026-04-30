@@ -22,6 +22,17 @@ secret:
     orc8r: ${configs_secret}
   envdir: ${envdir_secret}
 
+# certs sub-chart configuration.
+certs:
+  create: ${managed_certs_create}
+  enabled: ${managed_certs_enabled}
+  domainName: ${managed_certs_domain_name}
+  nms:
+    customIssuer: ${nms_custom_issuer}
+  route53:
+    enabled: ${managed_certs_route53_enabled}
+    region: ${region}
+
 nginx:
   create: true
 
@@ -55,6 +66,7 @@ controller:
     repository: ${docker_registry}/controller
     tag: "${docker_tag}"
     env:
+      orc8r_domain_name: "${orc8r_domain_name}"
       version_tag: "${docker_tag}"
       helm_version_tag: "${orc8r_chart_version}"
   replicas: ${controller_replicas}
@@ -82,36 +94,36 @@ metrics:
             claimName: ${metrics_pvc_promcfg}
 
   prometheus:
-    create: true
+    create: ${enable_metrics}
     includeOrc8rAlerts: true
     prometheusCacheHostname: ${prometheus_cache_hostname}
     alertmanagerHostname: ${alertmanager_hostname}
 
   alertmanager:
-    create: true
+    create: ${enable_metrics}
 
   prometheusConfigurer:
-    create: true
+    create: ${enable_metrics}
     image:
       repository: docker.io/facebookincubator/prometheus-configurer
       tag: ${prometheus_configurer_version}
     prometheusURL: ${prometheus_url}
 
   alertmanagerConfigurer:
-    create: true
+    create: ${enable_metrics}
     image:
       repository: docker.io/facebookincubator/alertmanager-configurer
       tag: ${alertmanager_configurer_version}
     alertmanagerURL: ${alertmanager_url}
 
   prometheusCache:
-    create: true
+    create: ${enable_metrics}
     image:
       repository: docker.io/facebookincubator/prometheus-edge-hub
       tag: 1.1.0
     limit: 500000
   grafana:
-    create: false
+    create: ${enable_metrics}
 
   userGrafana:
     image:
@@ -179,6 +191,9 @@ nms:
   secret:
     certs: ${nms_certs_secret}
 
+  certs:
+    enabled: ${nms_managed_certs_enabled}
+
   magmalte:
     create: true
 
@@ -212,4 +227,52 @@ nms:
         ssl_cert_key_name: controller.key
 
 logging:
-  enabled: false
+  enabled: ${enable_logging}
+
+dp:
+  create: ${dp_enabled}
+  enabled: ${dp_enabled}
+  configuration_controller:
+    sasEndpointUrl: "${dp_sas_endpoint_url}"
+    image:
+      repository: "${docker_registry}/configuration-controller"
+      tag: "${docker_tag}"
+
+    database:
+      driver: postgres
+      db: ${orc8r_db_name}
+      host: ${orc8r_db_host}
+      port: ${orc8r_db_port}
+      user: ${orc8r_db_user}
+      pass: ${orc8r_db_pass}
+
+  radio_controller:
+    image:
+      repository: "${docker_registry}/radio-controller"
+      tag: "${docker_tag}"
+
+    database:
+      driver: postgres
+      db: ${orc8r_db_name}
+      host: ${orc8r_db_host}
+      port: ${orc8r_db_port}
+      user: ${orc8r_db_user}
+      pass: ${orc8r_db_pass}
+
+  active_mode_controller:
+    image:
+      repository: "${docker_registry}/active-mode-controller"
+      tag: "${docker_tag}"
+
+  db_service:
+    image:
+      repository: "${docker_registry}/db-service"
+      tag: "${docker_tag}"
+
+    database:
+      driver: postgres
+      db: ${orc8r_db_name}
+      host: ${orc8r_db_host}
+      port: ${orc8r_db_port}
+      user: ${orc8r_db_user}
+      pass: ${orc8r_db_pass}

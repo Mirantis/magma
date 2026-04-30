@@ -11,7 +11,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 from abc import ABCMeta, abstractmethod
-from typing import List
+from logging import Logger
+from typing import Callable, List, Optional
 
 from lte.protos.mobilityd_pb2 import IPAddress
 from lte.protos.pipelined_pb2 import (
@@ -29,6 +30,7 @@ from magma.pipelined.openflow.registers import (
     RULE_NUM_REG,
     RULE_VERSION_REG,
     SCRATCH_REGS,
+    Direction,
 )
 from magma.pipelined.policy_converters import (
     FlowMatchError,
@@ -38,6 +40,7 @@ from magma.pipelined.policy_converters import (
     get_direction_for_match,
     get_flow_ip_dst,
     ipv4_address_to_str,
+    is_flow_match_set,
 )
 from magma.pipelined.qos.types import QosInfo
 from magma.pipelined.utils import Utils
@@ -54,6 +57,9 @@ class PolicyMixin(metaclass=ABCMeta):
     Mixin class for policy enforcement apps that includes common methods
     used for rule activation/deactivation.
     """
+    logger: Logger
+    tbl_num: int
+    _get_default_flow_msgs_for_subscriber: Callable
 
     def __init__(self, *args, **kwargs):
         super(PolicyMixin, self).__init__(*args, **kwargs)
@@ -68,6 +74,7 @@ class PolicyMixin(metaclass=ABCMeta):
         else:
             self.proxy_controller_fut = None
         self.proxy_controller = None
+        self.ebpf = kwargs['ebpf_manager']
 
     def activate_rules(self, imsi, msisdn: bytes, uplink_tunnel: int, ip_addr, apn_ambr, policies, shard_id: int, local_f_teid_ng: int):
         """
@@ -153,7 +160,7 @@ class PolicyMixin(metaclass=ABCMeta):
         self, imsi, msisdn: bytes, uplink_tunnel: int, ip_addr, apn_ambr, flow, rule_num,
         priority, qos, hard_timeout, rule_id, app_name,
         app_service_type, next_table, version, qos_mgr,
-        copy_table, _, urls: List[str] = None, local_f_teid_ng: int = 0,
+        copy_table, _, urls: Optional[List[str]] = None, local_f_teid_ng: int = 0,
     ):
         """
         Install a flow from a rule. If the flow action is DENY, then the flow
@@ -163,7 +170,7 @@ class PolicyMixin(metaclass=ABCMeta):
         parser = self._datapath.ofproto_parser
         flow_match = flow_match_to_magma_match(flow.match, ip_addr)
         flow_match.imsi = encode_imsi(imsi)
-        flow_match_actions, instructions = self._get_action_for_rule(
+        flow_match_actions, instructions, qos_handle = self._get_action_for_rule(
             flow, rule_num, imsi, ip_addr, apn_ambr, qos, rule_id, version, qos_mgr,
             local_f_teid_ng,
         )
@@ -244,7 +251,34 @@ class PolicyMixin(metaclass=ABCMeta):
                 urls, imsi, msisdn,
             )
             msgs.extend(proxy_msgs)
+
+        if self.ebpf:
+            self._add_policy_rule_to_ebpf_dp(
+                ip_addr, urls, flow, qos_handle,
+            )
+
         return msgs
+
+    def _add_policy_rule_to_ebpf_dp(
+        self, ip_addr, urls, flow, qos_handle,
+    ):
+        ue_ip = ipv4_address_to_str(ip_addr)
+        direction = get_direction_for_match(flow.match)
+        if self.ebpf is None:
+            return
+
+        if direction != Direction.OUT:
+            return
+
+        if is_flow_match_set(flow.match):
+            self.logger.debug("skip ebpf entry due to required flow match")
+            return
+
+        if urls and len(urls) != 0:
+            self.logger.debug("skip ebpf entry due to HE rule.")
+            return
+
+        self.ebpf.add_ul_entry(qos_handle, ue_ip)
 
     def _get_action_for_rule(
         self, flow, rule_num, imsi, ip_addr,
@@ -257,12 +291,13 @@ class PolicyMixin(metaclass=ABCMeta):
         """
         parser = self._datapath.ofproto_parser
         instructions = []
+        qos_handle = 0
 
         # encode the rule id in hex
         of_note = parser.NXActionNote(list(rule_id.encode()))
         actions = [of_note]
         if flow.action == flow.DENY:
-            return actions, instructions
+            return actions, instructions, qos_handle
 
         mbr_ul = qos.max_req_bw_ul
         mbr_dl = qos.max_req_bw_dl
@@ -282,12 +317,18 @@ class PolicyMixin(metaclass=ABCMeta):
                 qos_info = QosInfo(gbr=qos.gbr_dl, mbr=mbr_dl)
 
         if qos_info or ambr:
+            if ambr and apn_ambr.br_unit == 0:
+                units = "bit"
+            if ambr and apn_ambr.br_unit == 1:
+                units = "kbit"
+
+            self.logger.debug("ambr: %s, apn_ambr.br_unit :%s, units : %s", ambr, apn_ambr.br_unit, units)
             cleanup_rule_func = lambda: self._invalidate_rule_version(
                 imsi,
                 ip_addr, rule_id,
             )
-            action, inst = qos_mgr.add_subscriber_qos(
-                imsi, ip_addr.address.decode('utf8'), ambr, rule_num, d,
+            action, inst, qos_handle = qos_mgr.add_subscriber_qos(
+                imsi, ip_addr.address.decode('utf8'), ambr, units, rule_num, d,
                 qos_info, cleanup_rule_func,
             )
 
@@ -305,7 +346,7 @@ class PolicyMixin(metaclass=ABCMeta):
                 parser.NXActionRegLoad2(dst=NG_SESSION_ID_REG, value=local_f_teid_ng),
             ],
         )
-        return actions, instructions
+        return actions, instructions, qos_handle
 
     # this function is used to schedule the rule removal in rule cleanup.
     def _invalidate_rule_version(self, imsi, ip_addr, rule_id):

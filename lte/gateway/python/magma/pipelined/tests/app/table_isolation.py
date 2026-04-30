@@ -14,12 +14,6 @@ limitations under the License.
 import abc
 import copy
 
-from integ_tests.s1aptests.ovs import LOCALHOST
-from integ_tests.s1aptests.ovs.rest_api import (
-    add_flowentry,
-    delete_flowentry,
-    get_datapath,
-)
 from lte.protos.mobilityd_pb2 import IPAddress
 from magma.pipelined.imsi import encode_imsi
 from magma.pipelined.openflow.magma_match import MagmaMatch
@@ -230,31 +224,6 @@ class RyuForwardFlowArgsBuilder():
     @classmethod
     def from_subscriber(cls, sub_info):
         return cls(sub_info.table_id)._set_subscriber_match(sub_info)
-
-
-# REST API is deprecated transition to RyuDirectTableIsolator
-class RyuRestTableIsolator(TableIsolator):
-    """
-    RyuRestTableIsolator uses ryu REST api to isolate tables, sends the
-    generated RyuForwardFlow requests as REST requests.
-    """
-
-    def __init__(self, requests, ovs_ip=LOCALHOST):
-        self._requests = requests
-        self._ovs_ip = ovs_ip
-        self._datapath = get_datapath(ovs_ip)
-
-    def _activate_flow_rules(self):
-        """ Adds the flows to ovs, REST needs a dpid argument """
-        for req in self._requests:
-            req["dpid"] = self._datapath
-            add_flowentry(req, self._ovs_ip)
-
-    def _deactivate_flow_rules(self):
-        """ Removes flows from ovs, REST needs a dpid argument """
-        for req in self._requests:
-            req["dpid"] = self._datapath
-            delete_flowentry(req, self._ovs_ip)
 
 
 class RyuDirectTableIsolator(TableIsolator):

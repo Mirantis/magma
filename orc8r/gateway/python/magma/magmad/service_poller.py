@@ -13,11 +13,15 @@ limitations under the License.
 
 import logging
 import time
-from typing import List
+from typing import List, Optional
 
 import grpc
 from magma.common.job import Job
-from magma.common.rpc_utils import grpc_async_wrapper
+from magma.common.rpc_utils import (
+    grpc_async_wrapper,
+    indicates_connection_error,
+)
+from magma.common.sentry import EXCLUDE_FROM_ERROR_MONITORING
 from magma.common.service_registry import ServiceRegistry
 from magma.magmad.metrics import UNEXPECTED_SERVICE_RESTARTS
 from orc8r.protos.common_pb2 import Void
@@ -84,7 +88,7 @@ class ServicePoller(Job):
     # Timeout when getting status from other local services, in seconds
     GET_STATUS_TIMEOUT = 8
 
-    def __init__(self, loop, config, dynamic_services: List[str] = None):
+    def __init__(self, loop, config, dynamic_services: Optional[List[str]] = None):
         """
         Initialize the ServicePooler
 
@@ -152,7 +156,7 @@ class ServicePoller(Job):
         Make RPC calls to 'GetServiceInfo' functions of other services, to
         get current status.
         """
-        for service in self._service_info:
+        for service in list(self._service_info):
             # Check whether service provides service303 interface
             if service in self._config['non_service303_services']:
                 continue
@@ -182,6 +186,6 @@ class ServicePoller(Job):
                     service,
                     err.code(),
                     err.details(),
+                    extra=EXCLUDE_FROM_ERROR_MONITORING if indicates_connection_error(err) else None,
                 )
-                if err.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                    self._service_info[service].continuous_timeouts += 1
+                self._service_info[service].continuous_timeouts += 1

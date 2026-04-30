@@ -5,7 +5,7 @@ Install NMS which includes nginx and magmalte subcomponents.
 ## Install charts
 
 ```
-$ helm upgrade --install nms ./nms --namespace=magma
+helm upgrade --install nms ./nms --namespace=magma
 ```
 
 ## Overview
@@ -20,9 +20,7 @@ This chart installs the magma NMS. The NMS is the UI for managing, configuring, 
 
 3. MySql Database created for NMS
 
-4. magmalte image ( build using Docker file https://github.com/magma/magma/blob/master/nms/packages/magmalte/Dockerfile )
-
-
+4. magmalte image ( build using Docker file <https://github.com/magma/magma/blob/master/nms/Dockerfile> )
 
 ## Configuration
 
@@ -37,7 +35,6 @@ The following table list the configurable parameters of the NMS chart and their 
 | `env.api_host` | orc8r proxy endpoint. | `[]` |
 | `env.host` | Host to bind | `[]` |
 | `env.port` | Magmalte service port bind. | `{}` |
-| `env.mapbox_access_token` | Mapbox Access token. | `` |
 | `env.mysql_host` | MySQL host IP/Name. | `` |
 | `env.mysql_db` | NMS Database name. | `` |
 | `env.mysql_user` | NMS Database user. | `` |
@@ -80,7 +77,6 @@ The following table list the configurable parameters of the NMS chart and their 
 $ cat values.yaml
 magmalte:
   env:
-    mapbox_access_token: ""
     mysql_host: mariadb.magma.svc.cluster.local
     mysql_db: magma
     mysql_user: magma
@@ -92,18 +88,20 @@ magmalte:
 $ helm upgrade --install nms ./nms --namespace=magma
 
 ```
+
 - Create Admin user:
+
 ```bash
 kubectl exec -it -n magma $(kubectl get pod -n magma  \
 -l app.kubernetes.io/component=magmalte -o jsonpath="{.items[0].metadata.name}") \
 -- yarn run setAdminPassword admin@magma.test password1234
 ```
 
-- NMS Dashboard should be reachable via https://<nginx_svc>
+- NMS Dashboard should be reachable via `https://<nginx_svc>`.
 
-Get nginx_svc with following command 
+Get nginx_svc with following command
 
 ```bash
-kubectl get svc -n magma -l app.kubernetes.io/component=nginx,app.kubernetes.io/instance=nms \ 
+kubectl get svc -n magma -l app.kubernetes.io/component=nginx,app.kubernetes.io/instance=nms \
 -o jsonpath="{.items[0].spec.clusterIP}"
 ```

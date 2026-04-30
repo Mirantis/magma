@@ -15,15 +15,12 @@
  *      contact@openairinterface.org
  */
 
+#include "lte/gateway/c/core/oai/tasks/sctp/sctpd_uplink_server.hpp"
+
 extern "C" {
-#include "sctpd_uplink_server.h"
-
 // #include "assertions.h"
-#include "bstrlib.h"
-#include "log.h"
-
-#include "sctp_itti_messaging.h"
-#include "mme_config.h"
+#include "lte/gateway/c/core/oai/lib/bstr/bstrlib.h"
+#include "lte/gateway/c/core/oai/common/log.h"
 }
 
 #include <memory>
@@ -31,6 +28,9 @@ extern "C" {
 #include <grpcpp/grpcpp.h>
 
 #include <lte/protos/sctpd.grpc.pb.h>
+
+#include "lte/gateway/c/core/oai/include/mme_config.hpp"
+#include "lte/gateway/c/core/oai/tasks/sctp/sctp_itti_messaging.hpp"
 
 namespace magma {
 namespace mme {
@@ -50,20 +50,18 @@ class SctpdUplinkImpl final : public SctpdUplink::Service {
  public:
   SctpdUplinkImpl();
 
-  Status SendUl(
-      ServerContext* context, const SendUlReq* req, SendUlRes* res) override;
-  Status NewAssoc(
-      ServerContext* context, const NewAssocReq* req,
-      NewAssocRes* res) override;
-  Status CloseAssoc(
-      ServerContext* context, const CloseAssocReq* req,
-      CloseAssocRes* res) override;
+  Status SendUl(ServerContext* context, const SendUlReq* req,
+                SendUlRes* res) override;
+  Status NewAssoc(ServerContext* context, const NewAssocReq* req,
+                  NewAssocRes* res) override;
+  Status CloseAssoc(ServerContext* context, const CloseAssocReq* req,
+                    CloseAssocRes* res) override;
 };
 
 SctpdUplinkImpl::SctpdUplinkImpl() {}
 
-Status SctpdUplinkImpl::SendUl(
-    ServerContext* context, const SendUlReq* req, SendUlRes* res) {
+Status SctpdUplinkImpl::SendUl(ServerContext* context, const SendUlReq* req,
+                               SendUlRes* res) {
   bstring payload;
   uint32_t ppid;
   uint32_t assoc_id;
@@ -75,9 +73,9 @@ Status SctpdUplinkImpl::SendUl(
     return Status::OK;
   }
 
-  ppid     = req->ppid();
+  ppid = req->ppid();
   assoc_id = req->assoc_id();
-  stream   = req->stream();
+  stream = req->stream();
 
   if (sctp_itti_send_new_message_ind(&payload, ppid, assoc_id, stream) < 0) {
     OAILOG_ERROR(LOG_SCTP, "failed to send new_message_ind for SendUl\n");
@@ -89,17 +87,17 @@ Status SctpdUplinkImpl::SendUl(
 
 #include <assert.h>
 
-Status SctpdUplinkImpl::NewAssoc(
-    ServerContext* context, const NewAssocReq* req, NewAssocRes* res) {
-  uint32_t ppid       = req->ppid();
-  uint32_t assoc_id   = req->assoc_id();
-  uint16_t instreams  = req->instreams();
+Status SctpdUplinkImpl::NewAssoc(ServerContext* context, const NewAssocReq* req,
+                                 NewAssocRes* res) {
+  uint32_t ppid = req->ppid();
+  uint32_t assoc_id = req->assoc_id();
+  uint16_t instreams = req->instreams();
   uint16_t outstreams = req->outstreams();
   bstring ran_cp_ipaddr =
       blk2bstr(req->ran_cp_ipaddr().c_str(), req->ran_cp_ipaddr().size());
 
-  if (sctp_itti_send_new_association(
-          ppid, assoc_id, instreams, outstreams, &ran_cp_ipaddr) < 0) {
+  if (sctp_itti_send_new_association(ppid, assoc_id, instreams, outstreams,
+                                     &ran_cp_ipaddr) < 0) {
     OAILOG_ERROR(LOG_SCTP, "failed to send new_association for NewAssoc\n");
     return Status::OK;
   }
@@ -107,15 +105,16 @@ Status SctpdUplinkImpl::NewAssoc(
   return Status::OK;
 }
 
-Status SctpdUplinkImpl::CloseAssoc(
-    ServerContext* context, const CloseAssocReq* req, CloseAssocRes* res) {
+Status SctpdUplinkImpl::CloseAssoc(ServerContext* context,
+                                   const CloseAssocReq* req,
+                                   CloseAssocRes* res) {
   uint32_t ppid;
   uint32_t assoc_id;
   bool reset;
 
-  ppid     = req->ppid();
+  ppid = req->ppid();
   assoc_id = req->assoc_id();
-  reset    = req->is_reset();
+  reset = req->is_reset();
 
   if (sctp_itti_send_com_down_ind(ppid, assoc_id, reset) < 0) {
     OAILOG_ERROR(LOG_SCTP, "failed to send com_down_ind for CloseAssoc\n");
@@ -134,7 +133,7 @@ using grpc::ServerBuilder;
 using magma::mme::SctpdUplinkImpl;
 
 std::shared_ptr<SctpdUplinkImpl> service = nullptr;
-std::unique_ptr<Server> server           = nullptr;
+std::unique_ptr<Server> server = nullptr;
 
 int start_sctpd_uplink_server(void) {
   service = std::make_shared<SctpdUplinkImpl>();
@@ -142,8 +141,8 @@ int start_sctpd_uplink_server(void) {
   ServerBuilder builder;
   std::string upstream_sctp_sock(
       bdata(mme_config.sctp_config.upstream_sctp_sock));
-  builder.AddListeningPort(
-      upstream_sctp_sock, grpc::InsecureServerCredentials());
+  builder.AddListeningPort(upstream_sctp_sock,
+                           grpc::InsecureServerCredentials());
   builder.RegisterService(service.get());
 
   server = builder.BuildAndStart();

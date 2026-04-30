@@ -18,13 +18,13 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	promAPI "github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 
-	"magma/orc8r/cloud/go/obsidian"
 	"magma/orc8r/cloud/go/services/metricsd"
 	promH "magma/orc8r/cloud/go/services/metricsd/prometheus/handlers"
+	"magma/orc8r/cloud/go/services/obsidian"
 	"magma/orc8r/lib/go/protos"
 	"magma/orc8r/lib/go/service/config"
 )
@@ -34,7 +34,7 @@ const (
 )
 
 // GetObsidianHandlers returns all obsidian handlers for metricsd
-func GetObsidianHandlers(configMap *config.ConfigMap) []obsidian.Handler {
+func GetObsidianHandlers(configMap *config.Map) []obsidian.Handler {
 	useSeriesCache, _ := configMap.GetBool(metricsd.UseSeriesCache)
 	var ret []obsidian.Handler
 	client, err := promAPI.NewClient(promAPI.Config{Address: configMap.MustGetString(metricsd.PrometheusQueryAddress)})
@@ -116,7 +116,7 @@ func GetObsidianHandlers(configMap *config.ConfigMap) []obsidian.Handler {
 
 func getInitErrorHandler(err error) func(c echo.Context) error {
 	return func(c echo.Context) error {
-		return obsidian.HttpError(fmt.Errorf("initialization Error: %v", err), 500)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("initialization Error: %v", err))
 	}
 }
 
@@ -129,16 +129,16 @@ func pushHandler(c echo.Context) error {
 	var pushedMetrics []*protos.PushedMetric
 	err := json.NewDecoder(c.Request().Body).Decode(&pushedMetrics)
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusBadRequest)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	metrics := protos.PushedMetricsContainer{
+	metrics := &protos.PushedMetricsContainer{
 		NetworkId: nID,
 		Metrics:   pushedMetrics,
 	}
 	err = metricsd.PushMetrics(c.Request().Context(), metrics)
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return c.NoContent(http.StatusOK)
 }

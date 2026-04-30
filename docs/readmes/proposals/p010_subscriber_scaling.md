@@ -123,7 +123,7 @@ Existing guarantees
 
 ### Considered alternatives
 
-**Edge-triggered subscriber push**. This document assumes we want to retain the set-interface pattern throughout Orc8r — for context, see [level-triggered (state) vs. edge-triggered (events)](http://haobaozhong.github.io/design/2019/08/28/level-edge-triggered.html). A principal alternative to combat our scalability issues is to back away from this high bar and instead go with a hybrid approach, where e.g. we send state-based snapshots at infrequent intervals to correct any issues with the more-frequent event-based updates. However, we believe we can achieve reasonable scalability metrics without resorting to edge-triggered designs.
+**Edge-triggered subscriber push**. This document assumes we want to retain the set-interface pattern throughout Orc8r — for context, see level-triggered (state) vs. edge-triggered (events). A principal alternative to combat our scalability issues is to back away from this high bar and instead go with a hybrid approach, where e.g. we send state-based snapshots at infrequent intervals to correct any issues with the more-frequent event-based updates. However, we believe we can achieve reasonable scalability metrics without resorting to edge-triggered designs.
 
 ## ☠️ Objective 1: resolve drop-dead scale cutoffs
 
@@ -289,7 +289,7 @@ This solution is not worth the complexity it would entail at this point, where w
 
 ### Scalability calculations
 
-To contextualize the proposed changes in this section, consider the [representative operator behaviors presented above](https://fb.quip.com/qqcBA5OMeaHA#RAHACA1mTTg), with a single-tenant Orc8r deployment with GA targets of 20k subscribers and 400 gateways over a 7-day period. We'll assume the southbound cache refresh occurs every 5 minutes, which means
+To contextualize the proposed changes in this section, consider the representative operator behaviors presented above [internal document — no longer available], with a single-tenant Orc8r deployment with GA targets of 20k subscribers and 400 gateways over a 7-day period. We'll assume the southbound cache refresh occurs every 5 minutes, which means
 
 - Previous architecture causes (1440\*7)(400) = 4,032,000 DB hits
 - Proposed caching pattern would result in (1440\*7/5)(1) = 2016 DB hits, **a 2000x improvement**
@@ -446,7 +446,7 @@ The latter solution doesn't resolve scenario A, but it does restrict the scope o
 
 ### Scalability calculations
 
-To contextualize the proposed changes in this section, consider the [representative operator behaviors presented above](https://fb.quip.com/qqcBA5OMeaHA#RAHACA1mTTg), with a single-tenant Orc8r deployment with GA targets of 20k subscribers and 400 gateways over a 7-day period. Under this context, the existing architecture results in (1440*7)(400)(20000) = **80 billion subscriber objects sent over the network over a 7-day period — that's 20 terabytes**. For the below calculations, we'll assume the new default southbound poll interval is 5 minutes, and that each gateway serves a uniform share of the subscribers (i.e. 50 subscribers at each gateway) with no subscriber mobility
+To contextualize the proposed changes in this section, consider the representative operator behaviors presented above [internal document — no longer available], with a single-tenant Orc8r deployment with GA targets of 20k subscribers and 400 gateways over a 7-day period. Under this context, the existing architecture results in (1440*7)(400)(20000) = **80 billion subscriber objects sent over the network over a 7-day period — that's 20 terabytes**. For the below calculations, we'll assume the new default southbound poll interval is 5 minutes, and that each gateway serves a uniform share of the subscribers (i.e. 50 subscribers at each gateway) with no subscriber mobility
 
 1. 🌟 1 write per day, 500 mutations each
     1. Read-through cache: (1440/5\*7)(400)(20000/400\*250b) = **10gb**
@@ -528,7 +528,7 @@ That to say, rather than retrofitting the streamer pattern, we can instead fully
     - Update Orc8r codepath (configurator), through to northbound and southbound interfaces
     - Update gateway consumption: either retrofit streamer code to handle pagination, or migrate to unary RPC
     - Updated NMS to handle paginated Orc8r REST API
-        - Side note: [NMS creates a gateway→subscriber map](https://github.com/magma/magma/blob/master/nms/packages/magmalte/app/state/lte/SubscriberState.js#L223-L240) based on getting all subscribers and all gateways. Move this functionality to an Orc8r `/lte/networks/{network_id}/gateways/{gateway_id}/subscribers` endpoint, fully removing the need for NMS to make get-all subscriber requests. May need to use state indexers pattern to implement this endpoint
+        - Side note: [NMS creates a gateway→subscriber map](https://github.com/magma/magma/blob/v1.5/nms/app/packages/magmalte/app/state/lte/SubscriberState.js#L223-L240) based on getting all subscribers and all gateways. Move this functionality to an Orc8r `/lte/networks/{network_id}/gateways/{gateway_id}/subscribers` endpoint, fully removing the need for NMS to make get-all subscriber requests. May need to use state indexers pattern to implement this endpoint
 - [P1][S] Identify source of “DB statement too large” error and resolve
     - If from ent.go (state codepath): resolve ent.go's poor get-all query construction or remove it in favor of SQL blobstore implementation. Latter option will likely require a migration
     - If from configurator (config codepath): resolve poorly-constructed query

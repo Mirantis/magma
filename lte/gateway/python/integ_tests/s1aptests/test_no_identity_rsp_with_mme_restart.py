@@ -20,12 +20,16 @@ from s1ap_utils import MagmadUtil
 
 
 class TestNoIdentityRspWithMmeRestart(unittest.TestCase):
+    """Unittest: TestNoIdentityRspWithMmeRestart"""
+
     def setUp(self):
+        """Initialize before test case execution"""
         self._s1ap_wrapper = s1ap_wrapper.TestWrapper(
             stateless_mode=MagmadUtil.stateless_cmds.ENABLE,
         )
 
     def tearDown(self):
+        """Cleanup after test case execution"""
         self._s1ap_wrapper.cleanup()
 
     def test_no_identity_rsp_with_mme_restart(self):
@@ -56,35 +60,31 @@ class TestNoIdentityRspWithMmeRestart(unittest.TestCase):
         attach_req.useOldSecCtxt = sec_ctxt
         print("Sending Attach Request for ue_id", req.ue_id)
         self._s1ap_wrapper._s1_util.issue_cmd(
-            s1ap_types.tfwCmd.UE_ATTACH_REQUEST, attach_req,
+            s1ap_types.tfwCmd.UE_ATTACH_REQUEST,
+            attach_req,
         )
 
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_IDENTITY_REQ_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_IDENTITY_REQ_IND.value
         print(
             "Received Identity req ind ",
             s1ap_types.tfwCmd.UE_IDENTITY_REQ_IND.value,
         )
 
         print("********************** Restarting MME service on gateway ***")
-        self._s1ap_wrapper.magmad_util.restart_services(["mme"])
+        wait_for_restart = 30
+        self._s1ap_wrapper.magmad_util.restart_services(
+            ["mme"], wait_for_restart,
+        )
 
-        for j in range(30):
-            print("Waiting for", j, "seconds")
-            time.sleep(1)
-
-        """
-         Since UE has neither received Attach Reject nor Attach Accept,
-         assuming that both T3410 and T3411 timer expires at UE
-         and re-transmit the Attach Request with same IEs in UL nas message
-         with previous mme_ue_s1ap_id
-         But in response to second Attach Request, s1ap receives ue context
-         release command because after AGW recovery, s1ap stack will not be
-         aware of mme_ue_s1ap_id.So s1ap stack should clear the s1ap signaling
-         contexts at eNB that were created before mme restarts
-        """
+        # Since UE has neither received Attach Reject nor Attach Accept,
+        # assuming that both T3410 and T3411 timer expires at UE
+        # and re-transmit the Attach Request with same IEs in UL nas message
+        # with previous mme_ue_s1ap_id
+        # But in response to second Attach Request, s1ap receives ue context
+        # release command because after AGW recovery, s1ap stack will not be
+        # aware of mme_ue_s1ap_id.So s1ap stack should clear the s1ap signaling
+        # contexts at eNB that were created before mme restarts
         attach_req = s1ap_types.ueAttachRequest_t()
         attach_req.ue_Id = req.ue_id
         sec_ctxt = s1ap_types.TFW_CREATE_NEW_SECURITY_CONTEXT
@@ -95,14 +95,26 @@ class TestNoIdentityRspWithMmeRestart(unittest.TestCase):
         attach_req.useOldSecCtxt = sec_ctxt
         print("Sending Attach Request for ue_id", req.ue_id)
         self._s1ap_wrapper._s1_util.issue_cmd(
-            s1ap_types.tfwCmd.UE_ATTACH_REQUEST, attach_req,
+            s1ap_types.tfwCmd.UE_ATTACH_REQUEST,
+            attach_req,
         )
 
-        # Context release
+        # It has been observed that despite getting the restart command on
+        # time, MME sometimes restarts after a delay of around 6 seconds.
+        # Currently identity response timer T3470 is set to 6 seconds as
+        # part of configuraton file mme.conf.template. If MME restarts after
+        # expiry of identity response timer, it will send the re-transmitted
+        # identity request message
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_CTX_REL_IND.value,
-        )
+        while response.msg_type != s1ap_types.tfwCmd.UE_CTX_REL_IND.value:
+            print(
+                "******************** Ignoring re-transmitted "
+                "Identity request indication",
+            )
+            response = self._s1ap_wrapper.s1_util.get_response()
+
+        # Context release
+        assert response.msg_type == s1ap_types.tfwCmd.UE_CTX_REL_IND.value
         print("********** UE Context released **********")
 
         time.sleep(5)
@@ -126,7 +138,6 @@ class TestNoIdentityRspWithMmeRestart(unittest.TestCase):
         self._s1ap_wrapper.s1_util.detach(
             req.ue_id,
             s1ap_types.ueDetachType_t.UE_SWITCHOFF_DETACH.value,
-            False,
         )
 
 

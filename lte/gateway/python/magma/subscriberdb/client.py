@@ -12,8 +12,9 @@ limitations under the License.
 """
 import asyncio
 import datetime
+import inspect
 import logging
-from typing import List, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional
 
 import grpc
 from lte.protos.s6a_service_pb2 import DeleteSubscriberRequest
@@ -23,33 +24,44 @@ from lte.protos.subscriberdb_pb2 import (
     ListSubscribersRequest,
     LTESubscription,
     SubscriberData,
+    SuciProfile,
+    SuciProfileList,
     SyncRequest,
 )
 from magma.common.grpc_client_manager import GRPCClientManager
 from magma.common.rpc_utils import grpc_async_wrapper
 from magma.common.sdwatchdog import SDWatchdogTask
+from magma.common.sentry import EXCLUDE_FROM_ERROR_MONITORING
 from magma.common.service_registry import ServiceRegistry
 from magma.subscriberdb.metrics import (
     SUBSCRIBER_SYNC_FAILURE_TOTAL,
     SUBSCRIBER_SYNC_LATENCY,
     SUBSCRIBER_SYNC_SUCCESS_TOTAL,
 )
+from magma.subscriberdb.sid import SIDUtils
 from magma.subscriberdb.store.sqlite import SqliteStore
 from orc8r.protos.digest_pb2 import Changeset, Digest, LeafDigest
 
-CloudSubscribersInfo = NamedTuple(
-    'CloudSubscribersInfo', [
-        ('subscribers', List[SubscriberData]),
-        ('root_digest', Optional[Digest]),
-        ('leaf_digests', Optional[List[LeafDigest]]),
-    ],
-)
-ProcessedChangeset = NamedTuple(
-    'ProcessedChangeset', [
-        ('to_renew', List[SubscriberData]),
-        ('deleted', List[str]),
-    ],
-)
+
+class CloudSubscribersInfo(NamedTuple):
+    subscribers: List[SubscriberData]
+    root_digest: Optional[Digest]
+    leaf_digests: Optional[List[LeafDigest]]
+
+
+class ProcessedChangeset(NamedTuple):
+    to_renew: List[SubscriberData]
+    deleted: List[str]
+
+
+class CloudSuciProfilesInfo(NamedTuple):
+    suci_profiles: List[SuciProfile]
+
+
+class suci_profile_data(NamedTuple):
+    protection_scheme: int
+    home_network_public_key: bytes
+    home_network_private_key: bytes
 
 
 class SubscriberDBCloudClient(SDWatchdogTask):
@@ -69,6 +81,7 @@ class SubscriberDBCloudClient(SDWatchdogTask):
         store: SqliteStore,
         subscriber_page_size: int,
         sync_interval: int,
+        suciprofile_db_dict: Dict,
         grpc_client_manager: GRPCClientManager,
     ):
         """
@@ -90,28 +103,24 @@ class SubscriberDBCloudClient(SDWatchdogTask):
         self._loop = loop
         self._subscriber_page_size = subscriber_page_size
         self._store = store
+        self.suciprofile_db_dict = suciprofile_db_dict
 
         # grpc_client_manager to manage grpc client recycling
         self._grpc_client_manager = grpc_client_manager
 
     async def _run(self) -> None:
+
         in_sync = await self._check_subscribers_in_sync()
-        if in_sync:
-            return
-
-        resync = await self._sync_subscribers()
-        if not resync:
-            return
-
-        subscribers_info = await self._get_all_subscribers()
-        if subscribers_info is None:
-            return
-
-        # Process subscriber data before digest data, in case there's a gateway
-        # failure between the calls
-        self._process_subscribers(subscribers_info.subscribers)
-        self._update_root_digest(subscribers_info.root_digest)
-        self._update_leaf_digests(subscribers_info.leaf_digests)
+        if not in_sync:
+            resync = await self._sync_subscribers()
+            if resync:
+                subscribers_info = await self._get_all_subscribers()
+                if subscribers_info:
+                    # failure between the calls
+                    self._process_subscribers(subscribers_info.subscribers)
+                    self._update_root_digest(subscribers_info.root_digest)
+                    self._update_leaf_digests(subscribers_info.leaf_digests)
+        await self._list_suciprofiles()
 
     async def _check_subscribers_in_sync(self) -> bool:
         """
@@ -136,10 +145,7 @@ class SubscriberDBCloudClient(SDWatchdogTask):
                 self._loop,
             )
         except grpc.RpcError as err:
-            logging.error(
-                "Check subscribers in sync request error! [%s] %s", err.code(),
-                err.details(),
-            )
+            _log_grpc_error(err)
             return False
         return res.in_sync
 
@@ -164,10 +170,7 @@ class SubscriberDBCloudClient(SDWatchdogTask):
                 self._loop,
             )
         except grpc.RpcError as err:
-            logging.error(
-                "Sync subscribers request error! [%s] %s", err.code(),
-                err.details(),
-            )
+            _log_grpc_error(err)
             return True
 
         if not res.resync:
@@ -177,7 +180,13 @@ class SubscriberDBCloudClient(SDWatchdogTask):
                 self._store.upsert_subscriber(subscriber_data)
             for sid in changeset.deleted:
                 self._store.delete_subscriber(sid)
-            self._detach_subscribers_by_ids(changeset.deleted)
+
+            inactive = [
+                SIDUtils.to_str(subscriber.sid)
+                for subscriber in changeset.to_renew
+                if (subscriber.lte and subscriber.lte.state != LTESubscription.ACTIVE)
+            ]
+            self._detach_subscribers_by_ids(list(changeset.deleted) + inactive)
 
             self._update_root_digest(res.digests.root_digest)
             self._update_leaf_digests(res.digests.leaf_digests)
@@ -217,10 +226,7 @@ class SubscriberDBCloudClient(SDWatchdogTask):
                 found_empty_token = req_page_token == ""
 
             except grpc.RpcError as err:
-                logging.error(
-                    "Fetch subscribers error! [%s] %s", err.code(),
-                    err.details(),
-                )
+                _log_grpc_error(err)
                 time_elapsed = datetime.datetime.now() - sync_start
                 SUBSCRIBER_SYNC_LATENCY.observe(
                     time_elapsed.total_seconds() * 1000,
@@ -243,6 +249,47 @@ class SubscriberDBCloudClient(SDWatchdogTask):
             leaf_digests=leaf_digests,
         )
         return subscribers_info
+
+    async def _list_suciprofiles(self) -> Optional[CloudSuciProfilesInfo]:
+        req_page_token = ""
+        subscriberdb_cloud_client = self._grpc_client_manager.get_client()
+        suciprofiles = []
+        try:
+            req = ListSubscribersRequest(
+                page_size=self._subscriber_page_size,
+                page_token=req_page_token,
+            )
+            res = await grpc_async_wrapper(
+                subscriberdb_cloud_client.ListSuciProfiles.future(
+                    req,
+                    self.SUBSCRIBERDB_REQUEST_TIMEOUT,
+                ),
+                self._loop,
+            )
+            for suciProfile in res.suci_profiles:
+                if suciProfile.home_net_public_key_id not in self.suciprofile_db_dict.keys():
+                    self.suciprofile_db_dict[suciProfile.home_net_public_key_id] = suci_profile_data(
+                        suciProfile.protection_scheme, suciProfile.home_net_public_key,
+                        suciProfile.home_net_private_key,
+                    )
+            for k, v in self.suciprofile_db_dict.items():
+                suciprofiles.append(
+                    SuciProfile(
+                        home_net_public_key_id=int(k),
+                        protection_scheme=v.protection_scheme,
+                        home_net_public_key=v.home_network_public_key,
+                        home_net_private_key=v.home_network_private_key,
+                    ),
+                )
+            res = SuciProfileList(suci_profiles=suciprofiles)
+            return res
+
+        except grpc.RpcError as err:
+            logging.error(
+                "Fetch suci profiles error! [%s] %s", err.code(),
+                err.details(),
+            )
+            return None
 
     def _process_changeset(self, changeset: Optional[Changeset]) -> ProcessedChangeset:
         if changeset is None:
@@ -374,3 +421,25 @@ class SubscriberDBCloudClient(SDWatchdogTask):
                 "Detach Deleted Subscribers Error! [%s] %s",
                 err.code(), err.details(),
             )
+
+
+def _log_grpc_error(err: grpc.RpcError) -> None:
+    if err.code() in {grpc.StatusCode.INTERNAL, grpc.StatusCode.UNIMPLEMENTED}:
+        logging.error(
+            'Internal Error in subscriberdb-Orc8r communication. '
+            'If AGW and Orc8r are deployed at a commit hash, '
+            'upgrade AGW and Orc8r to latest commit hash.',
+            extra=EXCLUDE_FROM_ERROR_MONITORING,
+        )
+    elif err.code() in {grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED}:
+        logging.error(
+            'Internal Error in subscriberdb-Orc8r communication. '
+            'Cannot connect to server: [%s] %s', err.code(), err.details(),
+            extra=EXCLUDE_FROM_ERROR_MONITORING,
+        )
+    else:
+        logging.error(
+            # inspect.stack() indices: [1] -> frame record of penultimate caller; [3] -> function name
+            "%s request error! [%s] %s", inspect.stack(context=0)[1][3], err.code(),
+            err.details(),
+        )

@@ -11,14 +11,19 @@
  * limitations under the License.
  */
 
-#include "sctpd_downlink_impl.h"
+#include "lte/gateway/c/sctpd/src/sctpd_downlink_impl.hpp"
 
-#include <arpa/inet.h>
-#include <assert.h>
-#include <netinet/sctp.h>
-#include <unistd.h>
-#include "sctpd.h"
-#include "util.h"
+#include <glog/logging.h>
+#include <lte/protos/sctpd.pb.h>
+#include <ostream>
+#include <string>
+#include <utility>
+
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
+
+namespace grpc {
+class ServerContext;
+}  // namespace grpc
 
 namespace magma {
 namespace sctpd {
@@ -52,8 +57,8 @@ Status SctpdDownlinkImpl::create_sctp_connection(
   return Status::OK;
 }
 
-Status SctpdDownlinkImpl::Init(
-    ServerContext* context, const InitReq* req, InitRes* res) {
+Status SctpdDownlinkImpl::Init(ServerContext* context, const InitReq* req,
+                               InitRes* res) {
   MLOG(MINFO) << "SctpdDownlinkImpl::req->ppid()="
               << std::to_string(req->ppid());
   MLOG(MINFO) << "SctpdDownlinkImpl::req->port()="
@@ -71,8 +76,8 @@ Status SctpdDownlinkImpl::Init(
   return Status::OK;
 }
 
-Status SctpdDownlinkImpl::SendDl(
-    ServerContext* context, const SendDlReq* req, SendDlRes* res) {
+Status SctpdDownlinkImpl::SendDl(ServerContext* context, const SendDlReq* req,
+                                 SendDlRes* res) {
   MLOG(MDEBUG) << "SctpdDownlinkImpl::SendDl starting";
 
   try {

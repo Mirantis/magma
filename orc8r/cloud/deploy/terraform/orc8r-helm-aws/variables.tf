@@ -75,6 +75,15 @@ variable "monitoring_kubernetes_namespace" {
   default     = "monitoring"
 }
 
+variable "orc8r_is_staging_deployment" {
+  description = <<EOT
+    Indicates if the orc8r-app being deploy is a staging environment.
+    Staging environment does not deploy Logging, Metrics and Alerts
+    EOT
+  type        = bool
+  default     = false
+}
+
 ##############################################################################
 # General Orchestrator configuration
 ##############################################################################
@@ -167,43 +176,43 @@ variable "orc8r_deployment_type" {
 variable "orc8r_chart_version" {
   description = "Version of the core orchestrator Helm chart to install."
   type        = string
-  default     = "1.5.23"
+  default     = "1.8.0"
 }
 
 variable "cwf_orc8r_chart_version" {
   description = "Version of the orchestrator cwf module Helm chart to install."
   type        = string
-  default     = "0.2.1"
-}
-
-variable "fbinternal_orc8r_chart_version" {
-  description = "Version of the orchestrator fbinternal module Helm chart to install."
-  type        = string
-  default     = "0.2.1"
+  default     = "1.8.0"
 }
 
 variable "feg_orc8r_chart_version" {
   description = "Version of the orchestrator feg module Helm chart to install."
   type        = string
-  default     = "0.2.4"
+  default     = "1.8.0"
 }
 
 variable "lte_orc8r_chart_version" {
   description = "Version of the orchestrator lte module Helm chart to install."
   type        = string
-  default     = "0.2.5"
+  default     = "1.8.0"
 }
 
 variable "wifi_orc8r_chart_version" {
   description = "Version of the orchestrator wifi module Helm chart to install."
   type        = string
-  default     = "0.2.1"
+  default     = "0.2.2"
+}
+
+variable "dp_orc8r_chart_version" {
+  description = "Version of the orchestrator domain proxy module Helm chart to install."
+  type        = string
+  default     = "1.8.0"
 }
 
 variable "orc8r_tag" {
   description = "Image tag for Orchestrator components."
   type        = string
-  default     = "1.6.0"
+  default     = "1.8.0"
 }
 
 variable "magma_uuid" {
@@ -307,7 +316,7 @@ variable "orc8r_db_pass" {
 variable "docker_registry" {
   description = "Docker registry to pull Orchestrator containers from."
   type        = string
-  default     = "docker.artifactory.magmacore.org"
+  default     = "linuxfoundation.jfrog.io/magma-docker"
 }
 
 variable "docker_user" {
@@ -330,7 +339,7 @@ variable "seed_certs_dir" {
 variable "helm_repo" {
   description = "Helm repository URL for Orchestrator charts."
   type        = string
-  default     = "https://artifactory.magmacore.org/artifactory/helm/"
+  default     = "https://linuxfoundation.jfrog.io/artifactory/magma-helm-prod/"
 }
 
 variable "helm_user" {
@@ -343,6 +352,52 @@ variable "helm_pass" {
   description = "Helm repository password."
   type        = string
   default     = ""
+}
+
+##############################################################################
+# Managed Certificates from cert-manager
+##############################################################################
+
+variable "cert_manager_route53_iam_role_arn" {
+  description = "IAM role ARN for cert-manager."
+  type        = string
+  default     = null
+}
+
+variable "deploy_cert_manager_helm_chart" {
+  description = "Deploy cert-manager helm chart."
+  type        = bool
+  default     = false
+}
+
+variable "managed_certs_create" {
+  description = "This will generate certificates that will be stored in kubernetes secrets."
+  type        = bool
+  default     = false
+}
+
+variable "managed_certs_enabled" {
+  description = "This will enable controller pods to use managed certificates."
+  type        = bool
+  default     = false
+}
+
+variable "nms_managed_certs_enabled" {
+  description = "This will enable NMS nginx pod to use managed certificate."
+  type        = bool
+  default     = false
+}
+
+variable "nms_custom_issuer" {
+  description = "Certificate issuer on Route53 for Let's Encrypt."
+  type        = string
+  default     = "orc8r-route53-issuer"
+}
+
+variable "managed_certs_route53_enabled" {
+  description = "Use Route53 as DNS Provider."
+  type        = bool
+  default     = true
 }
 
 ##############################################################################
@@ -451,4 +506,45 @@ variable "cloudwatch_exporter_enabled" {
   description = "Enable cloudwatch exporter"
   default     = false
   type        = bool
+}
+
+
+##############################################################################
+# Domain proxy variables
+##############################################################################
+
+variable "dp_enabled" {
+  description = "Enable domain proxy"
+  type        = bool
+  default     = false
+}
+
+variable "dp_sas_endpoint_url" {
+  description = "Sas endpoint url where to connect DP to."
+  type        = string
+  default     = ""
+}
+
+variable "dp_api_prefix" {
+  description = "Protocol controller api prefix."
+  type        = string
+  default     = "/sas/v1"
+}
+
+variable "dp_sas_crt" {
+  description = "SAS certificate filename."
+  type        = string
+  default     = "tls.crt"
+}
+
+variable "dp_sas_key" {
+  description = "SAS private key filename."
+  type        = string
+  default     = "tls.key"
+}
+
+variable "dp_sas_ca" {
+  description = "SAS CA filename."
+  type        = string
+  default     = "ca.crt"
 }

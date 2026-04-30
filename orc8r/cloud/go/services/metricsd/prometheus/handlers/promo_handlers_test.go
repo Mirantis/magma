@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/imdario/mergo"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -31,8 +31,8 @@ import (
 	"magma/orc8r/cloud/go/services/metricsd/prometheus/handlers/mocks"
 	"magma/orc8r/cloud/go/services/metricsd/prometheus/restrictor"
 	"magma/orc8r/cloud/go/services/tenants"
+	"magma/orc8r/cloud/go/services/tenants/protos"
 	tenants_test_init "magma/orc8r/cloud/go/services/tenants/test_init"
-	"magma/orc8r/lib/go/protos"
 )
 
 type prometheusAPITestCase struct {
@@ -209,7 +209,7 @@ func TestGetPrometheusQueryRangeHandler(t *testing.T) {
 		{
 			Name:          "invalid step",
 			RequestURL:    "http://url.com?query=up&start=0&step=abc",
-			ExpectedError: `code=400, message=unable to parse step parameter: time: invalid duration abc`,
+			ExpectedError: `code=400, message=unable to parse step parameter: time: invalid duration "abc"`,
 		},
 		{
 			Name:              "prometheus error",

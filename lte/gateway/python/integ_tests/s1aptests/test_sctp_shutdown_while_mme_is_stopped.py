@@ -18,14 +18,14 @@ import s1ap_types
 from integ_tests.s1aptests import s1ap_wrapper
 
 
-class TestSctpShutdowniWhileStatelessMmeIsStopped(unittest.TestCase):
+class TestSctpShutdownWhileMmeIsStopped(unittest.TestCase):
     def setUp(self):
         self._s1ap_wrapper = s1ap_wrapper.TestWrapper()
 
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_sctp_shutdown_while_stateless_mme_is_stopped(self):
+    def test_sctp_shutdown_while_mme_is_stopped(self):
         """
         testing SCTP Shutdown while MME is stopped but Sctpd is running, i.e.:
         1. Attach 1 UE
@@ -54,9 +54,9 @@ class TestSctpShutdowniWhileStatelessMmeIsStopped(unittest.TestCase):
         # Wait for EMM Information from MME
         self._s1ap_wrapper._s1_util.receive_emm_info()
 
-        print("Stopping MME service")
-        self._s1ap_wrapper.magmad_util.exec_command(
-            "sudo service magma@mme stop",
+        print("Stopping MME, mobilityd, pipelined, and sessiond service")
+        self._s1ap_wrapper.magmad_util.disable_services(
+            ['mme', 'mobilityd', 'pipelined', 'sessiond'],
         )
 
         print("send SCTP SHUTDOWN")
@@ -67,18 +67,9 @@ class TestSctpShutdowniWhileStatelessMmeIsStopped(unittest.TestCase):
         print("Redis state after SCTP shutdown")
         self._s1ap_wrapper.magmad_util.print_redis_state()
 
-        print("Starting MME service and waiting for 20 seconds")
-        self._s1ap_wrapper.magmad_util.exec_command(
-            "sudo service magma@mobilityd start",
-        )
-        self._s1ap_wrapper.magmad_util.exec_command(
-            "sudo service magma@pipelined start",
-        )
-        self._s1ap_wrapper.magmad_util.exec_command(
-            "sudo service magma@sessiond start",
-        )
-        self._s1ap_wrapper.magmad_util.exec_command(
-            "sudo service magma@mme start",
+        print("Starting the stopped services and waiting for 30 seconds")
+        self._s1ap_wrapper.magmad_util.enable_services(
+            ['mobilityd', 'pipelined', 'sessiond', 'mme'],
         )
         time.sleep(30)
 

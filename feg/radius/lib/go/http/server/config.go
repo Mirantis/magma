@@ -14,6 +14,7 @@ limitations under the License.
 package server
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 
@@ -24,7 +25,6 @@ import (
 	"fbc/lib/go/log"
 
 	"github.com/justinas/alice"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -78,11 +78,11 @@ func (config *Config) createLogger() (*zap.Logger, error) {
 		}
 		logger, err = config.Build()
 	default:
-		err = errors.Errorf("unknown logger type: %q", lc.Type)
+		err = fmt.Errorf("unknown logger type: %q", lc.Type)
 	}
 
 	if err != nil {
-		return nil, errors.Wrap(err, "creating logger")
+		return nil, fmt.Errorf("creating logger: %w", err)
 	}
 
 	return logger.WithOptions(zap.AddStacktrace(zap.DPanicLevel)), nil

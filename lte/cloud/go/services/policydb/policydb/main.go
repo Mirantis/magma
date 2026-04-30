@@ -20,11 +20,11 @@ import (
 	"magma/lte/cloud/go/protos"
 	"magma/lte/cloud/go/services/policydb"
 	"magma/lte/cloud/go/services/policydb/obsidian/handlers"
-	"magma/lte/cloud/go/services/policydb/servicers"
-	"magma/orc8r/cloud/go/obsidian"
-	"magma/orc8r/cloud/go/obsidian/swagger"
-	swagger_protos "magma/orc8r/cloud/go/obsidian/swagger/protos"
+	policydb_servicer "magma/lte/cloud/go/services/policydb/servicers/southbound"
 	"magma/orc8r/cloud/go/service"
+	"magma/orc8r/cloud/go/services/obsidian"
+	swagger_protos "magma/orc8r/cloud/go/services/obsidian/swagger/protos"
+	swaggger_servicers "magma/orc8r/cloud/go/services/obsidian/swagger/servicers/protected"
 )
 
 func main() {
@@ -33,10 +33,10 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Error creating service: %s", err)
 	}
-	assignmentServicer := servicers.NewPolicyAssignmentServer()
+	assignmentServicer := policydb_servicer.NewPolicyAssignmentServer()
 	protos.RegisterPolicyAssignmentControllerServer(srv.GrpcServer, assignmentServicer)
 
-	swagger_protos.RegisterSwaggerSpecServer(srv.GrpcServer, swagger.NewSpecServicerFromFile(policydb.ServiceName))
+	swagger_protos.RegisterSwaggerSpecServer(srv.ProtectedGrpcServer, swaggger_servicers.NewSpecServicerFromFile(policydb.ServiceName))
 
 	obsidian.AttachHandlers(srv.EchoServer, handlers.GetHandlers())
 	err = srv.Run()

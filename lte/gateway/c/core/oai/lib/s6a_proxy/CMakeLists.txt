@@ -1,7 +1,6 @@
 add_compile_options(-std=c++14)
 
 set(CMAKE_CXX_FLAGS "-Wno-write-strings -Wno-literal-suffix")
-add_definitions(-DDEBUG_IS_ON=1)
 
 # compile the needed protos
 set(S6A_FEG_CPP_PROTOS s6a_proxy)
@@ -32,11 +31,13 @@ add_library(LIB_S6A_PROXY
     )
 
 target_link_libraries(LIB_S6A_PROXY
+    LIB_STORE
     COMMON
     LIB_MOBILITY_CLIENT ASYNC_GRPC SERVICE_REGISTRY
-    MAGMA_CONFIG LIB_BSTR LIB_HASHTABLE
+    MAGMA_CONFIG LIB_BSTR LIB_HASHTABLE TASK_S6A
     )
 target_include_directories(LIB_S6A_PROXY PUBLIC
+    $ENV{MAGMA_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}
     $<TARGET_FILE_DIR:LIB_S6A_PROXY>
     )

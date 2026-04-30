@@ -17,15 +17,40 @@
   Author/Editor Sanjay Kumar Ojha
   Description 	Acts as 5G Landing object in SessionD & start 5G related flow
 *****************************************************************************/
-#include <chrono>
-#include <thread>
+#include "lte/gateway/c/session_manager/SetMessageManagerHandler.hpp"
+
+#include <folly/io/async/EventBase.h>
+#include <glog/logging.h>
+#include <grpcpp/impl/codegen/status.h>
+#include <grpcpp/impl/codegen/status_code_enum.h>
+#include <lte/protos/session_manager.pb.h>
+#include <lte/protos/subscriberdb.pb.h>
+#include <experimental/optional>
+#include <ostream>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include <google/protobuf/util/time_util.h>
+#include "lte/gateway/c/session_manager/GrpcMagmaUtils.hpp"
+#include "lte/gateway/c/session_manager/SessionEvents.hpp"
+#include "lte/gateway/c/session_manager/SessionReporter.hpp"
+#include "lte/gateway/c/session_manager/SessionState.hpp"
+#include "lte/gateway/c/session_manager/SessionStateEnforcer.hpp"
+#include "lte/gateway/c/session_manager/SessionStore.hpp"
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
 
-#include "SetMessageManagerHandler.h"
-#include "magma_logging.h"
-#include "GrpcMagmaUtils.h"
+namespace google {
+namespace protobuf {
+class Message;
+}  // namespace protobuf
+}  // namespace google
+namespace grpc {
+class ServerContext;
+}  // namespace grpc
+namespace magma {
+struct SessionStateUpdateCriteria;
+}  // namespace magma
 
 using grpc::Status;
 
@@ -40,8 +65,12 @@ namespace magma {
 /*Constructor*/
 SetMessageManagerHandler::SetMessageManagerHandler(
     std::shared_ptr<SessionStateEnforcer> m5genforcer,
-    SessionStore& session_store)
-    : session_store_(session_store), m5g_enforcer_(m5genforcer) {}
+    SessionStore& session_store, SessionReporter* reporter,
+    std::shared_ptr<EventsReporter> events_reporter)
+    : session_store_(session_store),
+      m5g_enforcer_(m5genforcer),
+      reporter_(reporter),
+      events_reporter_(events_reporter) {}
 
 /* Building session config with required parameters
  * TODO Note: this function can be removed by implementing 5G specific
@@ -51,14 +80,11 @@ SessionConfig SetMessageManagerHandler::m5g_build_session_config(
     const SetSMSessionContext& request) {
   SessionConfig cfg;
   /*copying only 5G specific data to respective elements*/
-  cfg.common_context       = request.common_context();
+  cfg.common_context = request.common_context();
   cfg.rat_specific_context = request.rat_specific_context();
 
-  /* As we dont have 5G polices defined yet, for now
-   * for all new connection we set SSC  mode as SSC_MODE_3
-   */
   cfg.rat_specific_context.mutable_m5gsm_session_context()->set_ssc_mode(
-      SSC_MODE_3);
+      request.rat_specific_context().m5gsm_session_context().ssc_mode());
 
   return cfg;
 }
@@ -84,7 +110,17 @@ void SetMessageManagerHandler::SetAmfSessionContext(
                                                         request_cpy]() {
     // extract values from proto
     std::string imsi = request_cpy.common_context().sid().id();
-    std::string dnn  = request_cpy.common_context().apn();
+    const auto rat_type = request_cpy.common_context().rat_type();
+    if (rat_type != TGPP_NR) {
+      // We don't support outside of 5G
+      std::ostringstream failure_stream;
+      failure_stream << "Received an invalid RAT type " << rat_type;
+      std::string failure_msg = failure_stream.str();
+      MLOG(MERROR) << failure_msg;
+      Status status(grpc::FAILED_PRECONDITION, failure_msg);
+      response_callback(status, SmContextVoid());
+      return;
+    }
     // Fetch PDU session ID from rat_specific_context and
     // pdu_id is unique to IMSI
     uint32_t pdu_id = request_cpy.rat_specific_context()
@@ -113,6 +149,20 @@ void SetMessageManagerHandler::SetAmfSessionContext(
       auto session_map = session_store_.read_sessions({imsi});
       initiate_release_session(session_map, pdu_id, imsi);
       response_callback(Status::OK, SmContextVoid());
+    } else if ((cfg.rat_specific_context.m5gsm_session_context()
+                    .request_type() == EXISTING_PDU_SESSION) &&
+               (cfg.common_context.sm_session_state() == ACTIVE_2)) {
+      if (cfg.common_context.sm_session_version() == 0) {
+        MLOG(MERROR) << "Wrong version received from AMF for IMSI " << imsi
+                     << " but continuing release request";
+        Status status(grpc::OUT_OF_RANGE, "Version number Out of Range");
+        response_callback(status, SmContextVoid());
+        return;
+      }
+      auto session_map = session_store_.read_sessions({imsi});
+      request_modification_session(session_map, imsi, cfg, pdu_id,
+                                   response_callback);
+      return;
     } else {
       // The Event Based main_thread invocation and runs to handle session state
       MLOG(MDEBUG) << "Requested session from UE with IMSI: " << imsi
@@ -128,8 +178,7 @@ void SetMessageManagerHandler::SetAmfSessionContext(
          * context
          */
         auto session_map = session_store_.read_sessions({imsi});
-        send_create_session(session_map, imsi, cfg, pdu_id);
-        response_callback(Status::OK, SmContextVoid());
+        send_create_session(session_map, imsi, cfg, pdu_id, response_callback);
         return;
       }
       MLOG(MERROR)
@@ -178,10 +227,28 @@ void SetMessageManagerHandler::SetSmfNotification(
     }
   });
 }
+
+static CreateSessionRequest make_create_session_request(
+    const SessionConfig& cfg, const std::string& session_id,
+    const std::unique_ptr<Timezone>& access_timezone) {
+  CreateSessionRequest create_request;
+  create_request.set_session_id(session_id);
+  create_request.mutable_common_context()->CopyFrom(cfg.common_context);
+  create_request.mutable_rat_specific_context()->CopyFrom(
+      cfg.rat_specific_context);
+
+  if (access_timezone != nullptr) {
+    create_request.mutable_access_timezone()->CopyFrom(*access_timezone);
+  }
+
+  return create_request;
+}
+
 /* Creeate respective SessionState and context*/
 void SetMessageManagerHandler::send_create_session(
     SessionMap& session_map, const std::string& imsi, SessionConfig& new_cfg,
-    uint32_t& pdu_id) {
+    uint32_t& pdu_id,
+    std::function<void(Status, SmContextVoid)> response_callback) {
   /* If it is new session to be created, check for same PDU_ID exists
    * for same IMSI, i.e if IMSI found and respective PDU_ID found in
    * SessionStore, then return from here and nothing to do
@@ -219,6 +286,8 @@ void SetMessageManagerHandler::send_create_session(
       if (!success) {
         MLOG(MERROR) << "Failed to update  SessionStore for 5G session "
                      << session->get_session_id();
+        Status status(grpc::INTERNAL, "Failed to update SessionStore");
+        response_callback(status, SmContextVoid());
         return;
       }
       /* update the session changes back to sessionsotre
@@ -227,15 +296,21 @@ void SetMessageManagerHandler::send_create_session(
       if (!update_success) {
         MLOG(MERROR) << "Failed to update the session, re-get gnode teid and ip"
                      << imsi;
+        Status status(grpc::INTERNAL, "Failed to update the Session");
+        response_callback(status, SmContextVoid());
         return;
       }
       MLOG(MDEBUG) << " Successfully updated SessionStore of subscriber: "
                    << imsi;
+      Status status(grpc::OK, "Successfully updated SessionStore");
+      response_callback(status, SmContextVoid());
       return;
     }
     // PDU ID found and return from here
     MLOG(MERROR) << "Duplicate request of same PDU_id " << pdu_id << " of IMSI "
                  << imsi << " nothing to do";
+    Status status(grpc::ALREADY_EXISTS, "Duplicate request");
+    response_callback(status, SmContextVoid());
     return;
   }
   std::string session_id = id_gen_.gen_session_id(imsi);
@@ -244,16 +319,22 @@ void SetMessageManagerHandler::send_create_session(
 
   auto session_map_ptr = std::make_shared<SessionMap>(std::move(session_map));
   /* initialization of SessionState for IMSI by SessionStateEnforcer*/
-  bool success = m5g_enforcer_->m5g_init_session_credit(
-      *session_map_ptr, imsi, session_id, new_cfg);
+  bool success = m5g_enforcer_->m5g_init_session_credit(*session_map_ptr, imsi,
+                                                        session_id, new_cfg);
   if (!success) {
-    MLOG(MERROR) << "Failed to initialize SessionStore for 5G session "
-                 << session_id;
+    std::ostringstream failure_stream;
+    failure_stream << "Failed to initialize SessionStore for 5G session "
+                   << session_id;
+    std::string failure_msg = failure_stream.str();
+    MLOG(MERROR) << failure_msg;
+    events_reporter_->session_create_failure(new_cfg, failure_msg);
+    Status status(grpc::INTERNAL, "Failed to initialize SessionStore");
+    response_callback(status, SmContextVoid());
     return;
   } else {
     /* writing of SessionMap in memory through SessionStore object*/
-    if (session_store_.create_sessions(
-            imsi, std::move((*session_map_ptr)[imsi]))) {
+    if (session_store_.create_sessions(imsi,
+                                       std::move((*session_map_ptr)[imsi]))) {
       MLOG(MDEBUG) << "Successfully initialized 5G session for subscriber "
                    << new_cfg.common_context.sid().id()
                    << " with PDU session ID "
@@ -268,6 +349,46 @@ void SetMessageManagerHandler::send_create_session(
                    << " due to failure writing to SessionStore.";
     }
   }
+  auto create_req = make_create_session_request(
+      new_cfg, session_id, m5g_enforcer_->get_access_timezone());
+  reporter_->report_create_session(
+      create_req, [this, imsi, new_cfg, session_id, response_callback](
+                      Status status, CreateSessionResponse response) mutable {
+        if (status.ok()) {
+          MLOG(MINFO) << "Processing a CreateSessionResponse for "
+                      << session_id;
+          PrintGrpcMessage(
+              static_cast<const google::protobuf::Message&>(response));
+          auto session_map = session_store_.read_sessions({imsi});
+          SessionUpdate update =
+              SessionStore::get_default_session_update(session_map);
+          SessionSearchCriteria criteria(imsi, IMSI_AND_SESSION_ID, session_id);
+          auto session_it = session_store_.find_session(session_map, criteria);
+          if (!session_it) {
+            MLOG(MWARNING) << "Could not find session " << session_id;
+            status = Status(grpc::ABORTED, "Session not found");
+            response_callback(status, SmContextVoid());
+            return;
+          }
+          auto& session = **session_it;
+          SessionStateUpdateCriteria* session_uc = &update[imsi][session_id];
+          m5g_enforcer_->update_session_with_policy(session, response,
+                                                    session_uc);
+          session_store_.update_sessions(update);
+        } else {
+          MLOG(MINFO) << "Failed to initialize new session " << session_id
+                      << " in SessionD for subscriber " << imsi
+                      << " due to failure writing to SessionStore."
+                      << " An earlier update may have invalidated it.";
+          status = Status(grpc::ABORTED,
+                          "Failed to write session to SessionD storage");
+          events_reporter_->session_create_failure(
+              new_cfg, "Failed to initialize session in SessionProxy/PolicyDB");
+          response_callback(status, SmContextVoid());
+          return;
+        }
+      });
+  response_callback(Status::OK, SmContextVoid());
 }
 
 /* This starts releasing the session in main session enforcer thread context
@@ -305,17 +426,17 @@ void SetMessageManagerHandler::pdu_session_inactive(
     const SetSmNotificationContext& notif,
     std::function<void(Status, SmContextVoid)> response_callback) {
   // extract values from proto
-  uint32_t pdu_id  = notif.rat_specific_notification().pdu_session_id();
+  uint32_t pdu_id = notif.rat_specific_notification().pdu_session_id();
   std::string imsi = notif.common_context().sid().id();
   /* Read the SessionMap from global session_store */
   SessionSearchCriteria criteria(imsi, IMSI_AND_PDUID, pdu_id);
   auto session_map = session_store_.read_sessions({imsi});
-  auto session_it  = session_store_.find_session(session_map, criteria);
-  auto& session    = **session_it;
+  auto session_it = session_store_.find_session(session_map, criteria);
+  auto& session = **session_it;
   if (!session_it) {
     MLOG(MINFO) << " No session found for IMSI: " << imsi << " pdu id "
                 << pdu_id;
-    Status status(grpc::NOT_FOUND, "Sesion Not found");
+    Status status(grpc::NOT_FOUND, "Session not found");
     response_callback(status, SmContextVoid());
     return;
   }
@@ -334,17 +455,17 @@ void SetMessageManagerHandler::pdu_session_inactive(
     response_callback(status, SmContextVoid());
     return;
   }
-  if (session->get_state() == RELEASE) {
+  if (session->get_state() == SESSION_RELEASED) {
     // Nothing to be done;
     MLOG(MINFO) << " No sessions to move to Idle state : " << imsi;
     response_callback(Status::OK, SmContextVoid());
     return;
   }
   auto session_update = SessionStore::get_default_session_update(session_map);
-  auto session_id     = session->get_session_id();
+  auto session_id = session->get_session_id();
   SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
-  m5g_enforcer_->m5g_move_to_inactive_state(
-      imsi, **session_it, notif, &session_uc);
+  m5g_enforcer_->m5g_move_to_inactive_state(imsi, **session_it, notif,
+                                            &session_uc);
   bool update_success = session_store_.update_sessions(session_update);
   if (update_success) {
     MLOG(MDEBUG) << "Successfully updated SessionStore "
@@ -363,16 +484,16 @@ void SetMessageManagerHandler::idle_mode_change_sessions_handle(
     const SetSmNotificationContext& notif,
     std::function<void(Status, SmContextVoid)> response_callback) {
   // extract IMSI value from proto
-  auto imsi           = notif.common_context().sid().id();
-  auto session_map    = session_store_.read_sessions({imsi});
-  int count           = 0;
+  auto imsi = notif.common_context().sid().id();
+  auto session_map = session_store_.read_sessions({imsi});
+  int count = 0;
   auto session_update = SessionStore::get_default_session_update(session_map);
   for (auto& session : session_map[imsi]) {
-    if (session->get_state() != RELEASE) {
-      auto session_id                        = session->get_session_id();
+    if (session->get_state() != SESSION_RELEASED) {
+      auto session_id = session->get_session_id();
       SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
-      m5g_enforcer_->m5g_move_to_inactive_state(
-          imsi, session, notif, &session_uc);
+      m5g_enforcer_->m5g_move_to_inactive_state(imsi, session, notif,
+                                                &session_uc);
       bool update_success = session_store_.update_sessions(session_update);
       if (!update_success) {
         MLOG(MINFO) << "Operation aborted in  middle"
@@ -388,7 +509,7 @@ void SetMessageManagerHandler::idle_mode_change_sessions_handle(
   }
   if (!count) {
     MLOG(MINFO) << " No Valid session found for IMSI: " << imsi;
-    Status status(grpc::NOT_FOUND, "Sesion Not found");
+    Status status(grpc::NOT_FOUND, "Session not found");
     response_callback(status, SmContextVoid());
     return;
   }
@@ -411,48 +532,84 @@ void SetMessageManagerHandler::service_handle_request_on_paging(
     const SetSmNotificationContext& notif,
     std::function<void(Status, SmContextVoid)> response_callback) {
   // extract IMSI value from proto
-  auto imsi           = notif.common_context().sid().id();
-  auto session_map    = session_store_.read_sessions({imsi});
-  int count           = 0;
+  auto imsi = notif.common_context().sid().id();
+  uint32_t pdu_id = notif.rat_specific_notification().pdu_session_id();
+  SessionSearchCriteria criteria(imsi, IMSI_AND_PDUID, pdu_id);
+  auto session_map = session_store_.read_sessions({imsi});
+  auto session_it = session_store_.find_session(session_map, criteria);
+  if (!session_it) {
+    MLOG(MINFO) << " No Valid session found for IMSI: " << imsi;
+    Status status(grpc::NOT_FOUND, "Session not found");
+    response_callback(status, SmContextVoid());
+    return;
+  }
+  auto& session = **session_it;
   auto session_update = SessionStore::get_default_session_update(session_map);
-  for (auto& session : session_map[imsi]) {
-    if (session->get_state() == INACTIVE) {
-      auto session_id                        = session->get_session_id();
-      SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
-      m5g_enforcer_->m5g_move_to_active_state(session, notif, &session_uc);
-      bool update_success = session_store_.update_sessions(session_update);
-      if (!update_success) {
-        MLOG(MINFO) << "Operation aborted in  middle"
-                    << " session id: " << session->get_session_id() << imsi
-                    << " of imsi";
-        continue;
-      }
+  if (session->get_state() == INACTIVE) {
+    const std::string session_id = session->get_session_id();
+    SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
+    m5g_enforcer_->m5g_move_to_active_state(session, notif, &session_uc);
+    bool update_success = session_store_.update_sessions(session_update);
+    if (!update_success) {
+      MLOG(MINFO) << "Operation aborted in  middle"
+                  << " session id: " << session->get_session_id() << imsi
+                  << " of imsi";
+      Status status(grpc::ABORTED, "update operation aborted in  middle");
+      response_callback(status, SmContextVoid());
+      return;
+    } else {
       MLOG(MDEBUG) << "Successfully updated SessionStore "
                    << " session id: " << session->get_session_id() << imsi
                    << " of imsi";
-      count++;
     }
   }
-  if (!count) {
-    MLOG(MINFO) << " No Valid session found for IMSI: " << imsi;
-    Status status(grpc::NOT_FOUND, "Sesion Not found");
-    response_callback(status, SmContextVoid());
-    return;
-  }
-  bool update_success = session_store_.update_sessions(session_update);
-  if (!update_success) {
-    Status status(grpc::ABORTED, "update operation aborted in  middle");
-    response_callback(status, SmContextVoid());
-    return;
-  }
   // Send  Paging service request response back to AMF
-  auto session = session_map[imsi].begin();
   m5g_enforcer_->handle_state_update_to_amf(
-      **session, magma::lte::M5GSMCause::OPERATION_SUCCESS,
+      *session, magma::lte::M5GSMCause::OPERATION_SUCCESS,
       UE_SERVICE_REQUEST_ON_PAGING);
   MLOG(MDEBUG) << "Successfully updated SessionStore "
                << "of subscriber :" << imsi;
   response_callback(Status::OK, SmContextVoid());
   return;
 }
+
+void SetMessageManagerHandler::request_modification_session(
+    SessionMap& session_map, const std::string& imsi, SessionConfig& new_cfg,
+    uint32_t& pdu_id,
+    std::function<void(Status, SmContextVoid)> response_callback) {
+  SessionSearchCriteria criteria(imsi, IMSI_AND_PDUID, pdu_id);
+  auto session_it = session_store_.find_session(session_map, criteria);
+  if (!session_it) {
+    MLOG(MINFO) << " No session found for IMSI: " << imsi << " pdu id "
+                << pdu_id;
+    Status status(grpc::NOT_FOUND, "Session not found");
+    response_callback(status, SmContextVoid());
+    return;
+  }
+  auto& session = **session_it;
+  SessionConfig cfg = session->get_config();
+  cfg.rat_specific_context.mutable_m5gsm_session_context()
+      ->mutable_gnode_endpoint()
+      ->set_end_ipv4_addr(new_cfg.rat_specific_context.m5gsm_session_context()
+                              .gnode_endpoint()
+                              .end_ipv4_addr());
+  cfg.rat_specific_context.mutable_m5gsm_session_context()
+      ->mutable_gnode_endpoint()
+      ->set_teid(new_cfg.rat_specific_context.m5gsm_session_context()
+                     .gnode_endpoint()
+                     .teid());
+
+  session->set_config(cfg, nullptr);
+  SessionUpdate update = SessionStore::get_default_session_update(session_map);
+  bool update_success = m5g_enforcer_->m5g_modification_session(
+      session_map, imsi, session, new_cfg, update);
+  if (!update_success) {
+    Status status(grpc::ABORTED, "Modification operation aborted in  middle");
+    response_callback(status, SmContextVoid());
+    return;
+  }
+  response_callback(Status::OK, SmContextVoid());
+  return;
+}
+
 }  // end namespace magma

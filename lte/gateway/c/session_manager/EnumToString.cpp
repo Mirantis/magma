@@ -11,10 +11,14 @@
  * limitations under the License.
  */
 
+#include "lte/gateway/c/session_manager/EnumToString.hpp"
+
+#include <lte/protos/abort_session.pb.h>
+#include <lte/protos/session_manager.pb.h>
 #include <sstream>
 #include <string>
 
-#include "EnumToString.h"
+#include "lte/gateway/c/session_manager/ChargingGrant.hpp"
 
 namespace magma {
 std::string reauth_state_to_str(ReAuthState state) {
@@ -86,12 +90,10 @@ std::string grant_type_to_str(GrantTrackingType grant_type) {
 std::string session_fsm_state_to_str(SessionFsmState state) {
   switch (state) {
     case SESSION_ACTIVE:
-    case ACTIVE:
       return "SESSION_ACTIVE";
     case SESSION_TERMINATED:
       return "SESSION_TERMINATED";
     case SESSION_RELEASED:
-    case RELEASE:
       return "SESSION_RELEASED";
     case CREATING:
       return "SESSION_CREATING";

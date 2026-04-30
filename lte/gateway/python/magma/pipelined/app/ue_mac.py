@@ -19,7 +19,7 @@ from lte.protos.pipelined_pb2 import (
     UEMacFlowRequest,
 )
 from magma.pipelined.app.base import ControllerType, MagmaController
-from magma.pipelined.app.inout import INGRESS
+from magma.pipelined.app.ingress import INGRESS
 from magma.pipelined.app.ipfix import IPFIXController
 from magma.pipelined.bridge_util import BridgeTools
 from magma.pipelined.directoryd_client import update_record
@@ -67,7 +67,7 @@ class UEMacAddressController(MagmaController):
             self._li_port = \
                 BridgeTools.get_ofport(kwargs['config']['li_local_iface'])
         self._dpi_port = \
-                BridgeTools.get_ofport(kwargs['config']['dpi']['mon_port'])
+            BridgeTools.get_ofport(kwargs['config']['dpi']['mon_port'])
 
     def initialize_on_connect(self, datapath):
         self.delete_all_flows(datapath)

@@ -20,7 +20,7 @@ from integ_tests.s1aptests import s1ap_wrapper
 from integ_tests.s1aptests.s1ap_utils import SpgwUtil
 
 
-class TestAttachDetachDedicatedInvalidEbi(unittest.TestCase):
+class TestAttachDetachDedicatedBearerDeactivationInvalidEbi(unittest.TestCase):
     """Dedicated bearer deactivation with invalid EBI
     test with a single UE
     """
@@ -34,7 +34,7 @@ class TestAttachDetachDedicatedInvalidEbi(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_detach(self):
+    def test_attach_detach_dedicated_bearer_deactivation_invalid_ebi(self):
         """attach/detach + dedicated bearer deactivation with invalid EBI
         test with a single UE
         """
@@ -83,9 +83,7 @@ class TestAttachDetachDedicatedInvalidEbi(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             act_ded_ber_ctxt_req = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
             )

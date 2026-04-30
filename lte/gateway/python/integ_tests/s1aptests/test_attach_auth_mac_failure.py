@@ -17,14 +17,14 @@ import s1ap_types
 from integ_tests.s1aptests import s1ap_wrapper
 
 
-class TestAuthMacFailure(unittest.TestCase):
+class TestAttachAuthMacFailure(unittest.TestCase):
     def setUp(self):
         self._s1ap_wrapper = s1ap_wrapper.TestWrapper()
 
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_auth_failure_cause_mac_failure(self):
+    def test_attach_auth_mac_failure(self):
         """ Test authentication failure procedure with cause MAC failure"""
         num_ues = 1
 
@@ -49,7 +49,7 @@ class TestAuthMacFailure(unittest.TestCase):
         )
 
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertTrue(response, s1ap_types.tfwCmd.UE_AUTH_REQ_IND.value)
+        assert response.msg_type == s1ap_types.tfwCmd.UE_AUTH_REQ_IND.value
         print("Received Authentication Request message ")
 
         auth_failure = s1ap_types.ueAuthFailure_t()
@@ -63,7 +63,7 @@ class TestAuthMacFailure(unittest.TestCase):
             s1ap_types.tfwCmd.UE_AUTH_FAILURE, auth_failure,
         )
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertTrue(response, s1ap_types.tfwCmd.UE_AUTH_REJ_IND.value)
+        assert response.msg_type == s1ap_types.tfwCmd.UE_AUTH_REJ_IND.value
         print("Received Authentication Reject message")
 
 

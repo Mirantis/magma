@@ -15,11 +15,11 @@
 
 #include <stdint.h>
 
-#include "3gpp_38.401.h"
-#include "common_types.h"
-#include "hashtable.h"
+#include "lte/gateway/c/core/oai/lib/3gpp/3gpp_38.401.h"
+#include "lte/gateway/c/core/oai/common/common_types.h"
+#include "lte/gateway/c/core/oai/lib/hashtable/hashtable.h"
 
-#include "amf_config.h"
+#include "lte/gateway/c/core/oai/include/amf_config.hpp"
 
 #define NGAP_MAX_BROADCAST_PLMNS 6
 /* Maximum TAI Items configured, can be upto 256 */
@@ -27,6 +27,7 @@
 
 #define NGAP_TIMER_INACTIVE_ID (-1)
 #define NGAP_UE_CONTEXT_REL_COMP_TIMER 1  // in seconds
+#define NGAP_ASN_ENCODED_BYTES(x) (x + 7) >> 3
 
 // Forward declarations
 struct gnb_description_s;
@@ -78,8 +79,8 @@ typedef struct ngap_state_s {
 
 /* Timer structure */
 struct ngap_timer_t {
-  long id;  /* The timer identifier                 */
-  long sec; /* The timer interval value in seconds  */
+  long id;   /* The timer identifier                 */
+  long msec; /* The timer interval value in seconds  */
 };
 
 /** Main structure representing UE association over ngap

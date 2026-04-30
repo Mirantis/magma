@@ -17,15 +17,15 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 
-	"magma/orc8r/cloud/go/obsidian"
 	"magma/orc8r/cloud/go/serde"
 )
 
 // GetAndValidatePayload can be used by any model that implements ValidateModel
 // Example:
-// 	payload, nerr := GetAndValidatePayload(c, &models.DNSConfigRecord{})
+//
+//	payload, nerr := GetAndValidatePayload(c, &models.DNSConfigRecord{})
 //	if nerr != nil {
 //		return nil, nerr
 //	}
@@ -33,11 +33,11 @@ import (
 func GetAndValidatePayload(c echo.Context, model interface{}) (serde.ValidatableModel, *echo.HTTPError) {
 	iModel := reflect.New(reflect.TypeOf(model).Elem()).Interface().(serde.ValidatableModel)
 	if err := c.Bind(iModel); err != nil {
-		return nil, obsidian.HttpError(err, http.StatusBadRequest)
+		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	// Run validations specified by the swagger spec
 	if err := iModel.ValidateModel(c.Request().Context()); err != nil {
-		return nil, obsidian.HttpError(err, http.StatusBadRequest)
+		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	return iModel, nil
 }

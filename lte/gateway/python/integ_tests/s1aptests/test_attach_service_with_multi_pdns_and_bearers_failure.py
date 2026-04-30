@@ -22,7 +22,7 @@ from integ_tests.s1aptests.s1ap_utils import SessionManagerUtil
 from lte.protos.policydb_pb2 import FlowMatch
 
 
-class TestAttachServiceMultiPdnsBearersFailure(unittest.TestCase):
+class TestAttachServiceWithMultiPdnsAndBearersFailure(unittest.TestCase):
     def setUp(self):
         self._s1ap_wrapper = s1ap_wrapper.TestWrapper()
         self._sessionManager_util = SessionManagerUtil()
@@ -30,7 +30,7 @@ class TestAttachServiceMultiPdnsBearersFailure(unittest.TestCase):
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_service_multi_pdns_bearers_failure(self):
+    def test_attach_service_with_multi_pdns_and_bearers_failure(self):
         """Test with a single UE attach + add secondary PDN
         + add 2 dedicated bearers + UE context release + service request
         + ICS Rsp with failed bearers + detach"""
@@ -200,9 +200,7 @@ class TestAttachServiceMultiPdnsBearersFailure(unittest.TestCase):
         )
 
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
         act_ded_ber_req_oai_apn = response.cast(
             s1ap_types.UeActDedBearCtxtReq_t,
         )
@@ -217,9 +215,7 @@ class TestAttachServiceMultiPdnsBearersFailure(unittest.TestCase):
         self._s1ap_wrapper.sendPdnConnectivityReq(ue_id, apn)
         # Receive PDN CONN RSP/Activate default EPS bearer context request
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value
         act_def_bearer_req = response.cast(s1ap_types.uePdnConRsp_t)
         addr = act_def_bearer_req.m.pdnInfo.pAddr.addrInfo
         sec_ip = ipaddress.ip_address(bytes(addr[:4]))
@@ -244,9 +240,7 @@ class TestAttachServiceMultiPdnsBearersFailure(unittest.TestCase):
         )
 
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
         act_ded_ber_req_ims_apn = response.cast(
             s1ap_types.UeActDedBearCtxtReq_t,
         )
@@ -287,9 +281,7 @@ class TestAttachServiceMultiPdnsBearersFailure(unittest.TestCase):
             s1ap_types.tfwCmd.UE_CNTXT_REL_REQUEST, req,
         )
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_CTX_REL_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_CTX_REL_IND.value
 
         # Send the bearers to be included in failed to setup list in ICS Rsp
         init_ctxt_setup_failed_erabs = s1ap_types.UeInitCtxtSetupFailedErabs()
@@ -326,9 +318,7 @@ class TestAttachServiceMultiPdnsBearersFailure(unittest.TestCase):
             s1ap_types.tfwCmd.UE_SERVICE_REQUEST, req,
         )
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.INT_CTX_SETUP_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.INT_CTX_SETUP_IND.value
 
         print("Sleeping for 5 seconds")
         time.sleep(5)

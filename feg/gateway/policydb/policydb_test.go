@@ -99,10 +99,10 @@ func (cr mockCloudRegistry) GetCloudConnection(service string) (*grpc.ClientConn
 	if service != definitions.StreamerServiceName {
 		return nil, fmt.Errorf("Not Implemented")
 	}
-	return platform_registry.GetConnection(streamer.ServiceName)
+	return platform_registry.GetConnection(streamer.ServiceName, orcprotos.ServiceType_SOUTHBOUND)
 }
 
-func (cr mockCloudRegistry) GetCloudConnectionFromServiceConfig(serviceConfig *config.ConfigMap, service string) (*grpc.ClientConn, error) {
+func (cr mockCloudRegistry) GetCloudConnectionFromServiceConfig(serviceConfig *config.Map, service string) (*grpc.ClientConn, error) {
 	return nil, fmt.Errorf("Not Implemented")
 }
 

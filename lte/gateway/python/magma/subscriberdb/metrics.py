@@ -35,9 +35,11 @@ M5G_AUTH_FAILURE_TOTAL = Counter(
     'Total failed M5G auth requests with reason', ['code'],
 )
 
+DIAMETER_TOO_BUSY = 3004
 DIAMETER_AUTHENTICATION_REJECTED = 4001
 DIAMETER_ERROR_USER_UNKNOWN = 5001
 DIAMETER_AUTHORIZATION_REJECTED = 5003
+DIAMETER_ERROR_UNAUTHORIZED_SERVICE = 5511
 # Counters for Diameter base application
 DIAMETER_CEX_TOTAL = Counter(
     'diameter_capabilities_exchange',

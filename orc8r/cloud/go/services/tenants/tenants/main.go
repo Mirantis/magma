@@ -17,18 +17,18 @@ import (
 	"github.com/golang/glog"
 
 	"magma/orc8r/cloud/go/blobstore"
-	"magma/orc8r/cloud/go/obsidian"
-	"magma/orc8r/cloud/go/obsidian/swagger"
-	swagger_protos "magma/orc8r/cloud/go/obsidian/swagger/protos"
 	"magma/orc8r/cloud/go/orc8r"
 	"magma/orc8r/cloud/go/service"
+	"magma/orc8r/cloud/go/services/obsidian"
+	swagger_protos "magma/orc8r/cloud/go/services/obsidian/swagger/protos"
+	swagger_servicers "magma/orc8r/cloud/go/services/obsidian/swagger/servicers/protected"
 	"magma/orc8r/cloud/go/services/tenants"
 	"magma/orc8r/cloud/go/services/tenants/obsidian/handlers"
-	"magma/orc8r/cloud/go/services/tenants/servicers"
+	"magma/orc8r/cloud/go/services/tenants/protos"
+	servicers "magma/orc8r/cloud/go/services/tenants/servicers/protected"
 	"magma/orc8r/cloud/go/services/tenants/servicers/storage"
 	"magma/orc8r/cloud/go/sqorc"
 	storage2 "magma/orc8r/cloud/go/storage"
-	"magma/orc8r/lib/go/protos"
 )
 
 func main() {
@@ -40,7 +40,7 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Failed to connect to database: %s", err)
 	}
-	factory := blobstore.NewEntStorage(tenants.DBTableName, db, sqorc.GetSqlBuilder())
+	factory := blobstore.NewSQLStoreFactory(tenants.DBTableName, db, sqorc.GetSqlBuilder())
 	err = factory.InitializeFactory()
 	if err != nil {
 		glog.Fatalf("Error initializing tenant database: %s", err)
@@ -51,9 +51,9 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Error creating tenants server: %s", err)
 	}
-	protos.RegisterTenantsServiceServer(srv.GrpcServer, server)
+	protos.RegisterTenantsServiceServer(srv.ProtectedGrpcServer, server)
 
-	swagger_protos.RegisterSwaggerSpecServer(srv.GrpcServer, swagger.NewSpecServicerFromFile(tenants.ServiceName))
+	swagger_protos.RegisterSwaggerSpecServer(srv.ProtectedGrpcServer, swagger_servicers.NewSpecServicerFromFile(tenants.ServiceName))
 
 	obsidian.AttachHandlers(srv.EchoServer, handlers.GetObsidianHandlers())
 

@@ -20,32 +20,47 @@
   Description 	Objects run in main thread context invoked by folly event
 *****************************************************************************/
 
+#include "lte/gateway/c/session_manager/SessionStateEnforcer.hpp"
+
+#include <folly/io/async/EventBase.h>
+#include <glog/logging.h>
+#include <grpcpp/impl/codegen/status.h>
+#include <lte/protos/apn.pb.h>
+#include <lte/protos/mconfig/mconfigs.pb.h>
+#include <lte/protos/policydb.pb.h>
+#include <lte/protos/subscriberdb.pb.h>
+#include <algorithm>
+#include <cstdint>
+#include <experimental/optional>
+#include <memory>
+#include <ostream>
 #include <string>
-#include <time.h>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <memory>
 
-#include <google/protobuf/repeated_field.h>
-#include <google/protobuf/timestamp.pb.h>
-#include <google/protobuf/util/time_util.h>
-#include <grpcpp/channel.h>
-#include "magma_logging.h"
-#include "EnumToString.h"
-#include "SessionStateEnforcer.h"
+#include "lte/gateway/c/session_manager/AmfServiceClient.hpp"
+#include "lte/gateway/c/session_manager/EnumToString.hpp"
+#include "lte/gateway/c/session_manager/PipelinedClient.hpp"
+#include "lte/gateway/c/session_manager/SessionEvents.hpp"
+#include "lte/gateway/c/session_manager/SessionReporter.hpp"
+#include "lte/gateway/c/session_manager/SessionState.hpp"
+#include "lte/gateway/c/session_manager/StoredState.hpp"
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
 
 #define DEFAULT_AMBR_UNITS (1024)
 #define DEFAULT_UP_LINK_PDR_ID 1
 #define DEFAULT_DOWN_LINK_PDR_ID 2
 #define DEFAULT_RULE_COUNT 2
+#define DEFAULT_PRIORITY_LEVEL 1
 
 std::shared_ptr<magma::SessionStateEnforcer> conv_session_enforcer;
 namespace magma {
 
 void call_back_upf(grpc::Status, magma::UPFSessionContextState response) {
-  std::string imsi             = response.session_snapshot().subscriber_id();
-  uint32_t version             = response.session_snapshot().session_version();
-  uint32_t fteid               = response.session_snapshot().local_f_teid();
+  std::string imsi = response.session_snapshot().subscriber_id();
+  uint32_t version = response.session_snapshot().session_version();
+  uint32_t fteid = response.session_snapshot().local_f_teid();
   const std::string session_id = response.session_snapshot().subscriber_id();
   MLOG(MDEBUG) << " Async Response received from UPF: imsi " << imsi
                << " local fteid : " << fteid;
@@ -62,7 +77,8 @@ SessionStateEnforcer::SessionStateEnforcer(
     std::shared_ptr<StaticRuleStore> rule_store, SessionStore& session_store,
     std::unordered_multimap<std::string, uint32_t> pdr_map,
     std::shared_ptr<PipelinedClient> pipelined_client,
-    std::shared_ptr<AmfServiceClient> amf_srv_client,
+    std::shared_ptr<AmfServiceClient> amf_srv_client, SessionReporter* reporter,
+    std::shared_ptr<EventsReporter> events_reporter,
     magma::mconfig::SessionD mconfig, long session_force_termination_timeout_ms,
     uint32_t session_max_rtx_count)
     : rule_store_(rule_store),
@@ -70,6 +86,8 @@ SessionStateEnforcer::SessionStateEnforcer(
       pdr_map_(pdr_map),
       pipelined_client_(pipelined_client),
       amf_srv_client_(amf_srv_client),
+      reporter_(reporter),
+      events_reporter_(events_reporter),
       mconfig_(mconfig),
       session_force_termination_timeout_ms_(
           session_force_termination_timeout_ms),
@@ -83,13 +101,9 @@ void SessionStateEnforcer::attachEventBase(folly::EventBase* evb) {
   evb_ = evb;
 }
 
-void SessionStateEnforcer::stop() {
-  evb_->terminateLoopSoon();
-}
+void SessionStateEnforcer::stop() { evb_->terminateLoopSoon(); }
 
-folly::EventBase& SessionStateEnforcer::get_event_base() {
-  return *evb_;
-}
+folly::EventBase& SessionStateEnforcer::get_event_base() { return *evb_; }
 
 bool SessionStateEnforcer::m5g_init_session_credit(
     SessionMap& session_map, const std::string& imsi,
@@ -126,28 +140,59 @@ bool SessionStateEnforcer::m5g_update_session_context(
     SessionMap& session_map, const std::string& imsi,
     std::unique_ptr<SessionState>& session_state,
     SessionUpdate& session_update) {
-  uint32_t gnode_teid;
+  uint32_t upf_teid;
   bool get_gnb_teid = true;
   bool get_upf_teid = false;
+  RulesToProcess pending_activation, pending_deactivation;
+  RulesToSchedule pending_scheduling;
 
   /* Check and update latest session rules
    * we get gnodeb TEID, and IP address details here
    */
-  auto session_id                        = session_state->get_session_id();
+  auto session_id = session_state->get_session_id();
   SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
-  gnode_teid                             = update_session_rules(
-      session_state, get_gnb_teid, get_upf_teid, &session_uc);
-  if (!gnode_teid) {
+  upf_teid = update_session_rules(session_state, get_gnb_teid, get_upf_teid,
+                                  &session_uc);
+  if (!upf_teid) {
     return false;
   }
+  SessionSearchCriteria criteria(imsi, IMSI_AND_SESSION_ID, session_id);
+  auto session_it = session_store_.find_session(session_map, criteria);
+  if (!session_it) {
+    MLOG(MERROR) << "No session found in SessionMap for IMSI " << imsi
+                 << " with session_id " << session_id;
+  }
+  auto& session = **session_it;
+  const CreateSessionResponse& csr = session->get_create_session_response();
   uint32_t cur_version = session_state->get_current_version();
   session_state->set_fsm_state(CREATED, &session_uc);
   session_state->set_current_version(++cur_version, &session_uc);
+  std::vector<StaticRuleInstall> static_rule_installs =
+      to_vec(csr.static_rules());
+  std::vector<DynamicRuleInstall> dynamic_rule_installs =
+      to_vec(csr.dynamic_rules());
+  session->process_rules_to_install(static_rule_installs, dynamic_rule_installs,
+                                    &pending_activation, &pending_deactivation,
+                                    nullptr, &pending_scheduling, &session_uc);
+
+  std::unordered_set<uint32_t> charging_credits_received;
+  for (const auto& credit : csr.credits()) {
+    if (session->receive_charging_credit(credit, &session_uc)) {
+      charging_credits_received.insert(credit.charging_key());
+    }
+  }
+  for (const auto& monitor : csr.usage_monitors()) {
+    auto uc = get_default_update_criteria();
+    session->receive_monitor(monitor, &session_uc);
+  }
   /* Reset the upf resend retransmission counter counter, send the session
    * creation request to UPF
    */
   session_state->reset_rtx_counter();
-  m5g_send_session_request_to_upf(session_state);
+  m5g_send_session_request_to_upf(session_state, pending_activation,
+                                  pending_deactivation);
+  events_reporter_->session_created(imsi, session_id, session->get_config(),
+                                    session);
   return true;
 }
 
@@ -160,7 +205,7 @@ uint32_t SessionStateEnforcer::update_session_rules(
 
   // Get the latest config
   const auto& config = session->get_config();
-  auto itp           = pdr_map_.equal_range(imsi);
+  auto itp = pdr_map_.equal_range(imsi);
   // Lets take local_teid of the session if already exists.
   // Not needed in 2nd AMF request processing though
   if (!get_upf_teid) {
@@ -170,23 +215,6 @@ uint32_t SessionStateEnforcer::update_session_rules(
     // Get the PDR numbers, now  get the rules from global static rule list
     GlobalRuleList.get_rule(itr->second, &rule);
     set_pdr_attributes(imsi, session, &rule);
-#if 0
-    // Get the UE ip address
-    rule.mutable_pdi()->set_ue_ip_adr(
-        config.rat_specific_context.m5gsm_session_context()
-            .pdu_address()
-            .redirect_server_address());
-    rule.mutable_activate_flow_req()->mutable_sid()->set_id(imsi);
-    rule.mutable_deactivate_flow_req()->mutable_sid()->set_id(imsi);
-    rule.mutable_activate_flow_req()->set_ip_addr(
-        config.rat_specific_context.m5gsm_session_context()
-            .pdu_address()
-            .redirect_server_address());
-    rule.mutable_deactivate_flow_req()->set_ip_addr(
-        config.rat_specific_context.m5gsm_session_context()
-            .pdu_address()
-            .redirect_server_address());
-#endif
     switch (rule.pdi().src_interface()) {
       case ACCESS:
         // Get new UPF TEID
@@ -220,10 +248,11 @@ bool SessionStateEnforcer::handle_session_init_rule_updates(
   SessionUpdate session_update =
       SessionStore::get_default_session_update(session_map);
   SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
-  const std::string upf_ip               = get_upf_n3_addr();
+  const std::string upf_ip = get_upf_n3_addr();
+
   /* Attach rules to the session */
-  upf_teid = update_session_rules(
-      session_state, get_gnb_teid, get_upf_teid, &session_uc);
+  upf_teid = update_session_rules(session_state, get_gnb_teid, get_upf_teid,
+                                  &session_uc);
   /* session_state elments are filled with rules. State needs to be
    * moved to CREATING, increment version and send TEID details to AMF
    */
@@ -238,12 +267,6 @@ bool SessionStateEnforcer::handle_session_init_rule_updates(
   uint32_t cur_version = session_state->get_current_version();
   session_state->set_current_version(++cur_version, &session_uc);
 
-  /* Send the UPF (local TEID) info to AMF which are going to
-   * be used by GnodeB
-   */
-  prepare_response_to_access(
-      *session_state, magma::lte::M5GSMCause::OPERATION_SUCCESS, upf_ip,
-      upf_teid);
   return true;
 }
 
@@ -252,9 +275,10 @@ bool SessionStateEnforcer::handle_session_init_rule_updates(
  * Go over SessionState vector and find the respective dnn (apn)
  * start terminating session process
  */
-bool SessionStateEnforcer::m5g_release_session(
-    SessionMap& session_map, const std::string& imsi, const uint32_t& pdu_id,
-    SessionUpdate& session_update) {
+bool SessionStateEnforcer::m5g_release_session(SessionMap& session_map,
+                                               const std::string& imsi,
+                                               const uint32_t& pdu_id,
+                                               SessionUpdate& session_update) {
   /* Search with session search criteria of IMSI and apn/dnn and
    * find  respective sesion to release operation
    * Note: DNN is optiona field, so find session from PDU_session_id
@@ -267,12 +291,13 @@ bool SessionStateEnforcer::m5g_release_session(
     return false;
   }
   // Found the respective session to be updated
-  auto& session   = **session_it;
+  auto& session = **session_it;
   auto session_id = session->get_session_id();
   /*Irrespective of any State of Session, release and terminate*/
   SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
   MLOG(MDEBUG) << "Trying to release " << session_id << " from state "
                << session_fsm_state_to_str(session->get_state());
+
   m5g_start_session_termination(session_map, session, pdu_id, &session_uc);
   return true;
 }
@@ -281,21 +306,21 @@ bool SessionStateEnforcer::m5g_release_session(
 void SessionStateEnforcer::m5g_start_session_termination(
     SessionMap& session_map, const std::unique_ptr<SessionState>& session,
     const uint32_t& pdu_id, SessionStateUpdateCriteria* session_uc) {
-  const auto session_id     = session->get_session_id();
-  const std::string& imsi   = session->get_imsi();
+  const auto session_id = session->get_session_id();
+  const std::string& imsi = session->get_imsi();
   const auto previous_state = session->get_state();
 
   /* update respective session's state and return from here before timeout
    * to update session store with state and version
    */
-  session->set_fsm_state(RELEASE, session_uc);
+  session->set_fsm_state(SESSION_RELEASED, session_uc);
   uint32_t cur_version = session->get_current_version();
   session->set_current_version(++cur_version, session_uc);
   MLOG(MDEBUG) << "During release state of session changed to "
                << session_fsm_state_to_str(session->get_state());
-  handle_state_update_to_amf(
-      *session, magma::lte::M5GSMCause::OPERATION_SUCCESS,
-      PDU_SESSION_STATE_NOTIFY);
+  handle_state_update_to_amf(*session,
+                             magma::lte::M5GSMCause::OPERATION_SUCCESS,
+                             PDU_SESSION_STATE_NOTIFY);
 
   if (previous_state != CREATING) {
     /* Call for all rules to be de-associated from session
@@ -309,6 +334,7 @@ void SessionStateEnforcer::m5g_start_session_termination(
       pdr_map_.erase(imsi);
     }
   }
+  session->remove_all_rules_for_termination(session_uc);
   /* Forcefully terminate session context on time out
    * time out = 5000ms from sessiond.yml config file
    */
@@ -329,7 +355,7 @@ void SessionStateEnforcer::m5g_start_session_termination(
  */
 void SessionStateEnforcer::m5g_handle_termination_on_timeout(
     const std::string& imsi, const std::string& session_id) {
-  auto session_map    = session_store_.read_sessions_for_deletion({imsi});
+  auto session_map = session_store_.read_sessions_for_deletion({imsi});
   auto session_update = SessionStore::get_default_session_update(session_map);
   bool marked_termination =
       session_update[imsi].find(session_id) != session_update[imsi].end();
@@ -377,11 +403,15 @@ void SessionStateEnforcer::m5g_complete_termination(
                  << " and session ID " << session_id
                  << ". Skipping termination.";
   }
-  auto& session    = **session_it;
+  auto& session = **session_it;
   auto& session_uc = session_update[imsi][session_id];
   if (!session->can_complete_termination(&session_uc)) {
     return;  // error is logged in SessionState's complete_termination
   }
+  auto termination_req = session->make_termination_request(&session_uc);
+  auto logging_cb = SessionReporter::get_terminate_logging_cb(termination_req);
+  reporter_->report_terminate_session(termination_req, logging_cb);
+  events_reporter_->session_terminated(imsi, session);
   // Now remove all rules
   session->remove_all_rules(&session_uc);
   // Release and maintain TEID trakcing data structure TODO
@@ -421,9 +451,9 @@ void SessionStateEnforcer::m5g_move_to_active_state(
   /* Send the UPF (local TEID) info to AMF which are going to
    * be used by GnodeB
    */
-  prepare_response_to_access(
-      *session, magma::lte::M5GSMCause::OPERATION_SUCCESS, get_upf_n3_addr(),
-      upf_teid);
+  prepare_response_to_access(*session,
+                             magma::lte::M5GSMCause::OPERATION_SUCCESS,
+                             get_upf_n3_addr(), upf_teid);
 }
 
 void SessionStateEnforcer::set_new_fsm_state_and_increment_version(
@@ -445,18 +475,33 @@ void SessionStateEnforcer::m5g_pdr_rules_change_and_update_upf(
   // update criteria status not needed
   session->set_all_pdrs(pdr_state);
   session->reset_rtx_counter();
-  m5g_send_session_request_to_upf(session);
+  RulesToProcess pending_activation;
+  RulesToProcess pending_deactivation;
+  const CreateSessionResponse& csr = session->get_create_session_response();
+
+  std::vector<StaticRuleInstall> static_rule_installs =
+      to_vec(csr.static_rules());
+  std::vector<DynamicRuleInstall> dynamic_rule_installs =
+      to_vec(csr.dynamic_rules());
+  session->process_get_5g_rule_installs(
+      static_rule_installs, dynamic_rule_installs, &pending_activation,
+      &pending_deactivation);
+  m5g_send_session_request_to_upf(session, pending_activation,
+                                  pending_deactivation);
   return;
 }
 
 void SessionStateEnforcer::m5g_send_session_request_to_upf(
-    const std::unique_ptr<SessionState>& session) {
+    const std::unique_ptr<SessionState>& session,
+    const RulesToProcess& pending_activation,
+    const RulesToProcess& pending_deactivation) {
   // Update to UPF
   SessionState::SessionInfo sess_info;
   session->sess_infocopy(&sess_info);
   // Set the node Id
   sess_info.nodeId.node_id = get_upf_node_id();
-  pipelined_client_->set_upf_session(sess_info, call_back_upf);
+  pipelined_client_->set_upf_session(sess_info, pending_activation,
+                                     pending_deactivation, call_back_upf);
   return;
 }
 
@@ -472,7 +517,7 @@ void SessionStateEnforcer::m5g_process_response_from_upf(
     const std::string& imsi, uint32_t teid, uint32_t version) {
   uint32_t cur_version;
   bool amf_update_pending = false;
-  auto session_map        = session_store_.read_sessions({imsi});
+  auto session_map = session_store_.read_sessions({imsi});
   /* Search with session search criteria of IMSI and session_id and
    * find  respective sesion to operate
    */
@@ -484,30 +529,43 @@ void SessionStateEnforcer::m5g_process_response_from_upf(
     return;
   }
   auto& session = **session_it;
-  cur_version   = session->get_current_version();
+  cur_version = session->get_current_version();
+  auto session_update = SessionStore::get_default_session_update(session_map);
+  auto session_id = session->get_session_id();
+  SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
+
   if (version < cur_version) {
     MLOG(MDEBUG) << "UPF verions of session imsi " << imsi << " session id "
                  << session->get_session_id() << " of  teid " << teid
                  << " recevied version " << version
                  << " SMF latest version: " << cur_version << " Resending";
     if (inc_rtx_counter(session)) {
-      m5g_send_session_request_to_upf(session);
+      RulesToProcess pending_activation, pending_deactivation;
+      RulesToSchedule pending_scheduling;
+      const CreateSessionResponse& csr = session->get_create_session_response();
+      std::vector<StaticRuleInstall> static_rule_installs =
+          to_vec(csr.static_rules());
+      std::vector<DynamicRuleInstall> dynamic_rule_installs =
+          to_vec(csr.dynamic_rules());
+
+      session->process_rules_to_install(
+          static_rule_installs, dynamic_rule_installs, &pending_activation,
+          &pending_deactivation, nullptr, &pending_scheduling, &session_uc);
+      m5g_send_session_request_to_upf(session, pending_activation,
+                                      pending_deactivation);
     }
     return;
   }
-  auto session_update = SessionStore::get_default_session_update(session_map);
-  auto session_id     = session->get_session_id();
-  SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
   switch (session->get_state()) {
     case CREATED:
-      session->set_fsm_state(ACTIVE, &session_uc);
+      session->set_fsm_state(SESSION_ACTIVE, &session_uc);
       /* As there is no config change, just state change as we
        * got response from UPF, so we dont bump up the session version
        * number here
        */
       amf_update_pending = true;
       break;
-    case RELEASE:
+    case SESSION_RELEASED:
       m5g_complete_termination(session_map, imsi, session_id, session_update);
     default:
       break;
@@ -522,12 +580,34 @@ void SessionStateEnforcer::m5g_process_response_from_upf(
                    << " with session_id" << session->get_session_id();
     }
     /* Update the state change notification to AMF */
-    handle_state_update_to_amf(
-        *session, magma::lte::M5GSMCause::OPERATION_SUCCESS,
-        PDU_SESSION_STATE_NOTIFY);
+    handle_state_update_to_amf(*session,
+                               magma::lte::M5GSMCause::OPERATION_SUCCESS,
+                               PDU_SESSION_STATE_NOTIFY);
   } else {
     session_store_.update_sessions(session_update);
   }
+}
+
+void SessionStateEnforcer::set_subscribed_qos(
+    const SessionState& session_state,
+    magma::SetSMSessionContextAccess* response) {
+  const auto& config = session_state.get_config();
+  auto* rsp = response->mutable_rat_specific_context()
+                  ->mutable_m5g_session_context_rsp();
+
+  const auto& subscribed_qos =
+      config.rat_specific_context.m5gsm_session_context().subscribed_qos();
+  rsp->mutable_subscribed_qos()->set_br_unit(subscribed_qos.br_unit());
+  rsp->mutable_subscribed_qos()->set_apn_ambr_ul(subscribed_qos.apn_ambr_ul());
+  rsp->mutable_subscribed_qos()->set_apn_ambr_dl(subscribed_qos.apn_ambr_dl());
+  rsp->mutable_subscribed_qos()->set_priority_level(
+      subscribed_qos.priority_level());
+  rsp->mutable_subscribed_qos()->set_preemption_capability(
+      subscribed_qos.preemption_capability());
+  rsp->mutable_subscribed_qos()->set_preemption_vulnerability(
+      subscribed_qos.preemption_vulnerability());
+  rsp->mutable_subscribed_qos()->set_qos_class_id(
+      subscribed_qos.qos_class_id());
 }
 
 /* To prepare response back to AMF
@@ -541,11 +621,23 @@ void SessionStateEnforcer::prepare_response_to_access(
     std::string upf_ip, uint32_t upf_teid) {
   magma::SetSMSessionContextAccess response;
   const auto& config = session_state.get_config();
-
   if (!config.rat_specific_context.has_m5gsm_session_context()) {
     MLOG(MWARNING) << "No M5G SM Session Context is specified for session";
     return;
   }
+
+  RulesToProcess pending_activation, pending_deactivation;
+  const CreateSessionResponse& csr =
+      session_state.get_create_session_response();
+  std::vector<StaticRuleInstall> static_rule_installs =
+      to_vec(csr.static_rules());
+  std::vector<DynamicRuleInstall> dynamic_rule_installs =
+      to_vec(csr.dynamic_rules());
+
+  session_state.process_get_5g_rule_installs(
+      static_rule_installs, dynamic_rule_installs, &pending_activation,
+      &pending_deactivation);
+
   /* Filing response proto message*/
   auto* rsp = response.mutable_rat_specific_context()
                   ->mutable_m5g_session_context_rsp();
@@ -564,32 +656,40 @@ void SessionStateEnforcer::prepare_response_to_access(
       config.rat_specific_context.m5gsm_session_context()
           .pdu_session_req_always_on());
   rsp->set_m5g_sm_congestion_reattempt_indicator(true);
-  rsp->mutable_pdu_address()->set_redirect_address_type(
-      config.rat_specific_context.m5gsm_session_context()
-          .pdu_address()
-          .redirect_address_type());
-  rsp->mutable_pdu_address()->set_redirect_server_address(
-      config.rat_specific_context.m5gsm_session_context()
-          .pdu_address()
-          .redirect_server_address());
   rsp->set_procedure_trans_identity(
       config.rat_specific_context.m5gsm_session_context()
           .procedure_trans_identity());
 
-  /* AMBR value need to compared from AMF and PCF, then fill the required
-   * values and sent to AMF.
+  /* If there are any static rules configured from Orc8r via NMS it's
+   * corresponding qos info will be send to AMF.
    */
-  // For now its default QOS, AMBR is 1 Gbps downlink
-  rsp->mutable_session_ambr()->set_br_unit(AggregatedMaximumBitrate::KBPS);
-  rsp->mutable_session_ambr()->set_max_bandwidth_ul(DEFAULT_AMBR_UNITS);
-  rsp->mutable_session_ambr()->set_max_bandwidth_dl(DEFAULT_AMBR_UNITS);
+  for (auto& val : pending_activation) {
+    if (val.rule.has_qos()) {
+      MLOG(MDEBUG) << "value set for pending_activation"
+                   << val.rule.qos().max_req_bw_ul();
+      rsp->mutable_qos_policy()->Add()->mutable_qos()->mutable_qos()->CopyFrom(
+          val.rule.qos());
+    }
+  }
 
-  auto* convg_qos = rsp->mutable_qos();
-  convg_qos->set_qci(FlowQos_Qci_QCI_9);
-  convg_qos->mutable_arp()->set_pre_vulnerability(
-      QosArp_PreVul_PRE_VUL_ENABLED);
-  convg_qos->mutable_arp()->set_pre_capability(QosArp_PreCap_PRE_CAP_ENABLED);
-  convg_qos->mutable_arp()->set_priority_level(1);
+  /* AMF fetches the mandatory subscriberd_qos information from subscriberdb
+   * and send to sessiond. If there are any subscriberd_qos information sessiond
+   * will send back to AMF, Otherwise sessiond will set default AMBR info.
+   */
+  if (config.rat_specific_context.m5gsm_session_context()
+          .has_subscribed_qos()) {
+    set_subscribed_qos(session_state, &response);
+  } else {
+    for (auto& qos_policy : rsp->qos_policy()) {
+      magma::FlowQos convg_qos = qos_policy.qos().qos();
+      convg_qos.set_qci(FlowQos_Qci_QCI_9);
+      convg_qos.mutable_arp()->set_pre_vulnerability(
+          QosArp_PreVul_PRE_VUL_ENABLED);
+      convg_qos.mutable_arp()->set_pre_capability(
+          QosArp_PreCap_PRE_CAP_ENABLED);
+      convg_qos.mutable_arp()->set_priority_level(DEFAULT_PRIORITY_LEVEL);
+    }
+  }
   rsp->mutable_upf_endpoint()->set_teid(
       config.rat_specific_context.m5gsm_session_context()
           .upf_endpoint()
@@ -601,6 +701,13 @@ void SessionStateEnforcer::prepare_response_to_access(
           .end_ipv4_addr());
 
   rsp_cmn->mutable_sid()->CopyFrom(config.common_context.sid());  // imsi
+  if (!config.common_context.ue_ipv4().empty()) {
+    rsp_cmn->set_ue_ipv4(config.common_context.ue_ipv4());
+  }
+  if (!config.common_context.ue_ipv6().empty()) {
+    rsp_cmn->set_ue_ipv6(config.common_context.ue_ipv6());
+  }
+  rsp_cmn->set_apn(config.common_context.apn());
   rsp_cmn->set_sm_session_state(config.common_context.sm_session_state());
   rsp_cmn->set_sm_session_version(config.common_context.sm_session_version());
   // Send message to AMF gRPC client handler.
@@ -623,7 +730,7 @@ void SessionStateEnforcer::handle_state_update_to_amf(
     MLOG(MWARNING) << "No M5G SM Session Context is specified for session";
     return;
   }
-  auto* req     = notif.mutable_rat_specific_notification();
+  auto* req = notif.mutable_rat_specific_notification();
   auto* req_cmn = notif.mutable_common_context();
   // Fill the imsi
   req_cmn->mutable_sid()->CopyFrom(config.common_context.sid());  // imsi
@@ -648,7 +755,7 @@ void SessionStateEnforcer::handle_state_update_to_amf(
 bool SessionStateEnforcer::default_and_static_rule_init() {
   // Static PDR, FAR, QDR, URR and BAR mapping  and also define 1 PDR and FAR
   SetGroupPDR reqpdr1;
-  Action Value   = FORW;
+  Action Value = FORW;
   uint32_t count = DEFAULT_PDR_ID;
 
   reqpdr1.set_pdr_id(++count);
@@ -662,25 +769,6 @@ bool SessionStateEnforcer::default_and_static_rule_init() {
   reqpdr1.mutable_set_gr_far()->add_far_action_to_apply(Value);
   reqpdr1.mutable_activate_flow_req()->mutable_request_origin()->set_type(
       RequestOriginType_OriginType_N4);
-  // Add rule 1
-  PolicyRule rule1;
-  rule1.set_id("rule1");
-  rule1.set_priority(10);
-  FlowDescription fd1;
-  fd1.mutable_match()->set_direction(FlowMatch_Direction_UPLINK);
-  fd1.set_action(FlowDescription_Action_PERMIT);
-  rule1.mutable_flow_list()->Add()->CopyFrom(fd1);
-  VersionedPolicy versioned_rule1;
-  versioned_rule1.set_version(reqpdr1.pdr_version());
-  versioned_rule1.mutable_rule()->CopyFrom(rule1);
-  reqpdr1.mutable_activate_flow_req()->mutable_policies()->Add()->CopyFrom(
-      versioned_rule1);
-  VersionedPolicyID policyd_rule1;
-  policyd_rule1.set_rule_id("rule1");
-  policyd_rule1.set_version(reqpdr1.pdr_version());
-  reqpdr1.mutable_deactivate_flow_req()->mutable_policies()->Add()->CopyFrom(
-      policyd_rule1);
-
   GlobalRuleList.insert_rule(DEFAULT_UP_LINK_PDR_ID, reqpdr1);
   // PDR 2 details
   SetGroupPDR reqpdr2;
@@ -695,24 +783,6 @@ bool SessionStateEnforcer::default_and_static_rule_init() {
   reqpdr2.mutable_pdi()->set_net_instance("downlink");
   reqpdr2.mutable_activate_flow_req()->mutable_request_origin()->set_type(
       RequestOriginType_OriginType_N4);
-  // For rule 1 change the driection alone
-  PolicyRule rule2;
-  rule2.set_id("rule2");
-  rule2.set_priority(10);
-  FlowDescription fd2;
-  fd2.mutable_match()->set_direction(FlowMatch_Direction_DOWNLINK);
-  fd2.set_action(FlowDescription_Action_PERMIT);
-  rule2.mutable_flow_list()->Add()->CopyFrom(fd2);
-  VersionedPolicy versioned_rule2;
-  versioned_rule2.set_version(reqpdr2.pdr_version());
-  versioned_rule2.mutable_rule()->CopyFrom(rule2);
-  reqpdr2.mutable_activate_flow_req()->mutable_policies()->Add()->CopyFrom(
-      versioned_rule2);
-  VersionedPolicyID policyd_rule2;
-  policyd_rule2.set_rule_id("rule2");
-  policyd_rule2.set_version(reqpdr2.pdr_version());
-  reqpdr2.mutable_deactivate_flow_req()->mutable_policies()->Add()->CopyFrom(
-      policyd_rule2);
   GlobalRuleList.insert_rule(DEFAULT_DOWN_LINK_PDR_ID, reqpdr2);
 
   return true;
@@ -726,9 +796,9 @@ uint32_t SessionStateEnforcer::get_next_teid() {
   return allocated_teid;
 }
 
-bool SessionStateEnforcer::set_upf_node(
-    const std::string& node_id, const std::string& addr) {
-  upf_node_id_      = node_id;
+bool SessionStateEnforcer::set_upf_node(const std::string& node_id,
+                                        const std::string& addr) {
+  upf_node_id_ = node_id;
   upf_node_ip_addr_ = addr;
   MLOG(MDEBUG) << "Set_upf_node_id: " << upf_node_id_;
   MLOG(MDEBUG) << "Set_upf_n3_addr: " << upf_node_ip_addr_;
@@ -778,7 +848,7 @@ bool SessionStateEnforcer::insert_pdr_from_core(
     std::unique_ptr<SessionState>& session, SetGroupPDR& rule,
     SessionStateUpdateCriteria* session_uc) {
   const auto& config = session->get_config();
-  uint32_t teid      = 0;
+  uint32_t teid = 0;
   std::string ip_addr;
 
   // Get the latest session configuration
@@ -805,12 +875,11 @@ bool SessionStateEnforcer::insert_pdr_from_core(
       ->set_gnb_ipv4_adr(ip_addr);
   rule.mutable_activate_flow_req()->set_downlink_tunnel(teid);
   rule.mutable_deactivate_flow_req()->set_downlink_tunnel(teid);
-
   MLOG(MINFO) << " AMF teid: " << teid << " ip address " << ip_addr
               << " of imsi: " << session->get_imsi()
               << " fteid: " << session->get_upf_local_teid()
               << " pdu id: " << session->get_pdu_id() << " UE ip address "
-              << rule.pdi().ue_ip_adr();
+              << rule.pdi().ue_ipv4();
   // Insert the PDR along with teid into the session
   session->insert_pdr(&rule, session_uc);
   return true;
@@ -824,14 +893,13 @@ uint32_t SessionStateEnforcer::insert_pdr_from_access(
   rule.mutable_pdi()->set_local_f_teid(upf_teid);
   rule.mutable_activate_flow_req()->set_uplink_tunnel(upf_teid);
   rule.mutable_deactivate_flow_req()->set_uplink_tunnel(upf_teid);
+
   // Insert the PDR along with teid into the session
   session->insert_pdr(&rule, session_uc);
   return upf_teid;
 }
 
-uint32_t SessionStateEnforcer::get_current_teid() {
-  return teid_counter_;
-}
+uint32_t SessionStateEnforcer::get_current_teid() { return teid_counter_; }
 
 bool SessionStateEnforcer::inc_rtx_counter(
     const std::unique_ptr<SessionState>& session) {
@@ -843,21 +911,298 @@ void SessionStateEnforcer::set_pdr_attributes(
     const std::string& imsi, std::unique_ptr<SessionState>& session_state,
     SetGroupPDR* rule) {
   const auto& config = session_state->get_config();
-
-  rule->mutable_pdi()->set_ue_ip_adr(
-      config.rat_specific_context.m5gsm_session_context()
-          .pdu_address()
-          .redirect_server_address());
+  auto ue_ipv4 = config.common_context.ue_ipv4();
+  auto ue_ipv6 = config.common_context.ue_ipv6();
+  if (config.rat_specific_context.m5gsm_session_context()
+          .has_subscribed_qos()) {
+    auto bit_rate = config.rat_specific_context.m5gsm_session_context()
+                        .subscribed_qos()
+                        .br_unit();
+    switch (bit_rate) {
+      case M5GQosInformationRequest_BitrateUnitsAMBR_KBPS: {
+        rule->mutable_activate_flow_req()->mutable_apn_ambr()->set_br_unit(
+            AggregatedMaximumBitrate_BitrateUnitsAMBR_KBPS);
+        break;
+      }
+      default: {
+        rule->mutable_activate_flow_req()->mutable_apn_ambr()->set_br_unit(
+            AggregatedMaximumBitrate_BitrateUnitsAMBR_BPS);
+        break;
+      }
+    }
+  }
+  rule->mutable_pdi()->set_ue_ipv4(ue_ipv4);
+  rule->mutable_pdi()->set_ue_ipv6(ue_ipv6);
   rule->mutable_activate_flow_req()->mutable_sid()->set_id(imsi);
   rule->mutable_deactivate_flow_req()->mutable_sid()->set_id(imsi);
   rule->mutable_activate_flow_req()->set_ip_addr(
+      config.common_context.ue_ipv4());
+  rule->mutable_activate_flow_req()->set_ipv6_addr(
+      config.common_context.ue_ipv6());
+  rule->mutable_activate_flow_req()->mutable_apn_ambr()->set_max_bandwidth_ul(
       config.rat_specific_context.m5gsm_session_context()
-          .pdu_address()
-          .redirect_server_address());
+          .subscribed_qos()
+          .apn_ambr_ul());
+  rule->mutable_activate_flow_req()->mutable_apn_ambr()->set_max_bandwidth_dl(
+      config.rat_specific_context.m5gsm_session_context()
+          .subscribed_qos()
+          .apn_ambr_dl());
   rule->mutable_deactivate_flow_req()->set_ip_addr(
+      config.common_context.ue_ipv4());
+  rule->mutable_deactivate_flow_req()->set_ipv6_addr(
+      config.common_context.ue_ipv6());
+  /*Set the AMBR QCI Value */
+  if (config.rat_specific_context.m5gsm_session_context()
+          .has_subscribed_qos()) {
+    const auto& subscribed_qos =
+        config.rat_specific_context.m5gsm_session_context().subscribed_qos();
+    rule->set_session_qfi(subscribed_qos.qos_class_id());
+  }
+}
+
+std::vector<StaticRuleInstall> SessionStateEnforcer::to_vec(
+    const google::protobuf::RepeatedPtrField<magma::lte::StaticRuleInstall>
+        static_rule_installs) {
+  std::vector<StaticRuleInstall> out;
+  for (const auto& install : static_rule_installs) {
+    out.push_back(install);
+  }
+  return out;
+}
+
+std::vector<DynamicRuleInstall> SessionStateEnforcer::to_vec(
+    const google::protobuf::RepeatedPtrField<magma::lte::DynamicRuleInstall>
+        dynamic_rule_installs) {
+  std::vector<DynamicRuleInstall> out;
+  for (const auto& install : dynamic_rule_installs) {
+    out.push_back(install);
+  }
+  return out;
+}
+
+void SessionStateEnforcer::update_session_with_policy(
+    std::unique_ptr<SessionState>& session,
+    const CreateSessionResponse& response,
+    SessionStateUpdateCriteria* session_uc) {
+  session->set_tgpp_context(response.tgpp_ctx(), session_uc);
+  session->set_create_session_response(response, session_uc);
+
+  prepare_response_to_access(*session,
+                             magma::lte::M5GSMCause::OPERATION_SUCCESS,
+                             get_upf_n3_addr(), session->get_upf_local_teid());
+}
+
+void SessionStateEnforcer::init_policy_reauth(const std::string& imsi,
+                                              SessionMap& session_map,
+                                              PolicyReAuthRequest request,
+                                              PolicyReAuthAnswer& answer_out,
+                                              SessionUpdate& session_update) {
+  const std::string& session_id = request.session_id();
+  auto it = session_map.find(imsi);
+  if (it == session_map.end()) {
+    MLOG(MERROR) << "Could not find subscriber " << imsi
+                 << " during policy ReAuth";
+    answer_out.set_result(ReAuthResult::SESSION_NOT_FOUND);
+    return;
+  }
+  // For empty session_id, apply changes to all sessions of subscriber
+  // Changes are applied on a best-effort basis, so failures for one session
+  // won't stop changes from being applied for subsequent sessions.
+  if (session_id == "") {
+    for (const auto& session : it->second) {
+      init_policy_reauth_for_session(imsi, request, session, session_update);
+    }
+    answer_out.set_result(ReAuthResult::UPDATE_INITIATED);
+    return;
+  }
+
+  SessionSearchCriteria criteria(imsi, IMSI_AND_SESSION_ID, session_id);
+  auto session_it = session_store_.find_session(session_map, criteria);
+  if (!session_it) {
+    MLOG(MERROR) << "Could not find session " << session_id
+                 << " during policy ReAuth";
+    answer_out.set_result(ReAuthResult::SESSION_NOT_FOUND);
+    return;
+  }
+  auto& session = **session_it;
+  // Policy ReAuth should happen only when session is ACTIVE state.
+  if (session->get_state() == SESSION_ACTIVE) {
+    init_policy_reauth_for_session(imsi, request, session, session_update);
+    answer_out.set_result(ReAuthResult::UPDATE_INITIATED);
+  } else {
+    MLOG(MERROR) << "Could not initiate policy ReAuth for session id: "
+                 << session_id << " As session state is "
+                 << session->get_state();
+    answer_out.set_result(ReAuthResult::OTHER_FAILURE);
+  }
+}
+
+void SessionStateEnforcer::init_policy_reauth_for_session(
+    const std::string& imsi, const PolicyReAuthRequest& request,
+    const std::unique_ptr<SessionState>& session,
+    SessionUpdate& session_update) {
+  SessionStateUpdateCriteria& uc =
+      session_update[imsi][session->get_session_id()];
+
+  m5g_receive_monitoring_credit_from_rar(request, session, &uc);
+
+  RulesToProcess pending_activation, pending_deactivation, pending_bearer_setup;
+  RulesToSchedule pending_scheduling;
+
+  session->process_rules_to_remove(request.rules_to_remove(),
+                                   &pending_deactivation, &uc);
+  session->process_rules_to_install(
+      to_vec(request.rules_to_install()),
+      to_vec(request.dynamic_rules_to_install()), &pending_activation,
+      &pending_deactivation, &pending_bearer_setup, &pending_scheduling, &uc);
+
+  magma::SetSMSessionContextAccess response;
+  const auto& config = session->get_config();
+
+  /* Filing response proto message*/
+  auto* rsp = response.mutable_rat_specific_context()
+                  ->mutable_m5g_session_context_rsp();
+  auto* rsp_cmn = response.mutable_common_context();
+
+  rsp->set_pdu_session_id(
+      config.rat_specific_context.m5gsm_session_context().pdu_session_id());
+  rsp->set_pdu_session_type(
+      config.rat_specific_context.m5gsm_session_context().pdu_session_type());
+  rsp->set_selected_ssc_mode(
+      config.rat_specific_context.m5gsm_session_context().ssc_mode());
+  rsp->set_allowed_ssc_mode(
+      config.rat_specific_context.m5gsm_session_context().ssc_mode());
+  rsp->set_m5gsm_cause(magma::lte::M5GSMCause::OPERATION_SUCCESS);
+  rsp->set_always_on_pdu_session_indication(
       config.rat_specific_context.m5gsm_session_context()
-          .pdu_address()
-          .redirect_server_address());
+          .pdu_session_req_always_on());
+  rsp->set_m5g_sm_congestion_reattempt_indicator(true);
+  rsp->set_procedure_trans_identity(
+      config.rat_specific_context.m5gsm_session_context()
+          .procedure_trans_identity());
+  // For now its default QOS, AMBR has default values
+  rsp->mutable_subscribed_qos()->set_br_unit(
+      config.rat_specific_context.m5gsm_session_context()
+          .subscribed_qos()
+          .br_unit());
+  rsp->mutable_subscribed_qos()->set_apn_ambr_ul(
+      config.rat_specific_context.m5gsm_session_context()
+          .subscribed_qos()
+          .apn_ambr_ul());
+  rsp->mutable_subscribed_qos()->set_apn_ambr_dl(
+      config.rat_specific_context.m5gsm_session_context()
+          .subscribed_qos()
+          .apn_ambr_dl());
+
+  for (auto& val : pending_activation) {
+    magma::QosPolicy qos_policy;
+    qos_policy.set_policy_state(QosPolicy::PENDING);
+    qos_policy.set_version(val.version);
+    qos_policy.set_policy_action(QosPolicy::ADD);
+    qos_policy.mutable_qos()->CopyFrom(val.rule);
+    MLOG(MDEBUG) << "pending_activation with policy_action : "
+                 << qos_policy.policy_action();
+    rsp->mutable_qos_policy()->Add()->CopyFrom(qos_policy);
+  }
+
+  for (auto& val : pending_deactivation) {
+    magma::QosPolicy qos_policy;
+    qos_policy.set_policy_state(QosPolicy::PENDING);
+    qos_policy.set_version(val.version);
+    qos_policy.set_policy_action(QosPolicy::DEL);
+    qos_policy.mutable_qos()->CopyFrom(val.rule);
+    MLOG(MDEBUG) << "pending_deactivation with policy_action : "
+                 << qos_policy.policy_action();
+    rsp->mutable_qos_policy()->Add()->CopyFrom(qos_policy);
+  }
+
+  rsp->mutable_upf_endpoint()->set_teid(
+      config.rat_specific_context.m5gsm_session_context()
+          .upf_endpoint()
+          .teid());
+
+  rsp->mutable_upf_endpoint()->set_end_ipv4_addr(
+      config.rat_specific_context.m5gsm_session_context()
+          .upf_endpoint()
+          .end_ipv4_addr());
+
+  rsp_cmn->mutable_sid()->CopyFrom(config.common_context.sid());  // imsi
+  if (!config.common_context.ue_ipv4().empty()) {
+    rsp_cmn->set_ue_ipv4(config.common_context.ue_ipv4());
+  }
+  if (!config.common_context.ue_ipv6().empty()) {
+    rsp_cmn->set_ue_ipv6(config.common_context.ue_ipv6());
+  }
+  rsp_cmn->set_apn(config.common_context.apn());
+  rsp_cmn->set_sm_session_state(ACTIVE_2);
+  rsp_cmn->set_sm_session_version(config.common_context.sm_session_version());
+
+  // Send message to AMF gRPC client handler.
+  amf_srv_client_->handle_response_to_access(response);
+}
+
+void SessionStateEnforcer::m5g_receive_monitoring_credit_from_rar(
+    const PolicyReAuthRequest& request,
+    const std::unique_ptr<SessionState>& session,
+    SessionStateUpdateCriteria* uc) {
+  UsageMonitoringUpdateResponse monitoring_credit;
+  monitoring_credit.set_session_id(request.session_id());
+  monitoring_credit.set_sid(request.session_id());
+  monitoring_credit.set_success(true);
+  UsageMonitoringCredit* credit = monitoring_credit.mutable_credit();
+
+  for (const auto& usage_monitoring_credit :
+       request.usage_monitoring_credits()) {
+    credit->CopyFrom(usage_monitoring_credit);
+    session->receive_monitor(monitoring_credit, uc);
+  }
+}
+
+bool SessionStateEnforcer::m5g_modification_session(
+    SessionMap& session_map, const std::string& imsi,
+    std::unique_ptr<SessionState>& session_state, SessionConfig& new_cfg,
+    SessionUpdate& session_update) {
+  uint32_t upf_teid;
+  RulesToProcess pending_activation, pending_deactivation;
+
+  auto session_id = session_state->get_session_id();
+  SessionStateUpdateCriteria& session_uc = session_update[imsi][session_id];
+  upf_teid = update_session_rules(session_state, true, false, &session_uc);
+  if (!upf_teid) {
+    return false;
+  }
+  SessionSearchCriteria criteria(imsi, IMSI_AND_SESSION_ID, session_id);
+  auto session_it = session_store_.find_session(session_map, criteria);
+  if (!session_it) {
+    MLOG(MERROR) << "No session found in SessionMap for IMSI " << imsi
+                 << " with session_id " << session_id;
+  }
+  auto& session = **session_it;
+  auto& rsp = new_cfg.rat_specific_context.m5gsm_session_context();
+
+  std::vector<QosPolicy> qospolicy;
+  for (const auto& qos : rsp.qos_policy()) {
+    if (qos.policy_state() == QosPolicy::REJECT) {
+      MLOG(MERROR) << "UE/gNB rejected session modification for IMSI " << imsi
+                   << " with session_id " << session_id;
+      return false;
+    } else {
+      qospolicy.push_back(qos);
+    }
+  }
+  session->process_get_mod_rule_installs(qospolicy, &pending_activation,
+                                         &pending_deactivation);
+
+  uint32_t cur_version = session->get_current_version();
+  session->set_current_version(++cur_version, &session_uc);
+  session->set_all_pdrs(PdrState::MODI);
+
+  m5g_send_session_request_to_upf(session, pending_activation,
+                                  pending_deactivation);
+  if (!pending_deactivation.empty()) {
+    session->m5g_remove_dynamic_rule(qospolicy);
+  }
+  return true;
 }
 
 }  // end namespace magma

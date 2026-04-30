@@ -20,7 +20,7 @@ import (
 	"magma/orc8r/cloud/go/orc8r"
 	"magma/orc8r/cloud/go/services/certifier"
 	certprotos "magma/orc8r/cloud/go/services/certifier/protos"
-	"magma/orc8r/cloud/go/services/certifier/servicers"
+	servicers "magma/orc8r/cloud/go/services/certifier/servicers/protected"
 	"magma/orc8r/cloud/go/services/certifier/storage"
 	"magma/orc8r/cloud/go/test_utils"
 	"magma/orc8r/lib/go/protos"
@@ -49,10 +49,10 @@ func StartTestService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create certifier server: %s", err)
 	}
-	srv, lis := test_utils.NewTestService(t, orc8r.ModuleName, certifier.ServiceName)
+	srv, _, plis := test_utils.NewTestService(t, orc8r.ModuleName, certifier.ServiceName)
 	certprotos.RegisterCertifierServer(
-		srv.GrpcServer,
+		srv.ProtectedGrpcServer,
 		certServer,
 	)
-	go srv.RunTest(lis)
+	go srv.RunTest(nil, plis)
 }

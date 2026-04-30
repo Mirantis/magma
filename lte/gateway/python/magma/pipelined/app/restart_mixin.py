@@ -10,13 +10,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+from __future__ import annotations
+
+import logging
 from abc import ABCMeta, abstractmethod
-from typing import Dict, List
+from asyncio import Future
+from logging import Logger
+from typing import Callable, Dict, List, Optional
 
 from lte.protos.pipelined_pb2 import SetupFlowsResult
 from magma.pipelined.app.base import ControllerNotReadyException
+from magma.pipelined.app.startup_flows import StartupFlows
 from magma.pipelined.openflow import flows
+from magma.pipelined.openflow.messages import MessageHub
 from magma.pipelined.policy_converters import ovs_flow_match_to_magma_match
+from ryu.controller.controller import Datapath
 from ryu.ofproto.ofproto_v1_4_parser import OFPFlowStats
 
 DefaultMsgsMap = Dict[int, List[OFPFlowStats]]
@@ -28,6 +36,17 @@ class RestartMixin(metaclass=ABCMeta):
 
     Mixin class for controller restart handling
     """
+    logger: Logger
+    tbl_num: int
+    cleanup_state: Callable
+    delete_all_flows: Callable
+    finish_init: Callable
+    _msg_hub: MessageHub
+    _datapath: Datapath
+    _startup_flow_controller: Optional[StartupFlows]
+    _startup_flows_fut: Future[StartupFlows]
+    _clean_restart: bool
+    _wait_for_responses: Callable
 
     def handle_restart(self, requests) -> SetupFlowsResult:
         """
@@ -108,7 +127,11 @@ class RestartMixin(metaclass=ABCMeta):
                 tbl,
                 [flow.match for flow in startup_flows_map[tbl]],
             )
-        self._remove_extra_flows(startup_flows_map)
+
+        if self._skip_extra_flows_removal_stateless():
+            logging.info("skipping removal of enforcement flows since it is in stateless mode")
+        else:
+            self._remove_extra_flows(startup_flows_map)
 
         self.finish_init(requests)
         self.init_finished = True
@@ -133,6 +156,13 @@ class RestartMixin(metaclass=ABCMeta):
         if msg_list:
             chan = self._msg_hub.send(msg_list, self._datapath)
             self._wait_for_responses(chan, len(msg_list))
+
+    def _skip_extra_flows_removal_stateless(self):
+        """
+        This method can be overridden by controllers.
+        Skips removal of extra flows in case of stateless mode.
+        """
+        return False
 
     @abstractmethod
     def _get_ue_specific_flow_msgs(self, requests):

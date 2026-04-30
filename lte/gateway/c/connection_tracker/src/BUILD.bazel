@@ -9,13 +9,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("//bazel:test_constants.bzl", "TAG_SERVICE")
+
 cc_binary(
-    name = "main",
+    name = "connectiond",
     srcs = ["main.cpp"],
+    tags = TAG_SERVICE + ["no-cache"],
+    visibility = [
+        "//:__pkg__",
+        "//lte/gateway/release:__pkg__",
+    ],
     deps = [
         ":event_tracker",
         "//lte/protos:mconfigs_cpp_proto",
         "//orc8r/gateway/c/common/config:mconfig_loader",
+        "//orc8r/gateway/c/common/sentry:sentry_wrapper",
         "//orc8r/gateway/c/common/service303",
     ],
 )
@@ -23,7 +32,7 @@ cc_binary(
 cc_library(
     name = "event_tracker",
     srcs = ["EventTracker.cpp"],
-    hdrs = ["EventTracker.h"],
+    hdrs = ["EventTracker.hpp"],
     deps = [
         ":packet_generator",
         "@system_libraries//:libmnl",
@@ -33,9 +42,9 @@ cc_library(
 cc_library(
     name = "packet_generator",
     srcs = ["PacketGenerator.cpp"],
-    hdrs = ["PacketGenerator.h"],
+    hdrs = ["PacketGenerator.hpp"],
     deps = [
         "//orc8r/gateway/c/common/logging",
-        "@system_libraries//:libtins",
+        "@libtins",
     ],
 )

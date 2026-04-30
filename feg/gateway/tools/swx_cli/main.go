@@ -17,6 +17,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -223,7 +224,7 @@ func sendSar(addr string, client swxClient) int {
 	if err != nil {
 		fmt.Print("Unable to convert request to JSON for printing; Still attempting to send request...")
 	} else {
-		fmt.Printf("Sending SAR (REGISTER) to %s:\n%s\n%+#v\n\n", addr, json, *req)
+		fmt.Printf("Sending SAR (REGISTER) to %s:\n%s\n%+#v\n\n", addr, json, req)
 	}
 	res, err := client.Register(req)
 	if err != nil || res == nil {
@@ -246,7 +247,7 @@ func sendMar(addr string, client swxClient) int {
 	if err != nil {
 		fmt.Printf("Unable to convert request to JSON for printing; Still attempting to send request...")
 	} else {
-		fmt.Printf("Sending MAR to %s:\n%s\n%+#v\n\n", addr, json, *req)
+		fmt.Printf("Sending MAR to %s:\n%s\n%+#v\n\n", addr, json, req)
 	}
 	res, err := client.Authenticate(req)
 	if err != nil || res == nil {
@@ -255,10 +256,10 @@ func sendMar(addr string, client swxClient) int {
 	}
 	json, err = orcprotos.MarshalIntern(res)
 	if err != nil {
-		fmt.Printf("Marshal Error %v for result: %+v", err, *res)
+		fmt.Printf("Marshal Error %v for result: %+v", err, res)
 		return 3
 	}
-	fmt.Printf("Received successful MAA:\n%s\n%+v\n", json, *res)
+	fmt.Printf("Received successful MAA:\n%s\n%+v\n", json, res)
 	return 0
 }
 
@@ -387,10 +388,15 @@ func getInteractiveRequestParameters(reader *bufio.Reader, requestType string) e
 			return err
 		}
 		if vectorsStr != "" {
-			numVectors, err = strconv.ParseUint(vectorsStr, 10, 64)
+			numVectors, err = strconv.ParseUint(vectorsStr, 10, 32)
 			if err != nil {
 				fmt.Println(err.Error())
 				return err
+			}
+			if numVectors > math.MaxUint32 {
+				strErrMsg := fmt.Sprintf("number %d is outside the boundaries of uint32 type", numVectors)
+				fmt.Println(strErrMsg)
+				return fmt.Errorf(strErrMsg)
 			}
 		}
 		return nil

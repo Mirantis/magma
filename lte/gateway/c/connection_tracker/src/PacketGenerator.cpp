@@ -11,16 +11,20 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <cassert>
+#include "lte/gateway/c/connection_tracker/src/PacketGenerator.hpp"
+
+#include <glog/logging.h>
+#include <tins/ethernetII.h>
+#include <tins/ip.h>
+#include <tins/ip_address.h>
+#include <tins/packet_sender.h>
+#include <tins/pdu.h>
+#include <tins/tcp.h>
+#include <tins/udp.h>
 #include <iostream>
 #include <string>
 
-#include <tins/tins.h>
-
-#include "PacketGenerator.h"
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
 
 namespace magma {
 namespace lte {
@@ -33,9 +37,9 @@ using Tins::PacketSender;
 using Tins::TCP;
 using Tins::UDP;
 
-PacketGenerator::PacketGenerator(
-    const std::string& iface_name, const std::string& pkt_dst_mac,
-    const std::string& pkt_src_mac)
+PacketGenerator::PacketGenerator(const std::string& iface_name,
+                                 const std::string& pkt_dst_mac,
+                                 const std::string& pkt_src_mac)
     : iface_name_(iface_name),
       pkt_dst_mac_(pkt_dst_mac),
       pkt_src_mac_(pkt_src_mac) {

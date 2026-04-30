@@ -15,10 +15,10 @@ package subscriberdb
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/golang/glog"
 	"github.com/golang/protobuf/proto"
-	"github.com/pkg/errors"
 
 	"magma/lte/cloud/go/lte"
 	lte_protos "magma/lte/cloud/go/protos"
@@ -84,7 +84,7 @@ func GetPerSubscriberDigests(network string) ([]*orc8r_protos.LeafDigest, error)
 		for _, subProto := range subProtos {
 			digest, err := mproto.HashDeterministic(subProto)
 			if err != nil {
-				return nil, errors.Wrapf(err, "Failed to generate digest for subscriber %+v of network %+v", subProto.Sid.Id, network)
+				return nil, fmt.Errorf("Failed to generate digest for subscriber %+v of network %+v: %w", subProto.Sid.Id, network, err)
 			}
 			leafDigest := &orc8r_protos.LeafDigest{
 				Id:     lte_protos.SidString(subProto.Sid),
@@ -127,7 +127,7 @@ func getSubscribersDigest(network string) (string, error) {
 		if err != nil {
 			return "", nil
 		}
-		digestsByPage[string(curPage)] = []byte(pageDigest)
+		digestsByPage[fmt.Sprint(curPage)] = []byte(pageDigest)
 
 		foundEmptyToken = nextToken == ""
 		token = nextToken

@@ -20,43 +20,47 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	merrors "magma/orc8r/lib/go/errors"
+	tenant_protos "magma/orc8r/cloud/go/services/tenants/protos"
+	"magma/orc8r/lib/go/merrors"
 	"magma/orc8r/lib/go/protos"
 	srvRegistry "magma/orc8r/lib/go/registry"
 )
 
 // getTenantsClient is a utility function to get a RPC connection to the
 // tenants service
-func getTenantsClient() (protos.TenantsServiceClient, error) {
-	conn, err := srvRegistry.GetConnection(ServiceName)
+func getTenantsClient() (tenant_protos.TenantsServiceClient, error) {
+	conn, err := srvRegistry.GetConnection(ServiceName, protos.ServiceType_PROTECTED)
 	if err != nil {
 		initErr := merrors.NewInitError(err, ServiceName)
 		glog.Error(initErr)
 		return nil, initErr
 	}
-	return protos.NewTenantsServiceClient(conn), nil
+	return tenant_protos.NewTenantsServiceClient(conn), nil
 }
 
-func GetAllTenants(ctx context.Context) (*protos.TenantList, error) {
+func GetAllTenants(ctx context.Context) (*tenant_protos.TenantList, error) {
 	oc, err := getTenantsClient()
 	if err != nil {
 		return nil, err
 	}
+
 	tenants, err := oc.GetAllTenants(ctx, &protos.Void{})
 	if err != nil {
 		return nil, err
 	}
+
 	return tenants, nil
 }
 
-func CreateTenant(ctx context.Context, tenantID int64, tenant *protos.Tenant) (*protos.Tenant, error) {
+func CreateTenant(ctx context.Context, tenantID int64, tenant *tenant_protos.Tenant) (*tenant_protos.Tenant, error) {
 	oc, err := getTenantsClient()
 	if err != nil {
 		return nil, err
 	}
+
 	_, err = oc.CreateTenant(
 		ctx,
-		&protos.IDAndTenant{
+		&tenant_protos.IDAndTenant{
 			Id:     tenantID,
 			Tenant: tenant,
 		},
@@ -64,28 +68,24 @@ func CreateTenant(ctx context.Context, tenantID int64, tenant *protos.Tenant) (*
 	if err != nil {
 		return nil, err
 	}
+
 	return tenant, err
 }
 
-func GetTenant(ctx context.Context, tenantID int64) (*protos.Tenant, error) {
+func GetTenant(ctx context.Context, tenantID int64) (*tenant_protos.Tenant, error) {
 	oc, err := getTenantsClient()
 	if err != nil {
 		return nil, err
 	}
 
-	tenant, err := oc.GetTenant(ctx, &protos.GetTenantRequest{Id: tenantID})
+	tenant, err := oc.GetTenant(ctx, &tenant_protos.GetTenantRequest{Id: tenantID})
 	if err != nil {
-		switch {
-		case status.Convert(err).Code() == codes.NotFound:
-			return tenant, merrors.ErrNotFound
-		default:
-			return tenant, err
-		}
+		return nil, mapErr(err)
 	}
 	return tenant, nil
 }
 
-func SetTenant(ctx context.Context, tenantID int64, tenant protos.Tenant) error {
+func SetTenant(ctx context.Context, tenantID int64, tenant *tenant_protos.Tenant) error {
 	oc, err := getTenantsClient()
 	if err != nil {
 		return err
@@ -93,20 +93,16 @@ func SetTenant(ctx context.Context, tenantID int64, tenant protos.Tenant) error 
 
 	_, err = oc.SetTenant(
 		ctx,
-		&protos.IDAndTenant{
+		&tenant_protos.IDAndTenant{
 			Id:     tenantID,
-			Tenant: &tenant,
+			Tenant: tenant,
 		},
 	)
 	if err != nil {
-		switch {
-		case status.Convert(err).Code() == codes.NotFound:
-			return merrors.ErrNotFound
-		default:
-			return err
-		}
+		return mapErr(err)
 	}
-	return err
+
+	return nil
 }
 
 func DeleteTenant(ctx context.Context, tenantID int64) error {
@@ -115,14 +111,61 @@ func DeleteTenant(ctx context.Context, tenantID int64) error {
 		return err
 	}
 
-	_, err = oc.DeleteTenant(ctx, &protos.GetTenantRequest{Id: tenantID})
+	_, err = oc.DeleteTenant(ctx, &tenant_protos.GetTenantRequest{Id: tenantID})
 	if err != nil {
-		switch {
-		case status.Convert(err).Code() == codes.NotFound:
-			return merrors.ErrNotFound
-		default:
-			return err
-		}
+		return mapErr(err)
 	}
-	return err
+
+	return nil
+}
+
+func GetControlProxy(ctx context.Context, tenantID int64) (*tenant_protos.GetControlProxyResponse, error) {
+	oc, err := getTenantsClient()
+	if err != nil {
+		return nil, err
+	}
+
+	controlProxy, err := oc.GetControlProxy(ctx, &tenant_protos.GetControlProxyRequest{Id: tenantID})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+
+	return controlProxy, nil
+}
+
+func GetControlProxyFromNetworkID(ctx context.Context, networkID string) (*tenant_protos.GetControlProxyResponse, error) {
+	oc, err := getTenantsClient()
+	if err != nil {
+		return nil, err
+	}
+
+	controlProxy, err := oc.GetControlProxyFromNetworkID(ctx, &tenant_protos.GetControlProxyFromNetworkIDRequest{NetworkID: networkID})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+
+	return controlProxy, nil
+}
+
+func CreateOrUpdateControlProxy(ctx context.Context, controlProxy *tenant_protos.CreateOrUpdateControlProxyRequest) error {
+	oc, err := getTenantsClient()
+	if err != nil {
+		return err
+	}
+
+	_, err = oc.CreateOrUpdateControlProxy(ctx, controlProxy)
+	if err != nil {
+		return mapErr(err)
+	}
+
+	return nil
+}
+
+func mapErr(err error) error {
+	switch {
+	case status.Convert(err).Code() == codes.NotFound:
+		return merrors.ErrNotFound
+	default:
+		return err
+	}
 }

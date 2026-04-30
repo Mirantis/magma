@@ -10,7 +10,6 @@
 # limitations under the License.
 
 add_list1_option(S1AP_VERSION R15 "S1AP Asn.1 grammar version" R15)
-add_definitions(-DASN1_MINIMUM_VERSION=923)
 set(ASN1RELDIR r15)
 set(S1AP_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(asn1_generated_dir ${CMAKE_CURRENT_BINARY_DIR})
@@ -26,13 +25,21 @@ set(ENV{ASN1C_PREFIX} "S1ap_")
 file(MAKE_DIRECTORY ${GENERATED_FULL_DIR})
 set(s1ap_generate_code_done_flag ${GENERATED_FULL_DIR}/S1AP_GENERATE_CODE_DONE)
 
+# TODO: GH13021 this is a mitigation for excessive logging that should be handled more clean
+set(ASN1_ERR_FILTER "2> >(grep -v \"Parameterized type\" | grep -v \"Compiled \" | grep -v \"Copied \" >&2)")
+
 if (${ASN1_SOURCE_DIR} IS_NEWER_THAN ${s1ap_generate_code_done_flag})
-  file(REMOVE ${GENERATED_FULL_DIR}/${ASN1C_PREFIX}*.c ${GENERATED_FULL_DIR}/${ASN1C_PREFIX}*.h)
-  execute_process(COMMAND asn1c -pdu=all -fcompound-names -gen-PER -no-gen-example -fno-include-deps -D ${GENERATED_FULL_DIR} ${ASN1_SOURCE_DIR} RESULT_VARIABLE ret)
-  if (NOT ${ret} STREQUAL 0)
-    message(FATAL_ERROR "${ret}")
-  endif (NOT ${ret} STREQUAL 0)
-  execute_process(COMMAND bash "-c" "egrep -lRZ \"18446744073709551615\" ${GENERATED_FULL_DIR} | xargs -0 -l sed -i -e \"s/18446744073709551615/18446744073709551615u/g\"")
+    file(REMOVE ${GENERATED_FULL_DIR}/${ASN1C_PREFIX}*.c ${GENERATED_FULL_DIR}/${ASN1C_PREFIX}*.h)
+    execute_process(
+        COMMAND bash "-c" "asn1c -pdu=all -fcompound-names  -no-gen-example -fno-include-deps -D ${GENERATED_FULL_DIR} ${ASN1_SOURCE_DIR} ${ASN1_ERR_FILTER}"
+        RESULT_VARIABLE ret
+    )
+    if (NOT ${ret} STREQUAL 0)
+        message(FATAL_ERROR "${ret}")
+    endif (NOT ${ret} STREQUAL 0)
+    execute_process(
+        COMMAND bash "-c" "egrep -lRZ \"18446744073709551615\" ${GENERATED_FULL_DIR} | xargs -0 -l sed -i -e \"s/18446744073709551615/18446744073709551615u/g\""
+    )
 endif ()
 # TOUCH not in cmake 3.10
 file(WRITE ${s1ap_generate_code_done_flag})
@@ -66,16 +73,16 @@ generate_cpp_protos("${S1AP_STATE_CPP_PROTOS}" "${PROTO_SRCS}" "${PROTO_HDRS}"
 add_library(TASK_S1AP
     "${PROTO_SRCS}"
     "${PROTO_HDRS}"
-    ${S1AP_DIR}/s1ap_mme_encoder.c
-    ${S1AP_DIR}/s1ap_mme_decoder.c
-    ${S1AP_DIR}/s1ap_mme_handlers.c
-    ${S1AP_DIR}/s1ap_mme_nas_procedures.c
-    ${S1AP_DIR}/s1ap_mme.c
-    ${S1AP_DIR}/s1ap_mme_itti_messaging.c
-    ${S1AP_DIR}/s1ap_mme_ta.c
+    ${S1AP_DIR}/s1ap_mme_encoder.cpp
+    ${S1AP_DIR}/s1ap_mme_decoder.cpp
+    ${S1AP_DIR}/s1ap_mme_handlers.cpp
+    ${S1AP_DIR}/s1ap_mme_nas_procedures.cpp
+    ${S1AP_DIR}/s1ap_mme.cpp
+    ${S1AP_DIR}/s1ap_mme_itti_messaging.cpp
+    ${S1AP_DIR}/s1ap_mme_ta.cpp
     ${S1AP_DIR}/s1ap_state.cpp
     ${S1AP_DIR}/s1ap_state_manager.cpp
-    ${S1AP_DIR}/s1ap_state_converter.cpp
+    ${S1AP_DIR}/s1ap_timer_management.cpp
     )
 target_link_libraries(TASK_S1AP
     MAGMA_CONFIG

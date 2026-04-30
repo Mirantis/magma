@@ -11,12 +11,12 @@
 
 #include <sstream>
 #include <cstdint>
-#include "M5GExtendedProtocolDiscriminator.h"
-#include "M5GCommonDefs.h"
+#include "lte/gateway/c/core/oai/tasks/nas5g/include/ies/M5GExtendedProtocolDiscriminator.hpp"
+#include "lte/gateway/c/core/oai/tasks/nas5g/include/M5GCommonDefs.h"
 
 namespace magma5g {
-ExtendedProtocolDiscriminatorMsg::ExtendedProtocolDiscriminatorMsg(){};
-ExtendedProtocolDiscriminatorMsg::~ExtendedProtocolDiscriminatorMsg(){};
+ExtendedProtocolDiscriminatorMsg::ExtendedProtocolDiscriminatorMsg() {};
+ExtendedProtocolDiscriminatorMsg::~ExtendedProtocolDiscriminatorMsg() {};
 
 // Decode ExtendedProtocolDiscriminator IE
 int ExtendedProtocolDiscriminatorMsg::DecodeExtendedProtocolDiscriminatorMsg(
@@ -24,13 +24,9 @@ int ExtendedProtocolDiscriminatorMsg::DecodeExtendedProtocolDiscriminatorMsg(
     uint8_t iei, uint8_t* buffer, uint32_t len) {
   uint8_t decoded = 0;
 
-  MLOG(MDEBUG) << "   DecodeExtendedProtocolDiscriminatorMsg : ";
   extended_protocol_discriminator->extended_proto_discriminator =
       *(buffer + decoded);
   decoded++;
-  MLOG(MDEBUG)
-      << " epd = " << std::hex
-      << int(extended_protocol_discriminator->extended_proto_discriminator);
   return (decoded);
 };
 
@@ -40,10 +36,8 @@ int ExtendedProtocolDiscriminatorMsg::EncodeExtendedProtocolDiscriminatorMsg(
     uint8_t iei, uint8_t* buffer, uint32_t len) {
   int encoded = 0;
 
-  MLOG(MDEBUG) << " EncodeExtendedProtocolDiscriminatorMsg : ";
   *(buffer + encoded) =
       extended_protocol_discriminator->extended_proto_discriminator;
-  MLOG(MDEBUG) << "epd = 0x" << std::hex << int(*(buffer + encoded));
   encoded++;
   return (encoded);
 };

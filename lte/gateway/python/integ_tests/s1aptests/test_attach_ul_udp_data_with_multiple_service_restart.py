@@ -29,7 +29,7 @@ class TestAttachUlUdpDataWithMultipleServiceRestart(unittest.TestCase):
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_ul_udp_data(self):
+    def test_attach_ul_udp_data_with_multiple_service_restart(self):
         """
         Attach, send UL UDP data, restart three gateway services (Mobilityd, MME
         and Pipelined), then send UL UDP data again
@@ -63,14 +63,10 @@ class TestAttachUlUdpDataWithMultipleServiceRestart(unittest.TestCase):
             "************************* Restarting Mobilityd, MME and",
             "Pipelined services on gateway",
         )
-        self._s1ap_wrapper.magmad_util.restart_services([
-            "mobilityd", "mme",
-            "pipelined",
-        ])
-
-        for j in range(30):
-            print("Waiting for", j, "seconds")
-            time.sleep(1)
+        wait_for_restart = 30
+        self._s1ap_wrapper.magmad_util.restart_services(
+            ["mme"], wait_for_restart,
+        )
 
         print(
             "************************* Running UE uplink (UDP) for UE id ",

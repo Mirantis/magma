@@ -18,18 +18,18 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "common_defs.h"
-#include "s6a_messages_types.h"
-#include "s6a_c_iface.h"
-#include "intertask_interface.h"
+#include "lte/gateway/c/core/common/common_defs.h"
+#include "lte/gateway/c/core/oai/lib/itti/intertask_interface.h"
 #ifdef __cplusplus
 }
 #endif
 
+#include "lte/gateway/c/core/oai/include/s6a_messages_types.hpp"
+#include "lte/gateway/c/core/oai/tasks/s6a/s6a_c_iface.hpp"
 #if S6A_OVER_GRPC
-#include "s6a_grpc_iface.h"
+#include "lte/gateway/c/core/oai/tasks/s6a/s6a_grpc_iface.hpp"
 #else
-#include "s6a_fd_iface.h"
+#include "lte/gateway/c/core/oai/tasks/s6a/s6a_fd_iface.hpp"
 #endif
 
 #include <new>

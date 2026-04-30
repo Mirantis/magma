@@ -55,7 +55,7 @@ tags:
   - name: Federated LTE Networks
     description: Endpoints related to Federated LTE networks
   - name: Federation Networks
-    description:
+    description: Endpoints related to Federated networks
   - name: Federation Gateways
     description: Endpoints related to Federated gateway management
 
@@ -345,7 +345,7 @@ paths:
 
   /feg/{network_id}/gateways:
     get:
-      summary: List all federation gateways for a federation network
+      summary: List all gateways for a federation network
       tags:
       - Federation Gateways
       parameters:
@@ -872,12 +872,12 @@ definitions:
       local_address:
         type: string
         pattern: '[^\:]+(:[0-9]{1,5})?'
-        example: "foo.bar.com:5555"
+        example: "0.0.0.0:0"
         x-nullable: false
       pgw_address:
         type: string
         pattern: '[^\:]+(:[0-9]{1,5})?'
-        example: "foo.bar.com:5555"
+        example: "0.0.0.0:0"
         x-nullable: false
       apn_operator_suffix:
         type: string
@@ -1344,6 +1344,11 @@ definitions:
         x-nullable: false
         example: false
         default: false
+      request_timeout:
+        type: integer
+        format: uint32
+        default: 3
+        x-nullable: false
 
   diameter_server_configs:
     description: Diameter Configuration of The Server
@@ -1436,7 +1441,6 @@ definitions:
     type: object
     description: Full description of a federation gateway
     required:
-    - device
     - id
     - name
     - description
@@ -1446,6 +1450,8 @@ definitions:
     properties:
       device:
         $ref: './orc8r-swagger.yml#/definitions/gateway_device'
+      registration_info:
+        $ref: './orc8r-swagger-common.yml#/definitions/registration_info'
       id:
         $ref: './orc8r-swagger-common.yml#/definitions/gateway_id'
       name:
@@ -1465,7 +1471,6 @@ definitions:
     type: object
     description: Federation gateway object with read-only fields omitted
     required:
-    - device
     - id
     - name
     - description

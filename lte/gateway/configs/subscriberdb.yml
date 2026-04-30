@@ -14,7 +14,7 @@
 # log_level is set in mconfig. it can be overridden here
 
 # Append GRPC content to the log
-print_grpc_payload: False
+print_grpc_payload: false
 
 # Size of subscriber pages returned from cloud
 subscriber_page_size: 5000
@@ -39,8 +39,8 @@ mme_host_address: 127.0.0.1
 mme_port: 3868
 
 # Default Subscription Profile
-default_max_ul_bit_rate: 100000000  # 100 Mbps
-default_max_dl_bit_rate: 200000000  # 200 Mbps
+default_max_ul_bit_rate: 2000000000  # 2 Gbps
+default_max_dl_bit_rate: 4000000000  # 4 Gbps
 
 # Relay S6A via gRPC
 relay_mode: False

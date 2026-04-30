@@ -15,15 +15,15 @@ package coafixedip
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 
-	"github.com/mitchellh/mapstructure"
-	"github.com/pkg/errors"
-
 	"fbc/cwf/radius/modules"
-	"fbc/lib/go/radius"
 
+	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
+	"layeh.com/radius"
 )
 
 // Config config has only one parameter which is the ip to forward the request
@@ -56,7 +56,7 @@ func Init(logger *zap.Logger, config modules.ModuleConfig) (modules.Context, err
 	}
 
 	if nil == net.ParseIP(host) {
-		return nil, errors.Wrap(err, "Invalid ip address specified")
+		return nil, fmt.Errorf("Invalid ip address specified: %w", err)
 	}
 
 	return ModuleCtx{target: coaConfig.Target}, nil

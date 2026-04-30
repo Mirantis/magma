@@ -36,24 +36,26 @@ import (
 
 func (m *MutableSubscriber) ToSubscriber() *Subscriber {
 	sub := &Subscriber{
-		ActiveApns:          m.ActiveApns,
-		ActiveBaseNames:     m.ActiveBaseNames,
-		ActivePolicies:      m.ActivePolicies,
-		ActivePoliciesByApn: m.ActivePoliciesByApn,
-		Config:              nil, // handled below
-		ID:                  m.ID,
-		Lte:                 m.Lte,
-		Monitoring:          nil, // augmented field
-		Name:                m.Name,
-		State:               nil, // augmented field
+		ActiveApns:            m.ActiveApns,
+		ActiveBaseNames:       m.ActiveBaseNames,
+		ActivePolicies:        m.ActivePolicies,
+		ActivePoliciesByApn:   m.ActivePoliciesByApn,
+		Config:                nil, // handled below
+		ID:                    m.ID,
+		Lte:                   m.Lte,
+		Monitoring:            nil, // augmented field
+		Name:                  m.Name,
+		State:                 nil, // augmented field
+		ForbiddenNetworkTypes: m.ForbiddenNetworkTypes,
 	}
 
 	// TODO(v1.3.0+): For backwards compatibility we maintain the Lte field
 	// on the sub. We can convert to just storing and exposing the Config
 	// field after the next minor version.
 	sub.Config = &SubscriberConfig{
-		Lte:       m.Lte,
-		StaticIps: m.StaticIps,
+		Lte:                   m.Lte,
+		StaticIps:             m.StaticIps,
+		ForbiddenNetworkTypes: m.ForbiddenNetworkTypes,
 	}
 
 	return sub
@@ -142,9 +144,11 @@ func (m *MutableSubscriber) FromEnt(ent configurator.NetworkEntity, policyProfil
 		model.StaticIps = config.StaticIps
 		// If no profile in backend, return "default"
 		// TODO(8/21/20): enforce this at the API layer (and include data migration)
-		if model.Lte.SubProfile == "" {
-			model.Lte.SubProfile = "default"
+		if model.Lte.SubProfile == nil || *model.Lte.SubProfile == "" {
+			defaultSubProfile := SubProfile("default")
+			model.Lte.SubProfile = &defaultSubProfile
 		}
+		model.ForbiddenNetworkTypes = config.ForbiddenNetworkTypes
 	}
 
 	for _, tk := range ent.Associations.Filter(lte.APNEntityType) {
@@ -176,7 +180,7 @@ func (m *MutableSubscriber) FromEnt(ent configurator.NetworkEntity, policyProfil
 }
 
 func (m *MutableSubscriber) GetAssocs() storage.TKs {
-	var assocs storage.TKs
+	assocs := storage.TKs{}
 	assocs = append(assocs, m.ActivePoliciesByApn.ToTKs(string(m.ID))...)
 	assocs = append(assocs, m.ActiveApns.ToTKs()...)
 	assocs = append(assocs, m.ActivePolicies.ToTKs()...)

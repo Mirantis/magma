@@ -21,18 +21,19 @@ import (
 
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
 	"magma/orc8r/cloud/go/clock"
-	"magma/orc8r/cloud/go/obsidian"
-	"magma/orc8r/cloud/go/obsidian/tests"
 	"magma/orc8r/cloud/go/orc8r"
 	"magma/orc8r/cloud/go/serdes"
+	bootstrapperTestInit "magma/orc8r/cloud/go/services/bootstrapper/test_init"
 	"magma/orc8r/cloud/go/services/configurator"
 	"magma/orc8r/cloud/go/services/configurator/test_init"
 	"magma/orc8r/cloud/go/services/device"
 	deviceTestInit "magma/orc8r/cloud/go/services/device/test_init"
+	"magma/orc8r/cloud/go/services/obsidian"
+	"magma/orc8r/cloud/go/services/obsidian/tests"
 	"magma/orc8r/cloud/go/services/orchestrator/obsidian/handlers"
 	"magma/orc8r/cloud/go/services/orchestrator/obsidian/models"
 	stateTestInit "magma/orc8r/cloud/go/services/state/test_init"
@@ -41,11 +42,16 @@ import (
 	"magma/orc8r/lib/go/security/key"
 )
 
+var (
+	networkID = "n1"
+)
+
 func TestListGateways(t *testing.T) {
 	test_init.StartTestService(t)
 	deviceTestInit.StartTestService(t)
 	stateTestInit.StartTestService(t)
-	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: "n1"}, serdes.Network)
+	bootstrapperTestInit.StartTestService(t)
+	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: networkID}, serdes.Network)
 	assert.NoError(t, err)
 
 	e := echo.New()
@@ -53,9 +59,10 @@ func TestListGateways(t *testing.T) {
 
 	obsidianHandlers := handlers.GetObsidianHandlers()
 	listGateways := tests.GetHandlerByPathAndMethod(t, obsidianHandlers, "/magma/v1/networks/:network_id/gateways", obsidian.GET).HandlerFunc
+	token := models.PageToken("")
 	expected := models.PaginatedGateways{
 		Gateways:   map[string]*models.MagmadGateway{},
-		PageToken:  "",
+		PageToken:  &token,
 		TotalCount: 0,
 	}
 
@@ -65,14 +72,14 @@ func TestListGateways(t *testing.T) {
 		URL:            testURLRoot + "?page_size=1&page_token=",
 		Handler:        listGateways,
 		ParamNames:     []string{"network_id"},
-		ParamValues:    []string{"n1"},
+		ParamValues:    []string{networkID},
 		ExpectedStatus: 200,
 		ExpectedResult: tests.JSONMarshaler(expected),
 	}
 	tests.RunUnitTest(t, e, tc)
 
 	// happy path
-	_, err = configurator.CreateEntities(context.Background(), "n1", []configurator.NetworkEntity{
+	_, err = configurator.CreateEntities(context.Background(), networkID, []configurator.NetworkEntity{
 		{Type: orc8r.MagmadGatewayType, Key: "g1", Config: &models.MagmadGatewayConfigs{}, PhysicalID: "hw1"},
 		{Type: orc8r.MagmadGatewayType, Key: "g2", Config: &models.MagmadGatewayConfigs{CheckinInterval: 15}},
 	}, serdes.Entity)
@@ -80,10 +87,11 @@ func TestListGateways(t *testing.T) {
 	gateways := map[string]*models.MagmadGateway{
 		"g1": {ID: "g1", Magmad: &models.MagmadGatewayConfigs{}},
 	}
-	expectedPageToken := "CgJnMQ=="
+	models.PopulateRegistrationInfos(context.Background(), gateways, networkID)
+	expectedPageToken1 := models.PageToken("CgJnMQ==")
 	expectedResult := &models.PaginatedGateways{
 		Gateways:   gateways,
-		PageToken:  models.PageToken(expectedPageToken),
+		PageToken:  &expectedPageToken1,
 		TotalCount: 2,
 	}
 	tc.ExpectedResult = tests.JSONMarshaler(expectedResult)
@@ -92,9 +100,12 @@ func TestListGateways(t *testing.T) {
 	gateways = map[string]*models.MagmadGateway{
 		"g2": {ID: "g2", Magmad: &models.MagmadGatewayConfigs{CheckinInterval: 15}},
 	}
-	tc.URL = testURLRoot + "?page_size=1&page_token=" + expectedPageToken
+	models.PopulateRegistrationInfos(context.Background(), gateways, networkID)
+	tc.URL = testURLRoot + "?page_size=1&page_token=" + string(expectedPageToken1)
+
+	expectedPageToken2 := models.PageToken("CgJnMg==")
 	expectedResult.Gateways = gateways
-	expectedResult.PageToken = "CgJnMg=="
+	expectedResult.PageToken = &expectedPageToken2
 	tc.ExpectedResult = tests.JSONMarshaler(expectedResult)
 	tests.RunUnitTest(t, e, tc)
 
@@ -102,7 +113,7 @@ func TestListGateways(t *testing.T) {
 	clock.SetAndFreezeClock(t, time.Unix(1000000, 0))
 	defer clock.UnfreezeClock(t)
 	gatewayRecord := &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}
-	err = device.RegisterDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hw1", gatewayRecord, serdes.Device)
+	err = device.RegisterDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hw1", gatewayRecord, serdes.Device)
 	assert.NoError(t, err)
 	ctx := test_utils.GetContextWithCertificate(t, "hw1")
 	test_utils.ReportGatewayStatus(t, ctx, models.NewDefaultGatewayStatus("hw1"))
@@ -114,7 +125,8 @@ func TestListGateways(t *testing.T) {
 		"g1": {ID: "g1", Magmad: &models.MagmadGatewayConfigs{}, Device: gatewayRecord, Status: expectedState},
 		"g2": {ID: "g2", Magmad: &models.MagmadGatewayConfigs{CheckinInterval: 15}},
 	}
-	expectedResult.PageToken = "CgJnMg=="
+	models.PopulateRegistrationInfos(context.Background(), expectedResult.Gateways, networkID)
+	expectedResult.PageToken = &expectedPageToken2
 	tc.ExpectedResult = tests.JSONMarshaler(expectedResult)
 	tc.URL = testURLRoot + "?page_size=2&page_token="
 	tests.RunUnitTest(t, e, tc)
@@ -123,13 +135,13 @@ func TestListGateways(t *testing.T) {
 func TestCreateGateway(t *testing.T) {
 	test_init.StartTestService(t)
 	deviceTestInit.StartTestService(t)
-	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: "n1"}, serdes.Network)
+	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: networkID}, serdes.Network)
 	assert.NoError(t, err)
 
 	// create 2 tiers
-	_, err = configurator.CreateEntity(context.Background(), "n1", configurator.NetworkEntity{Type: orc8r.UpgradeTierEntityType, Key: "t1"}, serdes.Entity)
+	_, err = configurator.CreateEntity(context.Background(), networkID, configurator.NetworkEntity{Type: orc8r.UpgradeTierEntityType, Key: "t1"}, serdes.Entity)
 	assert.NoError(t, err)
-	_, err = configurator.CreateEntity(context.Background(), "n1", configurator.NetworkEntity{Type: orc8r.UpgradeTierEntityType, Key: "t2"}, serdes.Entity)
+	_, err = configurator.CreateEntity(context.Background(), networkID, configurator.NetworkEntity{Type: orc8r.UpgradeTierEntityType, Key: "t2"}, serdes.Entity)
 	assert.NoError(t, err)
 
 	e := echo.New()
@@ -161,7 +173,7 @@ func TestCreateGateway(t *testing.T) {
 		Handler:        createGateway,
 		Payload:        payload,
 		ParamNames:     []string{"network_id"},
-		ParamValues:    []string{"n1"},
+		ParamValues:    []string{networkID},
 		ExpectedStatus: 201,
 	}
 	tests.RunUnitTest(t, e, tc)
@@ -170,17 +182,17 @@ func TestCreateGateway(t *testing.T) {
 	// gateway should have been created
 	// device should have been created
 	// tier should have an updated assoc
-	actualEnts, _, err := configurator.LoadEntities(context.Background(), "n1", nil, nil, nil, storage.TKs{
+	actualEnts, _, err := configurator.LoadEntities(context.Background(), networkID, nil, nil, nil, storage.TKs{
 		{Type: orc8r.MagmadGatewayType, Key: "g1"},
 		{Type: orc8r.UpgradeTierEntityType, Key: "t1"},
 	}, configurator.FullEntityLoadCriteria(), serdes.Entity)
 	assert.NoError(t, err)
-	actualDevice, err := device.GetDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "foo-bar-baz-123-42", serdes.Device)
+	actualDevice, err := device.GetDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "foo-bar-baz-123-42", serdes.Device)
 	assert.NoError(t, err)
 
 	expectedEnts := configurator.NetworkEntities{
 		{
-			NetworkID: "n1", Type: orc8r.MagmadGatewayType, Key: "g1",
+			NetworkID: networkID, Type: orc8r.MagmadGatewayType, Key: "g1",
 			Name: string(payload.Name), Description: string(payload.Description),
 			PhysicalID:         "foo-bar-baz-123-42",
 			Config:             payload.Magmad,
@@ -188,7 +200,7 @@ func TestCreateGateway(t *testing.T) {
 			GraphID:            "2",
 		},
 		{
-			NetworkID: "n1", Type: orc8r.UpgradeTierEntityType, Key: "t1",
+			NetworkID: networkID, Type: orc8r.UpgradeTierEntityType, Key: "t1",
 			Associations: storage.TKs{{Type: orc8r.MagmadGatewayType, Key: "g1"}},
 			GraphID:      "2",
 			Version:      1,
@@ -198,7 +210,7 @@ func TestCreateGateway(t *testing.T) {
 	assert.Equal(t, payload.Device, actualDevice)
 
 	// test registering gateway with existing device
-	err = device.RegisterDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hello-world-42", &models.GatewayDevice{
+	err = device.RegisterDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hello-world-42", &models.GatewayDevice{
 		HardwareID: "hello-world-42",
 		Key:        &models.ChallengeKey{KeyType: "ECHO"},
 	}, serdes.Device)
@@ -232,17 +244,17 @@ func TestCreateGateway(t *testing.T) {
 	tests.RunUnitTest(t, e, tc)
 
 	// verify results - device key should have changed
-	actualEnts, _, err = configurator.LoadEntities(context.Background(), "n1", nil, nil, nil, storage.TKs{
+	actualEnts, _, err = configurator.LoadEntities(context.Background(), networkID, nil, nil, nil, storage.TKs{
 		{Type: orc8r.MagmadGatewayType, Key: "g2"},
 		{Type: orc8r.UpgradeTierEntityType, Key: "t2"},
 	}, configurator.FullEntityLoadCriteria(), serdes.Entity)
 	assert.NoError(t, err)
-	actualDevice, err = device.GetDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hello-world-42", serdes.Device)
+	actualDevice, err = device.GetDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hello-world-42", serdes.Device)
 	assert.NoError(t, err)
 
 	expectedEnts = configurator.NetworkEntities{
 		{
-			NetworkID: "n1", Type: orc8r.MagmadGatewayType, Key: "g2",
+			NetworkID: networkID, Type: orc8r.MagmadGatewayType, Key: "g2",
 			Name: string(payload.Name), Description: string(payload.Description),
 			PhysicalID:         "hello-world-42",
 			Config:             payload.Magmad,
@@ -250,7 +262,7 @@ func TestCreateGateway(t *testing.T) {
 			GraphID:            "4",
 		},
 		{
-			NetworkID: "n1", Type: orc8r.UpgradeTierEntityType, Key: "t2",
+			NetworkID: networkID, Type: orc8r.UpgradeTierEntityType, Key: "t2",
 			Associations: storage.TKs{{Type: orc8r.MagmadGatewayType, Key: "g2"}},
 			GraphID:      "4",
 			Version:      1,
@@ -282,7 +294,7 @@ func TestCreateGateway(t *testing.T) {
 		Handler:        createGateway,
 		Payload:        payload,
 		ParamNames:     []string{"network_id"},
-		ParamValues:    []string{"n1"},
+		ParamValues:    []string{networkID},
 		ExpectedStatus: 400,
 		ExpectedError:  "requested tier does not exist",
 	}
@@ -311,7 +323,7 @@ func TestCreateGateway(t *testing.T) {
 		Handler:        createGateway,
 		Payload:        payload,
 		ParamNames:     []string{"network_id"},
-		ParamValues:    []string{"n1"},
+		ParamValues:    []string{networkID},
 		ExpectedStatus: 400,
 		ExpectedError:  "device foo-bar-baz-123-42 is already mapped to gateway g1",
 	}
@@ -326,10 +338,10 @@ func TestGetGateway(t *testing.T) {
 	deviceTestInit.StartTestService(t)
 	stateTestInit.StartTestService(t)
 
-	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: "n1"}, serdes.Network)
+	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: networkID}, serdes.Network)
 	assert.NoError(t, err)
 
-	_, err = configurator.CreateEntities(context.Background(), "n1", []configurator.NetworkEntity{
+	_, err = configurator.CreateEntities(context.Background(), networkID, []configurator.NetworkEntity{
 		{
 			Type: orc8r.MagmadGatewayType, Key: "g1",
 			Name: "foobar", Description: "foo bar",
@@ -361,7 +373,7 @@ func TestGetGateway(t *testing.T) {
 		},
 	}, serdes.Entity)
 	assert.NoError(t, err)
-	err = device.RegisterDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
+	err = device.RegisterDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
 	assert.NoError(t, err)
 	ctx := test_utils.GetContextWithCertificate(t, "hw1")
 	test_utils.ReportGatewayStatus(t, ctx, models.NewDefaultGatewayStatus("hw1"))
@@ -396,7 +408,7 @@ func TestGetGateway(t *testing.T) {
 		URL:            testURLRoot + "/g1",
 		Handler:        getGateway,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 200,
 		ExpectedResult: expected,
 	}
@@ -414,12 +426,14 @@ func TestGetGateway(t *testing.T) {
 			CheckinTimeout:          5,
 		},
 	}
+	models.PopulateRegistrationInfo(context.Background(), expected, networkID)
+
 	tc = tests.Test{
 		Method:         "GET",
 		URL:            testURLRoot + "/g2",
 		Handler:        getGateway,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g2"},
+		ParamValues:    []string{networkID, "g2"},
 		ExpectedStatus: 200,
 		ExpectedResult: expected,
 	}
@@ -431,7 +445,7 @@ func TestGetGateway(t *testing.T) {
 		URL:            testURLRoot + "/g3",
 		Handler:        getGateway,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g3"},
+		ParamValues:    []string{networkID, "g3"},
 		ExpectedStatus: 404,
 		ExpectedError:  "Not Found",
 	}
@@ -442,10 +456,10 @@ func TestUpdateGateway(t *testing.T) {
 	stateTestInit.StartTestService(t)
 	test_init.StartTestService(t)
 	deviceTestInit.StartTestService(t)
-	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: "n1"}, serdes.Network)
+	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: networkID}, serdes.Network)
 	assert.NoError(t, err)
 
-	_, err = configurator.CreateEntities(context.Background(), "n1", []configurator.NetworkEntity{
+	_, err = configurator.CreateEntities(context.Background(), networkID, []configurator.NetworkEntity{
 		{
 			Type: orc8r.MagmadGatewayType, Key: "g1",
 			Name: "foobar", Description: "foo bar",
@@ -464,7 +478,7 @@ func TestUpdateGateway(t *testing.T) {
 		{Type: orc8r.UpgradeTierEntityType, Key: "t2"},
 	}, serdes.Entity)
 	assert.NoError(t, err)
-	err = device.RegisterDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
+	err = device.RegisterDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
 	assert.NoError(t, err)
 
 	e := echo.New()
@@ -504,24 +518,24 @@ func TestUpdateGateway(t *testing.T) {
 		Handler:        updateGateway,
 		Payload:        payload,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 204,
 	}
 	tests.RunUnitTest(t, e, tc)
 
 	// load and validate
-	actualEnts, _, err := configurator.LoadEntities(context.Background(), "n1", nil, nil, nil, storage.TKs{
+	actualEnts, _, err := configurator.LoadEntities(context.Background(), networkID, nil, nil, nil, storage.TKs{
 		{Type: orc8r.MagmadGatewayType, Key: "g1"},
 		{Type: orc8r.UpgradeTierEntityType, Key: "t1"},
 		{Type: orc8r.UpgradeTierEntityType, Key: "t2"},
 	}, configurator.FullEntityLoadCriteria(), serdes.Entity)
 	assert.NoError(t, err)
-	actualDevice, err := device.GetDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hw1", serdes.Device)
+	actualDevice, err := device.GetDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hw1", serdes.Device)
 	assert.NoError(t, err)
 
 	expectedEnts := configurator.NetworkEntities{
 		{
-			NetworkID: "n1", Type: orc8r.MagmadGatewayType, Key: "g1",
+			NetworkID: networkID, Type: orc8r.MagmadGatewayType, Key: "g1",
 			Name: string(payload.Name), Description: string(payload.Description),
 			PhysicalID:         "hw1",
 			Config:             payload.Magmad,
@@ -529,9 +543,9 @@ func TestUpdateGateway(t *testing.T) {
 			GraphID:            "6",
 			Version:            1,
 		},
-		{NetworkID: "n1", Type: orc8r.UpgradeTierEntityType, Key: "t1", GraphID: "2", Version: 1},
+		{NetworkID: networkID, Type: orc8r.UpgradeTierEntityType, Key: "t1", GraphID: "2", Version: 1},
 		{
-			NetworkID: "n1", Type: orc8r.UpgradeTierEntityType, Key: "t2",
+			NetworkID: networkID, Type: orc8r.UpgradeTierEntityType, Key: "t2",
 			Associations: storage.TKs{{Type: orc8r.MagmadGatewayType, Key: "g1"}},
 			GraphID:      "6",
 			Version:      1,
@@ -547,7 +561,7 @@ func TestUpdateGateway(t *testing.T) {
 		Handler:                updateGateway,
 		Payload:                payload,
 		ParamNames:             []string{"network_id", "gateway_id"},
-		ParamValues:            []string{"n1", "g3"},
+		ParamValues:            []string{networkID, "g3"},
 		ExpectedStatus:         400,
 		ExpectedErrorSubstring: "gateway ID from parameter (g3) and payload (g1) must match",
 	}
@@ -561,7 +575,7 @@ func TestUpdateGateway(t *testing.T) {
 		Handler:        updateGateway,
 		Payload:        payload,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g3"},
+		ParamValues:    []string{networkID, "g3"},
 		ExpectedStatus: 404,
 		ExpectedError:  "Not Found",
 	}
@@ -571,10 +585,10 @@ func TestUpdateGateway(t *testing.T) {
 func TestDeleteGateway(t *testing.T) {
 	test_init.StartTestService(t)
 	deviceTestInit.StartTestService(t)
-	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: "n1"}, serdes.Network)
+	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: networkID}, serdes.Network)
 	assert.NoError(t, err)
 
-	_, err = configurator.CreateEntities(context.Background(), "n1", []configurator.NetworkEntity{
+	_, err = configurator.CreateEntities(context.Background(), networkID, []configurator.NetworkEntity{
 		{
 			Type: orc8r.MagmadGatewayType, Key: "g1",
 			Name: "foobar", Description: "foo bar",
@@ -592,7 +606,7 @@ func TestDeleteGateway(t *testing.T) {
 		},
 	}, serdes.Entity)
 	assert.NoError(t, err)
-	err = device.RegisterDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
+	err = device.RegisterDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
 	assert.NoError(t, err)
 
 	e := echo.New()
@@ -606,22 +620,22 @@ func TestDeleteGateway(t *testing.T) {
 		URL:            testURLRoot + "/g1",
 		Handler:        deleteGateway,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 204,
 	}
 	tests.RunUnitTest(t, e, tc)
 
 	// load, verify results
-	actualEnts, _, err := configurator.LoadEntities(context.Background(), "n1", nil, nil, nil, storage.TKs{
+	actualEnts, _, err := configurator.LoadEntities(context.Background(), networkID, nil, nil, nil, storage.TKs{
 		{Type: orc8r.MagmadGatewayType, Key: "g1"},
 		{Type: orc8r.UpgradeTierEntityType, Key: "t1"},
 	}, configurator.FullEntityLoadCriteria(), serdes.Entity)
 	assert.NoError(t, err)
-	_, err = device.GetDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hw1", serdes.Device)
+	_, err = device.GetDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hw1", serdes.Device)
 	assert.EqualError(t, err, "Not found")
 
 	expectedEnts := configurator.NetworkEntities{
-		{NetworkID: "n1", Type: orc8r.UpgradeTierEntityType, Key: "t1", GraphID: "2"},
+		{NetworkID: networkID, Type: orc8r.UpgradeTierEntityType, Key: "t1", GraphID: "2"},
 	}
 	assert.Equal(t, expectedEnts, actualEnts)
 }
@@ -634,7 +648,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 	deviceTestInit.StartTestService(t)
 	stateTestInit.StartTestService(t)
 
-	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: "n1"}, serdes.Network)
+	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: networkID}, serdes.Network)
 	assert.NoError(t, err)
 
 	gwConfig := &models.MagmadGatewayConfigs{
@@ -643,7 +657,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		CheckinInterval:         15,
 		CheckinTimeout:          5,
 	}
-	_, err = configurator.CreateEntities(context.Background(), "n1", []configurator.NetworkEntity{
+	_, err = configurator.CreateEntities(context.Background(), networkID, []configurator.NetworkEntity{
 		{
 			Type: orc8r.MagmadGatewayType, Key: "g1",
 			Name: "foobar", Description: "foo bar",
@@ -657,7 +671,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		},
 	}, serdes.Entity)
 	assert.NoError(t, err)
-	err = device.RegisterDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
+	err = device.RegisterDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
 	assert.NoError(t, err)
 	ctx := test_utils.GetContextWithCertificate(t, "hw1")
 	test_utils.ReportGatewayStatus(t, ctx, models.NewDefaultGatewayStatus("hw1"))
@@ -678,7 +692,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		URL:            testURLRoot + "/g1/name",
 		Handler:        getGatewayName,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 200,
 		ExpectedResult: tests.JSONMarshaler("foobar"),
 	}
@@ -690,7 +704,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		URL:            testURLRoot + "/g1/description",
 		Handler:        getGatewayDescription,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 200,
 		ExpectedResult: tests.JSONMarshaler("foo bar"),
 	}
@@ -705,7 +719,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		URL:            testURLRoot + "/g1/state",
 		Handler:        getGatewayState,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 200,
 		ExpectedResult: expectedState,
 	}
@@ -717,7 +731,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		URL:            testURLRoot + "/g2/state",
 		Handler:        getGatewayState,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g2"},
+		ParamValues:    []string{networkID, "g2"},
 		ExpectedStatus: 404,
 		ExpectedError:  "Not found",
 	}
@@ -729,7 +743,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		URL:            testURLRoot + "/g1/device",
 		Handler:        getGatewayDevice,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 200,
 		ExpectedResult: &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}},
 	}
@@ -741,7 +755,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		URL:            testURLRoot + "/g2/device",
 		Handler:        getGatewayDevice,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g2"},
+		ParamValues:    []string{networkID, "g2"},
 		ExpectedStatus: 404,
 		ExpectedError:  "Not found",
 	}
@@ -753,7 +767,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		URL:            testURLRoot + "/g1/magmad",
 		Handler:        getGatewayConfig,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 200,
 		ExpectedResult: gwConfig,
 	}
@@ -765,7 +779,7 @@ func TestGetPartialReadHandlers(t *testing.T) {
 		URL:            testURLRoot + "/g2/magmad",
 		Handler:        getGatewayConfig,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g2"},
+		ParamValues:    []string{networkID, "g2"},
 		ExpectedStatus: 404,
 		ExpectedError:  "Not found",
 	}
@@ -782,10 +796,10 @@ func TestGetGatewayTierHandler(t *testing.T) {
 	obsidianHandlers := handlers.GetObsidianHandlers()
 	getGatewayTier := tests.GetHandlerByPathAndMethod(t, obsidianHandlers, "/magma/v1/networks/:network_id/gateways/:gateway_id/tier", obsidian.GET).HandlerFunc
 
-	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: "n1"}, serdes.Network)
+	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: networkID}, serdes.Network)
 	assert.NoError(t, err)
 
-	_, err = configurator.CreateEntities(context.Background(), "n1", []configurator.NetworkEntity{
+	_, err = configurator.CreateEntities(context.Background(), networkID, []configurator.NetworkEntity{
 		{
 			Type: orc8r.MagmadGatewayType, Key: "g1",
 			Name: "foobar", Description: "foo bar",
@@ -799,14 +813,14 @@ func TestGetGatewayTierHandler(t *testing.T) {
 		URL:            testURLRoot + "/g1/tier",
 		Handler:        getGatewayTier,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 200,
 		ExpectedResult: tests.JSONMarshaler(""),
 	}
 	tests.RunUnitTest(t, e, tc)
 
 	// add a tier and tier -> gateway association
-	_, err = configurator.CreateEntity(context.Background(), "n1", configurator.NetworkEntity{
+	_, err = configurator.CreateEntity(context.Background(), networkID, configurator.NetworkEntity{
 		Type: orc8r.UpgradeTierEntityType,
 		Key:  "t1",
 		Associations: storage.TKs{
@@ -824,7 +838,7 @@ func TestGetGatewayTierHandler(t *testing.T) {
 		URL:            testURLRoot + "/g1/tier",
 		Handler:        getGatewayTier,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 200,
 		ExpectedResult: tests.JSONMarshaler("t1"),
 	}
@@ -841,10 +855,10 @@ func TestUpdateGatewayTierHandler(t *testing.T) {
 	obsidianHandlers := handlers.GetObsidianHandlers()
 	updateGatewayTier := tests.GetHandlerByPathAndMethod(t, obsidianHandlers, "/magma/v1/networks/:network_id/gateways/:gateway_id/tier", obsidian.PUT).HandlerFunc
 
-	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: "n1"}, serdes.Network)
+	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: networkID}, serdes.Network)
 	assert.NoError(t, err)
 
-	_, err = configurator.CreateEntities(context.Background(), "n1", []configurator.NetworkEntity{
+	_, err = configurator.CreateEntities(context.Background(), networkID, []configurator.NetworkEntity{
 		{
 			Type: orc8r.MagmadGatewayType, Key: "g1",
 			Name: "foobar", Description: "foo bar",
@@ -859,14 +873,14 @@ func TestUpdateGatewayTierHandler(t *testing.T) {
 		Handler:        updateGatewayTier,
 		Payload:        tests.JSONMarshaler(models.TierID("t1")),
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 400,
 		ExpectedError:  "Tier t1 does not exist",
 	}
 	tests.RunUnitTest(t, e, tc)
 
 	// add 2 tiers
-	_, err = configurator.CreateEntities(context.Background(), "n1", []configurator.NetworkEntity{
+	_, err = configurator.CreateEntities(context.Background(), networkID, []configurator.NetworkEntity{
 		{
 			Type: orc8r.UpgradeTierEntityType,
 			Key:  "t1",
@@ -885,16 +899,16 @@ func TestUpdateGatewayTierHandler(t *testing.T) {
 		Handler:        updateGatewayTier,
 		Payload:        tests.JSONMarshaler(models.TierID("t1")),
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 204,
 	}
 	tests.RunUnitTest(t, e, tc)
 
-	entities, _, err := configurator.LoadEntities(context.Background(), "n1", swag.String(orc8r.UpgradeTierEntityType), nil, nil, nil, configurator.EntityLoadCriteria{LoadAssocsFromThis: true}, serdes.Entity)
+	entities, _, err := configurator.LoadEntities(context.Background(), networkID, swag.String(orc8r.UpgradeTierEntityType), nil, nil, nil, configurator.EntityLoadCriteria{LoadAssocsFromThis: true}, serdes.Entity)
 	assert.NoError(t, err)
 	expectedTiers := configurator.NetworkEntities{
 		{
-			NetworkID: "n1",
+			NetworkID: networkID,
 			Type:      orc8r.UpgradeTierEntityType,
 			Key:       "t1",
 			Associations: storage.TKs{
@@ -907,7 +921,7 @@ func TestUpdateGatewayTierHandler(t *testing.T) {
 			Version: 1,
 		},
 		{
-			NetworkID: "n1",
+			NetworkID: networkID,
 			Type:      orc8r.UpgradeTierEntityType,
 			Key:       "t2",
 			GraphID:   "6",
@@ -923,22 +937,22 @@ func TestUpdateGatewayTierHandler(t *testing.T) {
 		Handler:        updateGatewayTier,
 		Payload:        tests.JSONMarshaler(models.TierID("t2")),
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 204,
 	}
 	tests.RunUnitTest(t, e, tc)
-	entities, _, err = configurator.LoadEntities(context.Background(), "n1", swag.String(orc8r.UpgradeTierEntityType), nil, nil, nil, configurator.EntityLoadCriteria{LoadAssocsFromThis: true}, serdes.Entity)
+	entities, _, err = configurator.LoadEntities(context.Background(), networkID, swag.String(orc8r.UpgradeTierEntityType), nil, nil, nil, configurator.EntityLoadCriteria{LoadAssocsFromThis: true}, serdes.Entity)
 	assert.NoError(t, err)
 	expectedTiers = configurator.NetworkEntities{
 		{
-			NetworkID: "n1",
+			NetworkID: networkID,
 			Type:      orc8r.UpgradeTierEntityType,
 			Key:       "t1",
 			GraphID:   "2",
 			Version:   2,
 		},
 		{
-			NetworkID: "n1",
+			NetworkID: networkID,
 			Type:      orc8r.UpgradeTierEntityType,
 			Key:       "t2",
 			Associations: storage.TKs{
@@ -958,7 +972,7 @@ func TestGetPartialUpdateHandlers(t *testing.T) {
 	test_init.StartTestService(t)
 	deviceTestInit.StartTestService(t)
 
-	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: "n1"}, serdes.Network)
+	err := configurator.CreateNetwork(context.Background(), configurator.Network{ID: networkID}, serdes.Network)
 	assert.NoError(t, err)
 
 	gwConfig := &models.MagmadGatewayConfigs{
@@ -967,7 +981,7 @@ func TestGetPartialUpdateHandlers(t *testing.T) {
 		CheckinInterval:         15,
 		CheckinTimeout:          5,
 	}
-	_, err = configurator.CreateEntities(context.Background(), "n1", []configurator.NetworkEntity{
+	_, err = configurator.CreateEntities(context.Background(), networkID, []configurator.NetworkEntity{
 		{
 			Type: orc8r.MagmadGatewayType, Key: "g1",
 			Name: "foobar", Description: "foo bar",
@@ -981,7 +995,7 @@ func TestGetPartialUpdateHandlers(t *testing.T) {
 		},
 	}, serdes.Entity)
 	assert.NoError(t, err)
-	err = device.RegisterDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
+	err = device.RegisterDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hw1", &models.GatewayDevice{HardwareID: "hw1", Key: &models.ChallengeKey{KeyType: "ECHO"}}, serdes.Device)
 	assert.NoError(t, err)
 
 	e := echo.New()
@@ -1000,7 +1014,7 @@ func TestGetPartialUpdateHandlers(t *testing.T) {
 		Handler:        updateGatewayName,
 		Payload:        tests.JSONMarshaler(""),
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 400,
 		ExpectedError:  " in body should be at least 1 chars long",
 	}
@@ -1013,12 +1027,12 @@ func TestGetPartialUpdateHandlers(t *testing.T) {
 		Handler:        updateGatewayName,
 		Payload:        tests.JSONMarshaler("newname"),
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 204,
 	}
 	tests.RunUnitTest(t, e, tc)
 
-	entity, err := configurator.LoadEntity(context.Background(), "n1", orc8r.MagmadGatewayType, "g1", configurator.EntityLoadCriteria{LoadMetadata: true}, serdes.Entity)
+	entity, err := configurator.LoadEntity(context.Background(), networkID, orc8r.MagmadGatewayType, "g1", configurator.EntityLoadCriteria{LoadMetadata: true}, serdes.Entity)
 	assert.NoError(t, err)
 	assert.Equal(t, "newname", entity.Name)
 
@@ -1029,12 +1043,12 @@ func TestGetPartialUpdateHandlers(t *testing.T) {
 		Handler:        updateGatewayDesc,
 		Payload:        tests.JSONMarshaler("newdesc"),
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g1"},
+		ParamValues:    []string{networkID, "g1"},
 		ExpectedStatus: 204,
 	}
 	tests.RunUnitTest(t, e, tc)
 
-	entity, err = configurator.LoadEntity(context.Background(), "n1", orc8r.MagmadGatewayType, "g1", configurator.EntityLoadCriteria{LoadMetadata: true}, serdes.Entity)
+	entity, err = configurator.LoadEntity(context.Background(), networkID, orc8r.MagmadGatewayType, "g1", configurator.EntityLoadCriteria{LoadMetadata: true}, serdes.Entity)
 	assert.NoError(t, err)
 	assert.Equal(t, "newdesc", entity.Description)
 
@@ -1046,12 +1060,12 @@ func TestGetPartialUpdateHandlers(t *testing.T) {
 		Payload: tests.JSONMarshaler(&models.GatewayDevice{HardwareID: "hw2",
 			Key: &models.ChallengeKey{KeyType: "ECHO"}}),
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g2"},
+		ParamValues:    []string{networkID, "g2"},
 		ExpectedStatus: 204,
 	}
 	tests.RunUnitTest(t, e, tc)
 
-	device, err := device.GetDevice(context.Background(), "n1", orc8r.AccessGatewayRecordType, "hw2", serdes.Device)
+	device, err := device.GetDevice(context.Background(), networkID, orc8r.AccessGatewayRecordType, "hw2", serdes.Device)
 	assert.NoError(t, err)
 	assert.Equal(t, &models.GatewayDevice{HardwareID: "hw2", Key: &models.ChallengeKey{KeyType: "ECHO"}}, device)
 
@@ -1062,12 +1076,12 @@ func TestGetPartialUpdateHandlers(t *testing.T) {
 		Handler:        updateGatewayConfig,
 		Payload:        gwConfig,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g2"},
+		ParamValues:    []string{networkID, "g2"},
 		ExpectedStatus: 204,
 	}
 	tests.RunUnitTest(t, e, tc)
 
-	entity, err = configurator.LoadEntity(context.Background(), "n1", orc8r.MagmadGatewayType, "g1", configurator.EntityLoadCriteria{LoadConfig: true}, serdes.Entity)
+	entity, err = configurator.LoadEntity(context.Background(), networkID, orc8r.MagmadGatewayType, "g1", configurator.EntityLoadCriteria{LoadConfig: true}, serdes.Entity)
 	assert.NoError(t, err)
 	assert.Equal(t, gwConfig, entity.Config)
 
@@ -1078,7 +1092,7 @@ func TestGetPartialUpdateHandlers(t *testing.T) {
 		Handler:        updateGatewayConfig,
 		Payload:        gwConfig,
 		ParamNames:     []string{"network_id", "gateway_id"},
-		ParamValues:    []string{"n1", "g3"},
+		ParamValues:    []string{networkID, "g3"},
 		ExpectedStatus: 400,
 		ExpectedError:  "Gateway g3 does not exist",
 	}

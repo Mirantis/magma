@@ -11,9 +11,11 @@
  * limitations under the License.
  */
 
-#include "sctpd_event_handler.h"
+#include "lte/gateway/c/sctpd/src/sctpd_event_handler.hpp"
 
-#include <lte/protos/sctpd.grpc.pb.h>
+#include <lte/protos/sctpd.pb.h>
+
+#include "lte/gateway/c/sctpd/src/sctpd_uplink_client.hpp"
 
 namespace magma {
 namespace sctpd {
@@ -21,9 +23,9 @@ namespace sctpd {
 SctpdEventHandler::SctpdEventHandler(SctpdUplinkClient& client)
     : _client(client) {}
 
-int SctpdEventHandler::HandleNewAssoc(
-    uint32_t ppid, uint32_t assoc_id, uint32_t instreams, uint32_t outstreams,
-    std::string& ran_cp_ipaddr) {
+int SctpdEventHandler::HandleNewAssoc(uint32_t ppid, uint32_t assoc_id,
+                                      uint32_t instreams, uint32_t outstreams,
+                                      std::string& ran_cp_ipaddr) {
   NewAssocReq req;
   NewAssocRes res;
 
@@ -36,8 +38,8 @@ int SctpdEventHandler::HandleNewAssoc(
   return _client.newAssoc(req, &res);
 }
 
-void SctpdEventHandler::HandleCloseAssoc(
-    uint32_t ppid, uint32_t assoc_id, bool reset) {
+void SctpdEventHandler::HandleCloseAssoc(uint32_t ppid, uint32_t assoc_id,
+                                         bool reset) {
   CloseAssocReq req;
   CloseAssocRes res;
 
@@ -48,9 +50,9 @@ void SctpdEventHandler::HandleCloseAssoc(
   _client.closeAssoc(req, &res);
 }
 
-void SctpdEventHandler::HandleRecv(
-    uint32_t ppid, uint32_t assoc_id, uint32_t stream,
-    const std::string& payload) {
+void SctpdEventHandler::HandleRecv(uint32_t ppid, uint32_t assoc_id,
+                                   uint32_t stream,
+                                   const std::string& payload) {
   SendUlReq req;
   SendUlRes res;
 

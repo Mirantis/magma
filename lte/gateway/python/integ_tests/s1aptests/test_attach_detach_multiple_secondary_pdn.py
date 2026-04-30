@@ -18,14 +18,14 @@ import s1ap_types
 import s1ap_wrapper
 
 
-class TestMultipleSecondaryPdnConnReq(unittest.TestCase):
+class TestAttachDetachMultipleSecondaryPdn(unittest.TestCase):
     def setUp(self):
         self._s1ap_wrapper = s1ap_wrapper.TestWrapper()
 
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_multiple_secondary_pdn_conn_req(self):
+    def test_attach_detach_multiple_secondary_pdn(self):
         """ Attach a single UE + add 2 PDN Connections + disconnect """
         num_pdns = 2
         bearer_ids = []
@@ -85,8 +85,9 @@ class TestMultipleSecondaryPdnConnReq(unittest.TestCase):
             self._s1ap_wrapper.sendPdnConnectivityReq(ue_id, apn[i])
             # Receive PDN CONN RSP/Activate default EPS bearer context request
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value,
+            assert (
+                response.msg_type
+                == s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value
             )
             act_def_bearer_req = response.cast(s1ap_types.uePdnConRsp_t)
 
@@ -118,9 +119,9 @@ class TestMultipleSecondaryPdnConnReq(unittest.TestCase):
 
             # Receive UE_DEACTIVATE_BER_REQ
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value,
+            assert (
+                response.msg_type
+                == s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value
             )
 
             print(

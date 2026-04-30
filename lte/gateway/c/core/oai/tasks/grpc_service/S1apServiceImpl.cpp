@@ -14,15 +14,15 @@
  * For more information about the OpenAirInterface (OAI) Software Alliance:
  *      contact@openairinterface.org
  */
-#include "S1apServiceImpl.h"
 
+#include "lte/gateway/c/core/oai/tasks/grpc_service/S1apServiceImpl.hpp"
 #include <string>
+#include "lte/gateway/c/core/oai/include/s1ap_state.hpp"
 
 extern "C" {
-#include "assertions.h"
-#include "hashtable.h"
-#include "log.h"
-#include "s1ap_state.h"
+#include "lte/gateway/c/core/common/assertions.h"
+#include "lte/gateway/c/core/oai/common/log.h"
+#include "lte/gateway/c/core/oai/lib/hashtable/hashtable.h"
 }
 
 using grpc::ServerContext;
@@ -36,33 +36,28 @@ using namespace orc8r;
 
 S1apServiceImpl::S1apServiceImpl() {}
 
-Status S1apServiceImpl::GetENBState(
-    ServerContext* context, const Void* request, EnbStateResult* response) {
+Status S1apServiceImpl::GetENBState(ServerContext* context, const Void* request,
+                                    EnbStateResult* response) {
   OAILOG_DEBUG(LOG_UTIL, "Received GetENBState GRPC request\n");
 
   // Get state from S1APStateManager
   // TODO: Get state through ITTI message from S1AP task, as it's read only
   // it will not affect ownership
-  s1ap_state_t* s1ap_state = get_s1ap_state(false);
+  oai::S1apState* s1ap_state = get_s1ap_state(false);
   if (s1ap_state != nullptr) {
-    hashtable_rc_t ht_rc;
-    hashtable_key_array_t* ht_keys = hashtable_ts_get_keys(&s1ap_state->enbs);
-    if (ht_keys == nullptr) {
+    if (!(s1ap_state->enbs_size())) {
       return Status::OK;
     }
-
-    for (uint32_t i = 0; i < ht_keys->num_keys; i++) {
-      enb_description_t* enb_ref;
-      ht_rc = hashtable_ts_get(
-          &s1ap_state->enbs, (hash_key_t) ht_keys->keys[i], (void**) &enb_ref);
-      if (ht_rc == HASH_TABLE_OK) {
-        (*response->mutable_enb_state_map())[enb_ref->enb_id] =
-            enb_ref->nb_ue_associated;
+    proto_map_uint32_enb_description_t enb_map;
+    enb_map.map = s1ap_state->mutable_enbs();
+    for (auto itr = enb_map.map->begin(); itr != enb_map.map->end(); itr++) {
+      oai::EnbDescription enb_ref = itr->second;
+      if (enb_ref.sctp_assoc_id()) {
+        (*response->mutable_enb_state_map())[enb_ref.enb_id()] =
+            enb_ref.nb_ue_associated();
       }
     }
-    FREE_HASHTABLE_KEY_ARRAY(ht_keys);
   }
-
   return Status::OK;
 }
 

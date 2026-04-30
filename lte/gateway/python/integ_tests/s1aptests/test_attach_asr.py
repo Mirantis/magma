@@ -16,7 +16,6 @@ import unittest
 
 import s1ap_types
 from integ_tests.s1aptests import s1ap_wrapper
-from integ_tests.s1aptests.ovs.rest_api import get_datapath
 from integ_tests.s1aptests.s1ap_utils import SessionManagerUtil, SpgwUtil
 
 
@@ -32,12 +31,10 @@ class TestAttachASR(unittest.TestCase):
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_asr_tcp_data(self):
-        """ attach + send ASR Req to session manager with a"""
-        """ single UE """
+    def test_attach_asr(self):
+        """Attach + send ASR Req to session manager with a single UE"""
         num_ues = 1
         self._s1ap_wrapper.configUEDevice(num_ues)
-        datapath = get_datapath()
 
         req = self._s1ap_wrapper.ue_req
         print(
@@ -69,10 +66,7 @@ class TestAttachASR(unittest.TestCase):
 
         # Receive NW initiated detach request
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type,
-            s1ap_types.tfwCmd.UE_NW_INIT_DETACH_REQUEST.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_NW_INIT_DETACH_REQUEST.value
         print("**************** Received NW initiated Detach Req")
         print("**************** Sending Detach Accept")
 

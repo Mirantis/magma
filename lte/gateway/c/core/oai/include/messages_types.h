@@ -28,28 +28,31 @@
  * policies, either expressed or implied, of the FreeBSD Project.
  */
 
-#ifndef FILE_MESSAGES_TYPES_SEEN
-#define FILE_MESSAGES_TYPES_SEEN
+#pragma once
 
-#include "intertask_messages_types.h"
-#include <inttypes.h>
-#include "security_types.h"
-#include "gtpv1_u_messages_types.h"
-#include "ip_forward_messages_types.h"
-#include "s11_messages_types.h"
-#include "s1ap_messages_types.h"
-#include "ngap_messages_types.h"
-#include "s6a_messages_types.h"
-#include "sctp_messages_types.h"
-#include "gx_messages_types.h"
-#include "mme_app_messages_types.h"
-#include "amf_app_messages_types.h"
-#include "service303_messages_types.h"
-#include "sgs_messages_types.h"
-#include "async_system_messages_types.h"
-#include "udp_messages_types.h"
-#include "ha_messages_types.h"
-#include "n11_messages_types.h"
-#include "s8_messages_types.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "lte/gateway/c/core/oai/lib/itti/intertask_messages_types.h"
+#ifdef __cplusplus
+}
+#endif
 
-#endif /* FILE_MESSAGES_TYPES_SEEN */
+#include "lte/gateway/c/core/oai/common/security_types.h"
+#include "lte/gateway/c/core/oai/include/gtpv1_u_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/ip_forward_messages_types.h"
+#include "lte/gateway/c/core/oai/include/s11_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/s1ap_messages_types.h"
+#include "lte/gateway/c/core/oai/include/ngap_messages_types.h"
+#include "lte/gateway/c/core/oai/include/s6a_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/sctp_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/gx_messages_types.h"
+#include "lte/gateway/c/core/oai/include/mme_app_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/amf_app_messages_types.h"
+#include "lte/gateway/c/core/oai/include/service303_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/sgs_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/async_system_messages_types.h"
+#include "lte/gateway/c/core/oai/include/udp_messages_types.h"
+#include "lte/gateway/c/core/oai/include/ha_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/n11_messages_types.h"
+#include "lte/gateway/c/core/oai/include/s8_messages_types.h"

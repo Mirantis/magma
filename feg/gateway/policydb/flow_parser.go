@@ -15,6 +15,7 @@ package policydb
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -36,9 +37,12 @@ type address struct {
 // GetFlowDescriptionFromFlowString returns a proto.FlowDescription from a IPFilterRule string
 // passed in the Flow-Description AVP. This AVP can have many variations, but follows
 // the format:
-//    action direction proto from src to dst
+//
+//	action direction proto from src to dst
+//
 // e.g.:
-//    permit out ip from 1.2.3.0/24 to any
+//
+//	permit out ip from 1.2.3.0/24 to any
 func GetFlowDescriptionFromFlowString(descriptorStr string) (*protos.FlowDescription, error) {
 	split, err := tokenizeString(descriptorStr)
 	if err != nil {
@@ -136,7 +140,7 @@ func parseProto(proto string) (protos.FlowMatch_IPProto, error) {
 	if proto == "ip" {
 		return protos.FlowMatch_IPPROTO_IP, nil
 	}
-	protoInt, err := strconv.Atoi(proto)
+	protoInt, err := strconv.ParseInt(proto, 10, 32)
 	if err != nil {
 		return protos.FlowMatch_IPPROTO_IP, err
 	}
@@ -168,10 +172,13 @@ func parseAddress(addr string) (*address, error) {
 		return &address{ip: ipAddr, version: version, port: 0}, nil
 	}
 
-	// Don't support port ranges for now
-	portInt, err := strconv.Atoi(matches[1])
+	portInt, err := strconv.ParseUint(matches[1], 10, 32)
 	if err != nil {
 		return nil, err
 	}
+	if portInt > math.MaxUint32 {
+		return nil, fmt.Errorf("number %d is outside the boundaries of unit32 type", portInt)
+	}
+
 	return &address{ip: ipAddr, version: version, port: uint32(portInt)}, nil
 }

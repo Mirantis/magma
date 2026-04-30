@@ -72,8 +72,7 @@ func NewAIA(srv *HomeSubscriberServer, msg *diam.Message) (*diam.Message, error)
 		return ConvertAuthErrorToFailureMessage(err, msg, air.SessionID, srv.Config.Server), err
 	}
 
-	const plmnOffsetBytes = 1
-	plmn := air.VisitedPLMNID.Serialize()[plmnOffsetBytes:]
+	plmn := air.VisitedPLMNID.Serialize()
 
 	vectors, utranVectors, lteAuthNextSeq, err := GenerateLteAuthVectors(
 		uint32(air.RequestedEUTRANAuthInfo.NumVectors),
@@ -94,7 +93,7 @@ func (srv *HomeSubscriberServer) setLteAuthNextSeq(subscriber *lteprotos.Subscri
 		return NewAuthDataUnavailableError("subscriber state was nil")
 	}
 	subscriber.State.LteAuthNextSeq = lteAuthNextSeq
-	return srv.store.UpdateSubscriber(subscriber)
+	return srv.store.UpdateSubscriber(&lteprotos.SubscriberUpdate{Data: subscriber})
 }
 
 // NewSuccessfulAIA outputs a successful authentication information answer (AIA) to reply to an

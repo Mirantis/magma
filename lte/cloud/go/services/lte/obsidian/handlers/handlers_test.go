@@ -22,7 +22,7 @@ import (
 
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
 	"magma/lte/cloud/go/lte"
@@ -32,25 +32,26 @@ import (
 	policyModels "magma/lte/cloud/go/services/policydb/obsidian/models"
 	"magma/orc8r/cloud/go/clock"
 	models2 "magma/orc8r/cloud/go/models"
-	"magma/orc8r/cloud/go/obsidian"
-	"magma/orc8r/cloud/go/obsidian/tests"
 	"magma/orc8r/cloud/go/orc8r"
 	"magma/orc8r/cloud/go/serde"
 	"magma/orc8r/cloud/go/services/configurator"
 	configuratorTestInit "magma/orc8r/cloud/go/services/configurator/test_init"
 	"magma/orc8r/cloud/go/services/device"
 	deviceTestInit "magma/orc8r/cloud/go/services/device/test_init"
+	"magma/orc8r/cloud/go/services/obsidian"
+	"magma/orc8r/cloud/go/services/obsidian/tests"
 	"magma/orc8r/cloud/go/services/orchestrator/obsidian/models"
 	"magma/orc8r/cloud/go/services/state"
 	stateTestInit "magma/orc8r/cloud/go/services/state/test_init"
 	"magma/orc8r/cloud/go/services/state/test_utils"
 	"magma/orc8r/cloud/go/storage"
+	orc_test_utils "magma/orc8r/cloud/go/test_utils"
 	"magma/orc8r/lib/go/protos"
 	"magma/orc8r/lib/go/security/key"
 )
 
 func init() {
-	// _ = flag.Set("alsologtostderr", "true") // uncomment to view logs during test
+	// _ = flag.Set("logtostderr", "true") // uncomment to view logs during test
 }
 
 func TestListNetworks(t *testing.T) {
@@ -78,7 +79,7 @@ func TestListNetworks(t *testing.T) {
 		URL:            "/magma/v1/lte",
 		Handler:        listNetworks,
 		ExpectedStatus: 200,
-		ExpectedResult: tests.JSONMarshaler([]string{"n1", "n3"}),
+		ExpectedResult: tests.JSONMarshaler([]string{"n1", "n3", "n4"}),
 	}
 	tests.RunUnitTest(t, e, tc)
 }
@@ -143,6 +144,71 @@ func TestCreateNetwork(t *testing.T) {
 			lte.CellularNetworkConfigType: lteModels.NewDefaultTDDNetworkConfig(),
 			orc8r.DnsdNetworkType:         models.NewDefaultDNSConfig(),
 			orc8r.NetworkFeaturesConfig:   models.NewDefaultFeaturesConfig(),
+		},
+	}
+	assert.Equal(t, expected, actual)
+}
+
+func TestCreateNetworkWithSuciProfile(t *testing.T) {
+	configuratorTestInit.StartTestService(t)
+	e := echo.New()
+
+	obsidianHandlers := handlers.GetHandlers()
+	createNetwork := tests.GetHandlerByPathAndMethod(t, obsidianHandlers, "/magma/v1/lte", obsidian.POST).HandlerFunc
+
+	// happy path
+	payload := &lteModels.LteNetwork{
+		Cellular:    lteModels.NewDefaultTDDNetworkConfig(),
+		Description: "Network creation with Suci Profile",
+		DNS:         models.NewDefaultDNSConfig(),
+		Features:    models.NewDefaultFeaturesConfig(),
+		ID:          "n4",
+		Name:        "foosbar",
+	}
+
+	payload.Cellular.Ngc = &lteModels.NetworkNgcConfigs{
+		SuciProfiles: []*lteModels.SuciProfile{
+			{
+				HomeNetworkPrivateKey:          []byte("xyzzy5461"),
+				HomeNetworkPublicKey:           []byte("xyzzy5461"),
+				HomeNetworkPublicKeyIdentifier: 255,
+				ProtectionScheme:               "ProfileA",
+			},
+		},
+	}
+
+	tc := tests.Test{
+		Method:         "POST",
+		URL:            "/magma/v1/lte",
+		Payload:        payload,
+		Handler:        createNetwork,
+		ExpectedStatus: 201,
+	}
+
+	tests.RunUnitTest(t, e, tc)
+	actual, err := configurator.LoadNetwork(context.Background(), "n4", true, true, serdes.Network)
+	assert.NoError(t, err)
+	expected := configurator.Network{
+		ID:          "n4",
+		Type:        lte.NetworkType,
+		Name:        "foosbar",
+		Description: "Network creation with Suci Profile",
+		Configs: map[string]interface{}{
+			lte.CellularNetworkConfigType: &lteModels.NetworkCellularConfigs{
+				Ran: lteModels.NewDefaultTDDNetworkConfig().Ran,
+				Epc: lteModels.NewDefaultTDDNetworkConfig().Epc,
+				Ngc: &lteModels.NetworkNgcConfigs{
+					SuciProfiles: []*lteModels.SuciProfile{
+						{
+							HomeNetworkPublicKey:           []byte("xyzzy5461"),
+							HomeNetworkPrivateKey:          []byte("xyzzy5461"),
+							HomeNetworkPublicKeyIdentifier: 255,
+							ProtectionScheme:               "ProfileA",
+						},
+					}},
+			},
+			orc8r.DnsdNetworkType:       models.NewDefaultDNSConfig(),
+			orc8r.NetworkFeaturesConfig: models.NewDefaultFeaturesConfig(),
 		},
 	}
 	assert.Equal(t, expected, actual)
@@ -263,8 +329,8 @@ func TestUpdateNetwork(t *testing.T) {
 		ExpectedError: "validation failure list:\n" +
 			"validation failure list:\n" +
 			"validation failure list:\n" +
-			"a_record.0 in body must be of type ipv4: \"asdf\"\n" +
-			"aaaa_record.0 in body must be of type ipv6: \"abcd\"",
+			"dns.records.0.a_record.0 in body must be of type ipv4: \"asdf\"\n" +
+			"dns.records.0.aaaa_record.0 in body must be of type ipv6: \"abcd\"",
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -379,7 +445,7 @@ func TestDeleteNetwork(t *testing.T) {
 
 	actual, err := configurator.ListNetworkIDs(context.Background())
 	assert.NoError(t, err)
-	assert.Equal(t, []string{"n2", "n3"}, actual)
+	assert.Equal(t, []string{"n2", "n3", "n4"}, actual)
 }
 
 func TestCellularPartialGet(t *testing.T) {
@@ -399,6 +465,7 @@ func TestCellularPartialGet(t *testing.T) {
 		fmt.Sprintf("%s/:network_id/cellular/ran", testURLRoot), obsidian.GET).HandlerFunc
 	getFegNetworkID := tests.GetHandlerByPathAndMethod(t, handlers,
 		fmt.Sprintf("%s/:network_id/cellular/feg_network_id", testURLRoot), obsidian.GET).HandlerFunc
+	getNgc := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/:network_id/cellular/ngc", testURLRoot), obsidian.GET).HandlerFunc
 
 	// happy path
 	tc := tests.Test{
@@ -475,6 +542,41 @@ func TestCellularPartialGet(t *testing.T) {
 	}
 	tests.RunUnitTest(t, e, tc)
 
+	// happy path
+	tc = tests.Test{
+		Method:         "GET",
+		URL:            fmt.Sprintf("%s/%s/cellular/ngc/", testURLRoot, "n4"),
+		ParamNames:     []string{"network_id"},
+		ParamValues:    []string{"n4"},
+		Handler:        getNgc,
+		ExpectedStatus: 200,
+		ExpectedResult: tests.JSONMarshaler(
+			&lteModels.NetworkNgcConfigs{
+				SuciProfiles: []*lteModels.SuciProfile{
+					{
+						HomeNetworkPublicKey:           []byte("xyzzy5461"),
+						HomeNetworkPrivateKey:          []byte("xyzzy5461"),
+						HomeNetworkPublicKeyIdentifier: 255,
+						ProtectionScheme:               "ProfileA",
+					},
+				},
+			}),
+		ExpectedError: "",
+	}
+	tests.RunUnitTest(t, e, tc)
+
+	// 404
+	tc = tests.Test{
+		Method:         "GET",
+		URL:            fmt.Sprintf("%s/%s/cellular/ngc/", testURLRoot, "n2"),
+		ParamNames:     []string{"network_id"},
+		ParamValues:    []string{"n2"},
+		Handler:        getNgc,
+		ExpectedStatus: 404,
+		ExpectedError:  "Not found",
+	}
+	tests.RunUnitTest(t, e, tc)
+
 	// add 'n2' as FegNetworkID to n1
 	cellularConfig := lteModels.NewDefaultTDDNetworkConfig()
 	cellularConfig.FegNetworkID = "n2"
@@ -518,6 +620,7 @@ func TestCellularPartialUpdate(t *testing.T) {
 		fmt.Sprintf("%s/:network_id/cellular/ran", testURLRoot), obsidian.PUT).HandlerFunc
 	updateFegNetworkID := tests.GetHandlerByPathAndMethod(t, handlers,
 		fmt.Sprintf("%s/:network_id/cellular/feg_network_id", testURLRoot), obsidian.PUT).HandlerFunc
+	updateNgc := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/:network_id/cellular/ngc", testURLRoot), obsidian.PUT).HandlerFunc
 
 	// happy path update cellular config
 	tc := tests.Test{
@@ -642,6 +745,46 @@ func TestCellularPartialUpdate(t *testing.T) {
 	assert.NoError(t, err)
 	expected.Configs[lte.CellularNetworkConfigType].(*lteModels.NetworkCellularConfigs).Ran = ranConfig
 	expected.Version = 3
+	assert.Equal(t, expected, actualN2)
+
+	// Fail to put ngc config to a network without cellular network configs
+	ngcConfig := &lteModels.NetworkNgcConfigs{
+		SuciProfiles: []*lteModels.SuciProfile{
+			{
+				HomeNetworkPrivateKey:          []byte("xyzzy5461"),
+				HomeNetworkPublicKey:           []byte("xyzzy5461"),
+				HomeNetworkPublicKeyIdentifier: 255,
+				ProtectionScheme:               "ProfileA",
+			}},
+	}
+	tc = tests.Test{
+		Method:         "PUT",
+		URL:            fmt.Sprintf("%s/%s/cellular/ngc/", testURLRoot, "n3"),
+		Payload:        ngcConfig,
+		ParamNames:     []string{"network_id"},
+		ParamValues:    []string{"n3"},
+		Handler:        updateNgc,
+		ExpectedStatus: 400,
+		ExpectedError:  "No cellular network config found",
+	}
+	tests.RunUnitTest(t, e, tc)
+
+	// happy path update ngc config
+	tc = tests.Test{
+		Method:         "PUT",
+		URL:            fmt.Sprintf("%s/%s/cellular/ngc/", testURLRoot, "n2"),
+		Payload:        ngcConfig,
+		ParamNames:     []string{"network_id"},
+		ParamValues:    []string{"n2"},
+		Handler:        updateNgc,
+		ExpectedStatus: 204,
+	}
+	tests.RunUnitTest(t, e, tc)
+
+	actualN2, err = configurator.LoadNetwork(context.Background(), "n2", true, true, serdes.Network)
+	assert.NoError(t, err)
+	expected.Configs[lte.CellularNetworkConfigType].(*lteModels.NetworkCellularConfigs).Ngc = ngcConfig
+	expected.Version = 4
 	assert.Equal(t, expected, actualN2)
 
 	// Validation Error (should not be able to add nonexistent networkID as fegNetworkID)
@@ -1106,7 +1249,7 @@ func TestCreateGateway(t *testing.T) {
 		ParamNames:     []string{"network_id"},
 		ParamValues:    []string{"n1"},
 		ExpectedStatus: 500,
-		ExpectedError:  "error creating gateway: rpc error: code = Internal desc = could not find entities matching [type:\"cellular_enodeb\" key:\"dne\" ]",
+		ExpectedError:  `error creating gateway: rpc error: code = Internal desc = could not find entities matching` + orc_test_utils.Separator + `[type:"cellular_enodeb"` + orc_test_utils.Separator + `key:"dne"]`,
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -1197,15 +1340,31 @@ func TestListAndGetGateways(t *testing.T) {
 			{
 				Type: lte.CellularGatewayEntityType, Key: "g1",
 				Config: &lteModels.GatewayCellularConfigs{
-					Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24"},
+					Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24", NodeIdentifier: "192.168.200.1"},
 					Ran: &lteModels.GatewayRanConfigs{Pci: 260, TransmitEnabled: swag.Bool(true)},
+					Ngc: &lteModels.GatewayNgcConfigs{
+						AmfDefaultSd:  "AFAFAF",
+						AmfDefaultSst: 25,
+						AmfName:       "amf.example.org",
+						AmfPointer:    "1F",
+						AmfRegionID:   "C1",
+						AmfSetID:      "2A1",
+					},
 				},
 			},
 			{
 				Type: lte.CellularGatewayEntityType, Key: "g2",
 				Config: &lteModels.GatewayCellularConfigs{
-					Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24"},
+					Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24", NodeIdentifier: "192.168.200.1"},
 					Ran: &lteModels.GatewayRanConfigs{Pci: 260, TransmitEnabled: swag.Bool(true)},
+					Ngc: &lteModels.GatewayNgcConfigs{
+						AmfDefaultSd:  "AFAFAF",
+						AmfDefaultSst: 25,
+						AmfName:       "amf.example.org",
+						AmfPointer:    "1F",
+						AmfRegionID:   "C1",
+						AmfSetID:      "2A1",
+					},
 				},
 				Associations: storage.TKs{
 					{Type: lte.CellularEnodebEntityType, Key: "enb1"},
@@ -1268,12 +1427,21 @@ func TestListAndGetGateways(t *testing.T) {
 				CheckinTimeout:          5,
 			},
 			Cellular: &lteModels.GatewayCellularConfigs{
-				Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24"},
+				Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24", NodeIdentifier: "192.168.200.1"},
 				Ran: &lteModels.GatewayRanConfigs{Pci: 260, TransmitEnabled: swag.Bool(true)},
+				Ngc: &lteModels.GatewayNgcConfigs{
+					AmfDefaultSd:  "AFAFAF",
+					AmfDefaultSst: 25,
+					AmfName:       "amf.example.org",
+					AmfPointer:    "1F",
+					AmfRegionID:   "C1",
+					AmfSetID:      "2A1",
+				},
 			},
 			Status:                 models.NewDefaultGatewayStatus("hw1"),
 			ConnectedEnodebSerials: lteModels.EnodebSerials{},
 			ApnResources:           lteModels.ApnResources{},
+			CheckedInRecently:      checkedInRecently(false),
 		},
 		"g2": {
 			ID:   "g2",
@@ -1286,11 +1454,20 @@ func TestListAndGetGateways(t *testing.T) {
 				CheckinTimeout:          5,
 			},
 			Cellular: &lteModels.GatewayCellularConfigs{
-				Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24"},
+				Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24", NodeIdentifier: "192.168.200.1"},
 				Ran: &lteModels.GatewayRanConfigs{Pci: 260, TransmitEnabled: swag.Bool(true)},
+				Ngc: &lteModels.GatewayNgcConfigs{
+					AmfDefaultSd:  "AFAFAF",
+					AmfDefaultSst: 25,
+					AmfName:       "amf.example.org",
+					AmfPointer:    "1F",
+					AmfRegionID:   "C1",
+					AmfSetID:      "2A1",
+				},
 			},
 			ConnectedEnodebSerials: []string{"enb1", "enb2"},
 			ApnResources:           lteModels.ApnResources{},
+			CheckedInRecently:      checkedInRecently(false),
 		},
 	}
 	expected["g1"].Status.CheckinTime = uint64(time.Unix(1000000, 0).UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond)))
@@ -1321,12 +1498,21 @@ func TestListAndGetGateways(t *testing.T) {
 			CheckinTimeout:          5,
 		},
 		Cellular: &lteModels.GatewayCellularConfigs{
-			Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24"},
+			Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24", NodeIdentifier: "192.168.200.1"},
 			Ran: &lteModels.GatewayRanConfigs{Pci: 260, TransmitEnabled: swag.Bool(true)},
+			Ngc: &lteModels.GatewayNgcConfigs{
+				AmfDefaultSd:  "AFAFAF",
+				AmfDefaultSst: 25,
+				AmfName:       "amf.example.org",
+				AmfPointer:    "1F",
+				AmfRegionID:   "C1",
+				AmfSetID:      "2A1",
+			},
 		},
 		Status:                 models.NewDefaultGatewayStatus("hw1"),
 		ConnectedEnodebSerials: lteModels.EnodebSerials{},
 		ApnResources:           lteModels.ApnResources{},
+		CheckedInRecently:      checkedInRecently(false),
 	}
 	expectedGet.Status.CheckinTime = uint64(time.Unix(1000000, 0).UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond)))
 	tc = tests.Test{
@@ -1351,11 +1537,20 @@ func TestListAndGetGateways(t *testing.T) {
 			CheckinTimeout:          5,
 		},
 		Cellular: &lteModels.GatewayCellularConfigs{
-			Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24"},
+			Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24", NodeIdentifier: "192.168.200.1"},
 			Ran: &lteModels.GatewayRanConfigs{Pci: 260, TransmitEnabled: swag.Bool(true)},
+			Ngc: &lteModels.GatewayNgcConfigs{
+				AmfDefaultSd:  "AFAFAF",
+				AmfDefaultSst: 25,
+				AmfName:       "amf.example.org",
+				AmfPointer:    "1F",
+				AmfRegionID:   "C1",
+				AmfSetID:      "2A1",
+			},
 		},
 		ConnectedEnodebSerials: []string{"enb1", "enb2"},
 		ApnResources:           lteModels.ApnResources{},
+		CheckedInRecently:      checkedInRecently(false),
 	}
 	tc = tests.Test{
 		Method:         "GET",
@@ -1390,8 +1585,16 @@ func TestUpdateGateway(t *testing.T) {
 		{
 			Type: lte.CellularGatewayEntityType, Key: "g1",
 			Config: &lteModels.GatewayCellularConfigs{
-				Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24"},
+				Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24", NodeIdentifier: "192.168.200.1"},
 				Ran: &lteModels.GatewayRanConfigs{Pci: 260, TransmitEnabled: swag.Bool(true)},
+				Ngc: &lteModels.GatewayNgcConfigs{
+					AmfDefaultSd:  "AFAFAF",
+					AmfDefaultSst: 25,
+					AmfName:       "amf.example.org",
+					AmfPointer:    "1F",
+					AmfRegionID:   "C1",
+					AmfSetID:      "2A1",
+				},
 			},
 			Associations: storage.TKs{
 				{Type: lte.CellularEnodebEntityType, Key: "enb1"},
@@ -1445,8 +1648,16 @@ func TestUpdateGateway(t *testing.T) {
 		},
 		Tier: "t1",
 		Cellular: &lteModels.GatewayCellularConfigs{
-			Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(false), IPBlock: "172.10.10.0/24"},
+			Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(false), IPBlock: "172.10.10.0/24", NodeIdentifier: "192.168.200.1"},
 			Ran: &lteModels.GatewayRanConfigs{Pci: 123, TransmitEnabled: swag.Bool(false)},
+			Ngc: &lteModels.GatewayNgcConfigs{
+				AmfDefaultSd:  "AFAFAF",
+				AmfDefaultSst: 25,
+				AmfName:       "amf.example.org",
+				AmfPointer:    "1F",
+				AmfRegionID:   "C1",
+				AmfSetID:      "2A1",
+			},
 		},
 		ConnectedEnodebSerials: []string{"enb1", "enb3"},
 		ApnResources:           lteModels.ApnResources{},
@@ -1525,8 +1736,16 @@ func TestDeleteGateway(t *testing.T) {
 		{
 			Type: lte.CellularGatewayEntityType, Key: "g1",
 			Config: &lteModels.GatewayCellularConfigs{
-				Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24"},
+				Epc: &lteModels.GatewayEpcConfigs{NatEnabled: swag.Bool(true), IPBlock: "192.168.0.0/24", NodeIdentifier: "192.168.200.1"},
 				Ran: &lteModels.GatewayRanConfigs{Pci: 260, TransmitEnabled: swag.Bool(true)},
+				Ngc: &lteModels.GatewayNgcConfigs{
+					AmfDefaultSd:  "AFAFAF",
+					AmfDefaultSst: 25,
+					AmfName:       "amf.example.org",
+					AmfPointer:    "1F",
+					AmfRegionID:   "C1",
+					AmfSetID:      "2A1",
+				},
 			},
 			Associations: storage.TKs{
 				{Type: lte.CellularEnodebEntityType, Key: "enb1"},
@@ -1594,6 +1813,7 @@ func TestGetCellularGatewayConfig(t *testing.T) {
 	getCellular := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular", testURLRoot), obsidian.GET).HandlerFunc
 	getEpc := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular/epc", testURLRoot), obsidian.GET).HandlerFunc
 	getRan := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular/ran", testURLRoot), obsidian.GET).HandlerFunc
+	getNgc := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular/ngc", testURLRoot), obsidian.GET).HandlerFunc
 	getNonEps := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular/non_eps", testURLRoot), obsidian.GET).HandlerFunc
 	getEnodebs := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/connected_enodeb_serials", testURLRoot), obsidian.GET).HandlerFunc
 
@@ -1665,6 +1885,17 @@ func TestGetCellularGatewayConfig(t *testing.T) {
 
 	tc = tests.Test{
 		Method:         "GET",
+		URL:            fmt.Sprintf("%s/cellular/ngc", testURLRoot),
+		Handler:        getNgc,
+		ParamNames:     []string{"network_id", "gateway_id"},
+		ParamValues:    []string{"n1", "g1"},
+		ExpectedResult: newDefaultGatewayConfig().Ngc,
+		ExpectedStatus: 200,
+	}
+	tests.RunUnitTest(t, e, tc)
+
+	tc = tests.Test{
+		Method:         "GET",
 		URL:            fmt.Sprintf("%s/cellular/non_eps", testURLRoot),
 		Handler:        getNonEps,
 		ParamNames:     []string{"network_id", "gateway_id"},
@@ -1698,6 +1929,7 @@ func TestUpdateCellularGatewayConfig(t *testing.T) {
 	updateCellular := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular", testURLRoot), obsidian.PUT).HandlerFunc
 	updateEpc := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular/epc", testURLRoot), obsidian.PUT).HandlerFunc
 	updateRan := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular/ran", testURLRoot), obsidian.PUT).HandlerFunc
+	updateNgc := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular/ngc", testURLRoot), obsidian.PUT).HandlerFunc
 	updateNonEps := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/cellular/non_eps", testURLRoot), obsidian.PUT).HandlerFunc
 	updateEnodebs := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/connected_enodeb_serials", testURLRoot), obsidian.PUT).HandlerFunc
 	postEnodeb := tests.GetHandlerByPathAndMethod(t, handlers, fmt.Sprintf("%s/connected_enodeb_serials", testURLRoot), obsidian.POST).HandlerFunc
@@ -2003,6 +2235,43 @@ func TestUpdateCellularGatewayConfig(t *testing.T) {
 	entities, _, err = configurator.LoadEntities(context.Background(), "n1", nil, swag.String("g1"), nil, nil, configurator.EntityLoadCriteria{LoadConfig: true, LoadAssocsFromThis: true}, serdes.Entity)
 	assert.NoError(t, err)
 	assert.Equal(t, expected, entities.MakeByTK())
+
+	modifiedCellularConfig.Ngc.AmfDefaultSd = "AFAFAF"
+	modifiedCellularConfig.Ngc.AmfDefaultSst = 25
+	modifiedCellularConfig.Ngc.AmfName = "amf.example.org"
+	modifiedCellularConfig.Ngc.AmfPointer = "1F"
+	modifiedCellularConfig.Ngc.AmfRegionID = "C1"
+	modifiedCellularConfig.Ngc.AmfSetID = "2A1"
+	tc = tests.Test{
+		Method:         "PUT",
+		URL:            fmt.Sprintf("%s/cellular/ngc", testURLRoot),
+		Handler:        updateNgc,
+		Payload:        modifiedCellularConfig.Ngc,
+		ParamNames:     []string{"network_id", "gateway_id"},
+		ParamValues:    []string{"n1", "g1"},
+		ExpectedStatus: 204,
+	}
+	tests.RunUnitTest(t, e, tc)
+
+	expected = configurator.NetworkEntitiesByTK{
+		storage.TK{Type: orc8r.MagmadGatewayType, Key: "g1"}: {
+			NetworkID: "n1",
+			Type:      orc8r.MagmadGatewayType, Key: "g1",
+			Associations: storage.TKs{{Type: lte.CellularGatewayEntityType, Key: "g1"}},
+			GraphID:      "10",
+			Version:      0,
+		},
+		storage.TK{Type: lte.CellularGatewayEntityType, Key: "g1"}: {
+			NetworkID: "n1",
+			Type:      lte.CellularGatewayEntityType, Key: "g1",
+			Config:  modifiedCellularConfig,
+			GraphID: "10",
+			Version: 9,
+		},
+	}
+	entities, _, err = configurator.LoadEntities(context.Background(), "n1", nil, swag.String("g1"), nil, nil, configurator.EntityLoadCriteria{LoadConfig: true, LoadAssocsFromThis: true}, serdes.Entity)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, entities.MakeByTK())
 }
 
 func TestListAndGetEnodebs(t *testing.T) {
@@ -2131,9 +2400,10 @@ func TestListAndGetEnodebs(t *testing.T) {
 			Serial:      "vwxyz",
 		},
 	}
+	emptyPageToken := lteModels.PageToken("")
 	expected := &lteModels.PaginatedEnodebs{
 		Enodebs:    enodebs,
-		PageToken:  "",
+		PageToken:  &emptyPageToken,
 		TotalCount: 2,
 	}
 
@@ -2148,10 +2418,10 @@ func TestListAndGetEnodebs(t *testing.T) {
 	}
 	tests.RunUnitTest(t, e, tc)
 
-	expectedPageToken := "CgdhYmNkZWZn"
+	expectedPageToken := lteModels.PageToken("CgdhYmNkZWZn")
 	paginatedExpectation := &lteModels.PaginatedEnodebs{
 		Enodebs:    map[string]*lteModels.Enodeb{"abcdefg": expected.Enodebs["abcdefg"]},
-		PageToken:  lteModels.PageToken(expectedPageToken),
+		PageToken:  &expectedPageToken,
 		TotalCount: 2,
 	}
 	tc = tests.Test{
@@ -2165,11 +2435,11 @@ func TestListAndGetEnodebs(t *testing.T) {
 	}
 	tests.RunUnitTest(t, e, tc)
 	paginatedExpectation.Enodebs = map[string]*lteModels.Enodeb{"vwxyz": expected.Enodebs["vwxyz"]}
-	paginatedExpectation.PageToken = ""
+	paginatedExpectation.PageToken = &emptyPageToken
 
 	tc = tests.Test{
 		Method:         "GET",
-		URL:            testURLRoot + "?page_size=10&page_token=" + expectedPageToken,
+		URL:            testURLRoot + "?page_size=10&page_token=" + string(expectedPageToken),
 		Handler:        listEnodebs,
 		ParamNames:     []string{"network_id"},
 		ParamValues:    []string{"n1"},
@@ -2733,6 +3003,8 @@ func TestListApns(t *testing.T) {
 					PreemptionVulnerability: swag.Bool(false),
 					PriorityLevel:           swag.Uint32(15),
 				},
+				PdnType:   0,
+				IsDefault: swag.Bool(false),
 			},
 		},
 		{
@@ -2748,6 +3020,8 @@ func TestListApns(t *testing.T) {
 					PreemptionVulnerability: swag.Bool(false),
 					PriorityLevel:           swag.Uint32(5),
 				},
+				PdnType:   1,
+				IsDefault: swag.Bool(false),
 			},
 		},
 	}, serdes.Entity)
@@ -2774,6 +3048,8 @@ func TestListApns(t *testing.T) {
 						PreemptionVulnerability: swag.Bool(false),
 						PriorityLevel:           swag.Uint32(15),
 					},
+					PdnType:   0,
+					IsDefault: swag.Bool(false),
 				},
 			},
 			"oai.ims": {
@@ -2789,6 +3065,8 @@ func TestListApns(t *testing.T) {
 						PreemptionVulnerability: swag.Bool(false),
 						PriorityLevel:           swag.Uint32(5),
 					},
+					PdnType:   1,
+					IsDefault: swag.Bool(false),
 				},
 			},
 		}),
@@ -2830,6 +3108,8 @@ func TestGetApn(t *testing.T) {
 				PreemptionVulnerability: swag.Bool(false),
 				PriorityLevel:           swag.Uint32(15),
 			},
+			PdnType:   0,
+			IsDefault: swag.Bool(false),
 		},
 	}, serdes.Entity)
 	assert.NoError(t, err)
@@ -2854,6 +3134,8 @@ func TestGetApn(t *testing.T) {
 					PreemptionVulnerability: swag.Bool(false),
 					PriorityLevel:           swag.Uint32(15),
 				},
+				PdnType:   0,
+				IsDefault: swag.Bool(false),
 			},
 		},
 	}
@@ -2884,6 +3166,7 @@ func TestUpdateApn(t *testing.T) {
 				PreemptionVulnerability: swag.Bool(false),
 				PriorityLevel:           swag.Uint32(5),
 			},
+			IsDefault: swag.Bool(false),
 		},
 	}
 
@@ -2913,6 +3196,7 @@ func TestUpdateApn(t *testing.T) {
 				PreemptionVulnerability: swag.Bool(false),
 				PriorityLevel:           swag.Uint32(15),
 			},
+			IsDefault: swag.Bool(false),
 		},
 	}, serdes.Entity)
 	assert.NoError(t, err)
@@ -2965,6 +3249,7 @@ func TestDeleteApn(t *testing.T) {
 					PreemptionVulnerability: swag.Bool(false),
 					PriorityLevel:           swag.Uint32(15),
 				},
+				IsDefault: swag.Bool(false),
 			},
 		},
 		{
@@ -2980,6 +3265,7 @@ func TestDeleteApn(t *testing.T) {
 					PreemptionVulnerability: swag.Bool(false),
 					PriorityLevel:           swag.Uint32(5),
 				},
+				IsDefault: swag.Bool(false),
 			},
 		},
 	}, serdes.Entity)
@@ -3013,6 +3299,7 @@ func TestDeleteApn(t *testing.T) {
 				PreemptionVulnerability: swag.Bool(false),
 				PriorityLevel:           swag.Uint32(5),
 			},
+			IsDefault: swag.Bool(false),
 		},
 		GraphID: "4",
 		Version: 0,
@@ -3043,6 +3330,7 @@ func TestAPNResource(t *testing.T) {
 	deleteAPN := tests.GetHandlerByPathAndMethod(t, lteHandlers, "/magma/v1/lte/:network_id/apns/:apn_name", obsidian.DELETE).HandlerFunc
 
 	gw := newMutableGateway("gw0")
+	expectedGw := newGatewayResponse("gw0")
 
 	// Get all, initially empty
 	tc := tests.Test{
@@ -3080,7 +3368,7 @@ func TestAPNResource(t *testing.T) {
 		ParamNames:             []string{"network_id"},
 		ParamValues:            []string{"n0"},
 		ExpectedStatus:         500, // this would actually make more sense as a 400, but it's a non-trivial fix
-		ExpectedErrorSubstring: `could not find entities matching [type:"apn" key:"apn0" ]`,
+		ExpectedErrorSubstring: `could not find entities matching` + orc_test_utils.Separator + `[type:"apn"` + orc_test_utils.Separator + `key:"apn0"]`,
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3133,6 +3421,7 @@ func TestAPNResource(t *testing.T) {
 	tests.RunUnitTest(t, e, tc)
 
 	// Get all, posted gateway found
+	expectedGw.ApnResources = gw.ApnResources
 	tc = tests.Test{
 		Method:         "GET",
 		URL:            "/magma/v1/lte/n0/gateways",
@@ -3140,7 +3429,7 @@ func TestAPNResource(t *testing.T) {
 		ParamNames:     []string{"network_id"},
 		ParamValues:    []string{"n0"},
 		ExpectedStatus: 200,
-		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.MutableLteGateway{"gw0": gw}),
+		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.LteGateway{"gw0": expectedGw}),
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3154,7 +3443,7 @@ func TestAPNResource(t *testing.T) {
 		ParamValues:            []string{"n0", "gw0"},
 		Handler:                putGateway,
 		ExpectedStatus:         500, // would make more sense as 400
-		ExpectedErrorSubstring: `could not find entities matching [type:"apn" key:"apnXXX" ]`,
+		ExpectedErrorSubstring: `could not find entities matching` + orc_test_utils.Separator + `[type:"apn"` + orc_test_utils.Separator + `key:"apnXXX"]`,
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3240,6 +3529,7 @@ func TestAPNResource(t *testing.T) {
 	assert.False(t, exists)
 
 	// Get, changes are reflected
+	expectedGw.ApnResources = gw.ApnResources
 	tc = tests.Test{
 		Method:         "GET",
 		URL:            "/magma/v1/lte/n0/gateways/gw0",
@@ -3247,7 +3537,7 @@ func TestAPNResource(t *testing.T) {
 		ParamValues:    []string{"n0", "gw0"},
 		Handler:        getGateway,
 		ExpectedStatus: 200,
-		ExpectedResult: gw,
+		ExpectedResult: expectedGw,
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3327,7 +3617,7 @@ func TestAPNResource(t *testing.T) {
 	assert.Equal(t, "res2", ents[0].Key)
 
 	// Get, APN resource is gone
-	gw.ApnResources = lteModels.ApnResources{"apn2": {ApnName: "apn2", ID: "res2", VlanID: 4}}
+	expectedGw.ApnResources = lteModels.ApnResources{"apn2": {ApnName: "apn2", ID: "res2", VlanID: 4}}
 	tc = tests.Test{
 		Method:         "GET",
 		URL:            "/magma/v1/lte/n0/gateways/gw0",
@@ -3335,7 +3625,7 @@ func TestAPNResource(t *testing.T) {
 		ParamValues:    []string{"n0", "gw0"},
 		Handler:        getGateway,
 		ExpectedStatus: 200,
-		ExpectedResult: gw,
+		ExpectedResult: expectedGw,
 	}
 	tests.RunUnitTest(t, e, tc)
 }
@@ -3363,6 +3653,8 @@ func TestAPNResource_Regression_3088(t *testing.T) {
 
 	gw0 := newMutableGateway("gw0")
 	gw1 := newMutableGateway("gw1")
+	expectedGw0 := newGatewayResponse("gw0")
+	expectedGw1 := newGatewayResponse("gw1")
 
 	// Get all, initially empty
 	tc := tests.Test{
@@ -3421,7 +3713,7 @@ func TestAPNResource_Regression_3088(t *testing.T) {
 		ParamNames:     []string{"network_id"},
 		ParamValues:    []string{"n0"},
 		ExpectedStatus: 200,
-		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.MutableLteGateway{"gw0": gw0, "gw1": gw1}),
+		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.LteGateway{"gw0": expectedGw0, "gw1": expectedGw1}),
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3439,6 +3731,7 @@ func TestAPNResource_Regression_3088(t *testing.T) {
 	tests.RunUnitTest(t, e, tc)
 
 	// Get, changes are reflected
+	expectedGw0.ApnResources = gw0.ApnResources
 	tc = tests.Test{
 		Method:         "GET",
 		URL:            "/magma/v1/lte/n0/gateways/gw0",
@@ -3446,7 +3739,7 @@ func TestAPNResource_Regression_3088(t *testing.T) {
 		ParamValues:    []string{"n0", "gw0"},
 		Handler:        getGateway,
 		ExpectedStatus: 200,
-		ExpectedResult: gw0,
+		ExpectedResult: expectedGw0,
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3458,7 +3751,7 @@ func TestAPNResource_Regression_3088(t *testing.T) {
 		ParamNames:     []string{"network_id"},
 		ParamValues:    []string{"n0"},
 		ExpectedStatus: 200,
-		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.MutableLteGateway{"gw0": gw0, "gw1": gw1}),
+		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.LteGateway{"gw0": expectedGw0, "gw1": expectedGw1}),
 	}
 	tests.RunUnitTest(t, e, tc)
 }
@@ -3556,6 +3849,10 @@ func TestAPNResource_Regression_3149(t *testing.T) {
 	}
 	tests.RunUnitTest(t, e, tc)
 
+	expectedGw0 := newGatewayResponse("gw0")
+	expectedGw0.ConnectedEnodebSerials = gw0.ConnectedEnodebSerials
+	expectedGw0.ApnResources = gw0.ApnResources
+
 	// Get all, posted gateway found
 	tc = tests.Test{
 		Method:         "GET",
@@ -3564,7 +3861,7 @@ func TestAPNResource_Regression_3149(t *testing.T) {
 		ParamNames:     []string{"network_id"},
 		ParamValues:    []string{"n0"},
 		ExpectedStatus: 200,
-		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.MutableLteGateway{"gw0": gw0}),
+		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.LteGateway{"gw0": expectedGw0}),
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3576,7 +3873,7 @@ func TestAPNResource_Regression_3149(t *testing.T) {
 		ParamValues:    []string{"n0", "gw0"},
 		Handler:        getGateway,
 		ExpectedStatus: 200,
-		ExpectedResult: gw0,
+		ExpectedResult: expectedGw0,
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3605,6 +3902,7 @@ func TestAPNResource_Regression_3149(t *testing.T) {
 
 	// Post gw0 with 0 apn_resources, successful
 	gw0.ApnResources = lteModels.ApnResources{}
+	expectedGw0.ApnResources = gw0.ApnResources
 	tc = tests.Test{
 		Method:         "POST",
 		URL:            "/magma/v1/lte/n0/gateways",
@@ -3624,7 +3922,7 @@ func TestAPNResource_Regression_3149(t *testing.T) {
 		ParamValues:    []string{"n0", "gw0"},
 		Handler:        getGateway,
 		ExpectedStatus: 200,
-		ExpectedResult: gw0,
+		ExpectedResult: expectedGw0,
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3658,6 +3956,8 @@ func TestAPNResource_Regression_3149(t *testing.T) {
 	tests.RunUnitTest(t, e, tc)
 
 	// Get, changes are reflected
+	expectedGw0.ApnResources = gw0.ApnResources
+	expectedGw0.ConnectedEnodebSerials = gw0.ConnectedEnodebSerials
 	tc = tests.Test{
 		Method:         "GET",
 		URL:            "/magma/v1/lte/n0/gateways/gw0",
@@ -3665,7 +3965,7 @@ func TestAPNResource_Regression_3149(t *testing.T) {
 		ParamValues:    []string{"n0", "gw0"},
 		Handler:        getGateway,
 		ExpectedStatus: 200,
-		ExpectedResult: gw0,
+		ExpectedResult: expectedGw0,
 	}
 	tests.RunUnitTest(t, e, tc)
 
@@ -3677,7 +3977,7 @@ func TestAPNResource_Regression_3149(t *testing.T) {
 		ParamNames:     []string{"network_id"},
 		ParamValues:    []string{"n0"},
 		ExpectedStatus: 200,
-		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.MutableLteGateway{"gw0": gw0}),
+		ExpectedResult: tests.JSONMarshaler(map[string]*lteModels.LteGateway{"gw0": expectedGw0}),
 	}
 	tests.RunUnitTest(t, e, tc)
 }
@@ -4020,6 +4320,29 @@ func seedNetworks(t *testing.T) {
 			Description: "Bar Foo",
 			Configs:     map[string]interface{}{},
 		},
+		{
+			ID:          "n4",
+			Type:        lte.NetworkType,
+			Name:        "foosbar",
+			Description: "Network creation with Suci Profile",
+			Configs: map[string]interface{}{
+				lte.CellularNetworkConfigType: &lteModels.NetworkCellularConfigs{
+					Ran: lteModels.NewDefaultTDDNetworkConfig().Ran,
+					Epc: lteModels.NewDefaultTDDNetworkConfig().Epc,
+					Ngc: &lteModels.NetworkNgcConfigs{
+						SuciProfiles: []*lteModels.SuciProfile{
+							{
+								HomeNetworkPublicKey:           []byte("xyzzy5461"),
+								HomeNetworkPrivateKey:          []byte("xyzzy5461"),
+								HomeNetworkPublicKeyIdentifier: 255,
+								ProtectionScheme:               "ProfileA",
+							},
+						}},
+				},
+				orc8r.NetworkFeaturesConfig: models.NewDefaultFeaturesConfig(),
+				orc8r.DnsdNetworkType:       models.NewDefaultDNSConfig(),
+			},
+		},
 	}, serdes.Network)
 	assert.NoError(t, err)
 }
@@ -4058,8 +4381,17 @@ func newDefaultGatewayConfig() *lteModels.GatewayCellularConfigs {
 			TransmitEnabled: swag.Bool(true),
 		},
 		Epc: &lteModels.GatewayEpcConfigs{
-			NatEnabled: swag.Bool(true),
-			IPBlock:    "192.168.128.0/24",
+			NatEnabled:     swag.Bool(true),
+			IPBlock:        "192.168.128.0/24",
+			NodeIdentifier: "192.168.200.1",
+		},
+		Ngc: &lteModels.GatewayNgcConfigs{
+			AmfDefaultSd:  "AFAFAF",
+			AmfDefaultSst: 25,
+			AmfName:       "amf.example.org",
+			AmfPointer:    "1F",
+			AmfRegionID:   "C1",
+			AmfSetID:      "2A1",
 		},
 		NonEpsService: &lteModels.GatewayNonEpsConfigs{
 			CsfbMcc:              "001",
@@ -4087,6 +4419,7 @@ func newAPN(name string) *lteModels.Apn {
 				MaxBandwidthDl: swag.Uint32(100),
 				MaxBandwidthUl: swag.Uint32(100),
 			},
+			IsDefault: swag.Bool(false),
 			QosProfile: &lteModels.QosProfile{
 				ClassID:                 swag.Int32(9),
 				PreemptionCapability:    swag.Bool(true),
@@ -4120,4 +4453,33 @@ func newMutableGateway(id string) *lteModels.MutableLteGateway {
 		ApnResources:           lteModels.ApnResources{},
 	}
 	return gw
+}
+
+func newGatewayResponse(id string) *lteModels.LteGateway {
+	gw := &lteModels.LteGateway{
+		Device: &models.GatewayDevice{
+			HardwareID: id + "_hwid",
+			Key:        &models.ChallengeKey{KeyType: "ECHO"},
+		},
+		ID:          models2.GatewayID(id),
+		Name:        "foobar",
+		Description: "foo bar",
+		Magmad: &models.MagmadGatewayConfigs{
+			CheckinInterval:         15,
+			CheckinTimeout:          10,
+			AutoupgradePollInterval: 300,
+			AutoupgradeEnabled:      swag.Bool(true),
+		},
+		Cellular:               newDefaultGatewayConfig(),
+		ConnectedEnodebSerials: []string{},
+		Tier:                   "t0",
+		ApnResources:           lteModels.ApnResources{},
+		CheckedInRecently:      checkedInRecently(false),
+	}
+	return gw
+}
+
+func checkedInRecently(value bool) *lteModels.GatewayCheckedInRecently {
+	result := lteModels.GatewayCheckedInRecently(value)
+	return &result
 }

@@ -36,9 +36,7 @@ from magma.pipelined.tests.pipelined_test_util import (
     stop_ryu_app_thread,
     wait_after_send,
 )
-from ryu.lib import hub
-from scapy.all import *
-from scapy.all import ARP, IP, UDP, Ether
+from scapy.all import ARP, IP, TCP, UDP, Ether
 from scapy.contrib.gtp import GTP_U_Header
 
 
@@ -102,6 +100,8 @@ class GTPTrafficTest(unittest.TestCase):
                 'ovs_multi_tunnel': False,
                 'paging_timeout': 30,
                 'classifier_controller_id': 5,
+                'enable_nat': True,
+                'ovs_uplink_port_name': "patch-up",
             },
             mconfig=PipelineD(),
             loop=None,
@@ -137,9 +137,9 @@ class GTPTrafficTest(unittest.TestCase):
         ue_ip_addr = "192.168.128.30"
         ip_flow_dl = IPFlowDL(set_params=0)
         self.classifier_controller.add_tunnel_flows(
-            65525, 1, 1000,
+            65525, 1, 1000, self.EnodeB_IP,
             IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            self.EnodeB_IP, seid1, True, ip_flow_dl=ip_flow_dl,
+            seid1, True, ip_flow_dl=ip_flow_dl,
         )
         # Create a set of packets
         pkt_sender = ScapyPacketInjector(self.BRIDGE)

@@ -18,6 +18,7 @@ services:
   lte:
     host: "localhost"
     port: 9113
+    protected_port: 9213
     echo_port: 10113
     proxy_type: "clientcert"
     labels:
@@ -44,6 +45,7 @@ services:
   subscriberdb:
     host: "localhost"
     port: 9083
+    protected_port: 9183
     echo_port: 10083
     proxy_type: "clientcert"
     labels:
@@ -51,7 +53,7 @@ services:
       orc8r.io/state_indexer: "true"
       orc8r.io/swagger_spec: "true"
     annotations:
-      orc8r.io/state_indexer_types: "mobilityd_ipdesc_record"
+      orc8r.io/state_indexer_types: "mobilityd_ipdesc_record,gateway_subscriber_state"
       orc8r.io/state_indexer_version: "1"
       orc8r.io/obsidian_handlers_path_prefixes: >
         /magma/v1/lte/:network_id/msisdns,
@@ -68,6 +70,7 @@ services:
   policydb:
     host: "localhost"
     port: 9085
+    protected_port: 9185
     echo_port: 10085
     proxy_type: "clientcert"
     labels:
@@ -82,6 +85,7 @@ services:
   smsd:
     host: "localhost"
     port: 9120
+    protected_port: 9220
     echo_port: 10086
     proxy_type: "clientcert"
     labels:
@@ -94,6 +98,7 @@ services:
   nprobe:
     host: "localhost"
     port: 9666
+    protected_port: 9766
     echo_port: 10088
     proxy_type: "clientcert"
     labels:
@@ -102,3 +107,9 @@ services:
     annotations:
       orc8r.io/obsidian_handlers_path_prefixes: >
         /magma/v1/lte/:network_id/network_probe,
+
+  eps_authentication:
+    host: "localhost"
+    port: 9181
+    proxy_type: "clientcert"
+    echo_port: 10090

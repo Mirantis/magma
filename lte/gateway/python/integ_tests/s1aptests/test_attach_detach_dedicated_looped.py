@@ -32,13 +32,13 @@ class TestAttachDetachDedicatedLooped(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_detach(self):
+    def test_attach_detach_dedicated_looped(self):
         """attach/detach + dedicated bearer test in loop with a single UE"""
         num_ues = 1
         loop = 3
         self._s1ap_wrapper.configUEDevice(num_ues)
 
-        for i in range(num_ues):
+        for _ in range(num_ues):
             req = self._s1ap_wrapper.ue_req
             print(
                 "********************* Running End to End attach for ",
@@ -77,10 +77,7 @@ class TestAttachDetachDedicatedLooped(unittest.TestCase):
                 )
 
                 response = self._s1ap_wrapper.s1_util.get_response()
-                self.assertEqual(
-                    response.msg_type,
-                    s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-                )
+                assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
                 act_ded_ber_ctxt_req = response.cast(
                     s1ap_types.UeActDedBearCtxtReq_t,
                 )
@@ -112,10 +109,7 @@ class TestAttachDetachDedicatedLooped(unittest.TestCase):
                 )
 
                 response = self._s1ap_wrapper.s1_util.get_response()
-                self.assertEqual(
-                    response.msg_type,
-                    s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value,
-                )
+                assert response.msg_type == s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value
 
                 print("************** Received deactivate eps bearer context")
 

@@ -43,18 +43,20 @@ mkdir -p ~/secrets/certs
 cd ~/secrets/certs
 ```
 
-You will need the following certificates and private keys placed in this
-directory
+You will need the following 3 certs
 
-1. The public SSL certificate for your Orchestrator domain,
-with `CN=*.yourdomain.com`. This can be an SSL certificate chain, but it must be
-in one file
-2. The private key which corresponds to the above SSL certificate
-3. The root CA certificate which verifies your SSL certificate
+1. TLS certificate
+   - CN: `yourdomain.com`
+   - SANs
+        - `yourdomain.com`
+        - `*.yourdomain.com`
+        - `*.nms.yourdomain.com`
+2. TLS certificate's private key
+3. TLS certificate's root CA certificate (which signed `controller.crt`)
 
 If you aren't worried about a browser warning, you can generate self-signed
-versions of these certs. Though please note that using trusted certs in
-production deployments is encouraged
+certs. Though please note that using trusted certs in production deployments
+is encouraged
 
 ```bash
 ${MAGMA_ROOT}/orc8r/cloud/deploy/scripts/self_sign_certs.sh yourdomain.com
@@ -62,9 +64,9 @@ ${MAGMA_ROOT}/orc8r/cloud/deploy/scripts/self_sign_certs.sh yourdomain.com
 
 Alternatively, if you already have these certs, rename and move them as follows
 
-1. Rename your public SSL certificate to `controller.crt`
-2. Rename your SSL certificate's private key to `controller.key`
-3. Rename your SSL certificate's root CA certificate to `rootCA.pem`
+1. Rename your public TLS certificate to `controller.crt`
+2. Rename your TLS certificate's private key to `controller.key`
+3. Rename your TLS certificate's root CA certificate to `rootCA.pem`
 4. Put these three files under the directory you created above
 
 Next, with the domain certs placed in the correct directory, generate the
@@ -126,7 +128,6 @@ new `main.tf` file. Follow the example Terraform root module at
 `orc8r/cloud/deploy/terraform/orc8r-helm-aws/examples/basic` but make sure to
 override the following parameters
 
-- `nms_db_password` must be at least 8 characters
 - `orc8r_db_password` must be at least 8 characters
 - `orc8r_domain_name` your registered domain name
 - `seed_certs_dir` local certs directory (e.g. `"~/secrets/certs"`)
@@ -135,7 +136,7 @@ override the following parameters
 - `orc8r_db_engine_version` on fresh Orc8r installs, target Postgres `12.6`
 
 Make sure that the `source` variables for the module definitions point to
-`github.com/magma/magma//orc8r/cloud/deploy/terraform/MODULE?ref=v1.6`.
+`github.com/magma/magma//orc8r/cloud/deploy/terraform/MODULE?ref=v1.8`.
 Adjust any other parameters as you see fit. Check the READMEs for the
 relevant Terraform modules to see additional variables that can be set.
 You can [override values](./deploy_terraform_options.md#override-terraform-module-values)
@@ -182,7 +183,7 @@ file in the same directory as your root Terraform module. To access the
 K8s cluster, either set your KUBECONFIG environment variable to point to this
 file or pull this file into your default kubeconfig file at `~/.kube/config`.
 
-For example, with the [`realpath`](https://linux.die.net/man/1/realpath) utility
+For example, with the realpath utility
 installed, you can set the kubeconfig with
 
 ```bash
@@ -260,11 +261,11 @@ also need to add a new admin user with the updated `admin_operator` cert.
 
 ### Create an NMS Admin User
 
-Create an admin user for the `master` organization on the NMS
+Create an admin user for the `host` organization on the NMS
 
 ```bash
 kubectl --namespace orc8r exec -it deploy/nms-magmalte -- \
-  yarn setAdminPassword master ADMIN_USER_EMAIL ADMIN_USER_PASSWORD
+  yarn setAdminPassword host ADMIN_USER_EMAIL ADMIN_USER_PASSWORD
 ```
 
 ## DNS Resolution
@@ -314,15 +315,14 @@ the form
 ## Verify the Deployment
 
 After a few minutes the NS records should propagate. Confirm successful
-deployment by visiting the master NMS organization at e.g.
-`https://master.nms.yoursubdomain.yourdomain.com` and logging in with the
+deployment by visiting the host NMS organization at e.g.
+`https://host.nms.yoursubdomain.yourdomain.com` and logging in with the
 `ADMIN_USER_EMAIL` and `ADMIN_USER_PASSWORD` provided above.
 
 NOTE: the `https://` is required. If you self-signed certs above, the browser
 will rightfully complain. Either ignore the browser warnings at your own risk
 (some versions of Chrome won't allow this at all), or e.g.
-[import the root CA from above on a per-browser basis
-](https://stackoverflow.com/questions/7580508/getting-chrome-to-accept-self-signed-localhost-certificate).
+[import the root CA from above on a per-browser basis](https://stackoverflow.com/questions/7580508/getting-chrome-to-accept-self-signed-localhost-certificate).
 
 For interacting with the Orchestrator REST API, a good starting point is the
 Swagger UI available at `https://api.yoursubdomain.yourdomain.com/swagger/v1/ui/`.

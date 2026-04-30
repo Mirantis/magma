@@ -15,29 +15,27 @@
  *      contact@openairinterface.org
  */
 
-#include <grpcpp/impl/codegen/status.h>
+#include "lte/gateway/c/core/oai/lib/pcef/pcef_handlers.hpp"
+
 #include <cstring>
 #include <string>
-#include <conversions.h>
-#include <common_defs.h>
+
+#include <grpcpp/impl/codegen/status.h>
+#include "lte/protos/session_manager.pb.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include "common_defs.h"
-#include "log.h"
-
+#include "lte/gateway/c/core/common/common_defs.h"
+#include "lte/gateway/c/core/oai/common/conversions.h"
+#include "lte/gateway/c/core/oai/common/log.h"
+#include "lte/gateway/c/core/oai/lib/itti/itti_types.h"
 #ifdef __cplusplus
 }
 #endif
 
-#include "pcef_handlers.h"
-#include "PCEFClient.h"
-#include "MobilityClientAPI.h"
-#include "itti_types.h"
-#include "lte/protos/session_manager.pb.h"
-#include "spgw_types.h"
+#include "lte/gateway/c/core/oai/lib/pcef/PCEFClient.hpp"
+#include "lte/gateway/c/core/oai/lib/mobility_client/MobilityClientAPI.hpp"
 
 extern task_zmq_ctx_t grpc_service_task_zmq_ctx;
 
@@ -68,8 +66,8 @@ static void pcef_fill_create_session_req(
   lte_context->set_bearer_id(eps_bearer_id);
   lte_context->set_spgw_ipv4(session_data->sgw_ip);
   lte_context->set_plmn_id(session_data->mcc_mnc, session_data->mcc_mnc_len);
-  lte_context->set_imsi_plmn_id(
-      session_data->imsi_mcc_mnc, session_data->imsi_mcc_mnc_len);
+  lte_context->set_imsi_plmn_id(session_data->imsi_mcc_mnc,
+                                session_data->imsi_mcc_mnc_len);
   auto cc = session_data->charging_characteristics;
   if (cc.length > 0) {
     OAILOG_DEBUG(LOG_SPGW_APP, "Sending Charging Characteristics to PCEF");
@@ -101,14 +99,17 @@ static void pcef_fill_create_session_req(
 status_code_e send_itti_pcef_create_session_response(
     const std::string& imsi, s5_create_session_request_t session_request,
     const grpc::Status& status) {
+#if MME_UNIT_TEST
+  return RETURNok;
+#endif
   MessageDef* message_p = nullptr;
 
   message_p =
       itti_alloc_new_message(TASK_GRPC_SERVICE, PCEF_CREATE_SESSION_RESPONSE);
 
   if (!message_p) {
-    OAILOG_ERROR(
-        LOG_UTIL, "Message PCEF Create Session Response allocation failed\n");
+    OAILOG_ERROR(LOG_UTIL,
+                 "Message PCEF Create Session Response allocation failed\n");
     return RETURNerror;
   }
 
@@ -120,9 +121,9 @@ status_code_e send_itti_pcef_create_session_response(
     pcef_create_session_resp_p->rpc_status = PCEF_STATUS_FAILED;
   }
 
-  pcef_create_session_resp_p->teid          = session_request.context_teid;
+  pcef_create_session_resp_p->teid = session_request.context_teid;
   pcef_create_session_resp_p->eps_bearer_id = session_request.eps_bearer_id;
-  pcef_create_session_resp_p->sgi_status    = session_request.status;
+  pcef_create_session_resp_p->sgi_status = session_request.status;
 
   IMSI_STRING_TO_IMSI64(imsi.c_str(), &message_p->ittiMsgHeader.imsi);
 
@@ -130,11 +131,9 @@ status_code_e send_itti_pcef_create_session_response(
   return send_msg_to_task(&grpc_service_task_zmq_ctx, TASK_SPGW_APP, message_p);
 }
 
-void pcef_create_session(
-    const char* imsi, const char* ip4, const char* ip6,
-    const pcef_create_session_data* session_data,
-    s5_create_session_request_t session_request) {
-  auto imsi_str = std::string(imsi);
+void pcef_create_session(std::string imsi_str, const char* ip4, const char* ip6,
+                         const pcef_create_session_data* session_data,
+                         s5_create_session_request_t session_request) {
   std::string ip4_str, ip6_str;
 
   if (ip4) {
@@ -145,9 +144,9 @@ void pcef_create_session(
   }
   // Change ip to spgw_ip. Get it from sgw_app_t sgw_app;
   magma::LocalCreateSessionRequest sreq;
-  pcef_fill_create_session_req(
-      imsi_str, ip4_str, ip6_str, session_request.eps_bearer_id, session_data,
-      &sreq);
+  pcef_fill_create_session_req(imsi_str, ip4_str, ip6_str,
+                               session_request.eps_bearer_id, session_data,
+                               &sreq);
 
   auto apn = std::string(session_data->apn);
   // call the `CreateSession` gRPC method and execute the inline function
@@ -155,14 +154,14 @@ void pcef_create_session(
       sreq, [imsi_str, session_request](
                 const grpc::Status& status,
                 const magma::LocalCreateSessionResponse& response) {
-        send_itti_pcef_create_session_response(
-            imsi_str, session_request, status);
+        send_itti_pcef_create_session_response(imsi_str, session_request,
+                                               status);
       });
 }
 
-bool pcef_end_session(char* imsi, char* apn) {
+bool pcef_end_session(const std::string imsi, const std::string apn) {
   magma::LocalEndSessionRequest request;
-  request.mutable_sid()->set_id("IMSI" + std::string(imsi));
+  request.mutable_sid()->set_id("IMSI" + imsi);
   request.set_apn(apn);
   magma::PCEFClient::end_session(
       request,
@@ -172,10 +171,12 @@ bool pcef_end_session(char* imsi, char* apn) {
   return true;
 }
 
-void pcef_send_policy2bearer_binding(
-    const char* imsi, const uint8_t default_bearer_id,
-    const char* policy_rule_name, const uint8_t eps_bearer_id,
-    const uint32_t eps_bearer_agw_teid, const uint32_t eps_bearer_enb_teid) {
+void pcef_send_policy2bearer_binding(const char* imsi,
+                                     const uint8_t default_bearer_id,
+                                     const char* policy_rule_name,
+                                     const uint8_t eps_bearer_id,
+                                     const uint32_t eps_bearer_agw_teid,
+                                     const uint32_t eps_bearer_enb_teid) {
   magma::PolicyBearerBindingRequest request;
   request.mutable_sid()->set_id("IMSI" + std::string(imsi));
   request.set_linked_bearer_id(default_bearer_id);
@@ -190,9 +191,11 @@ void pcef_send_policy2bearer_binding(
       });
 }
 
-void pcef_update_teids(
-    const char* imsi, uint8_t default_bearer_id, uint32_t enb_teid,
-    uint32_t agw_teid) {
+void pcef_update_teids(const char* imsi, uint8_t default_bearer_id,
+                       uint32_t enb_teid, uint32_t agw_teid) {
+#if MME_UNIT_TEST
+  return;
+#endif
   magma::UpdateTunnelIdsRequest request;
   request.mutable_sid()->set_id("IMSI" + std::string(imsi));
   request.set_bearer_id(default_bearer_id);
@@ -200,8 +203,36 @@ void pcef_update_teids(
   request.set_agw_teid(agw_teid);
 
   magma::PCEFClient::update_teids(
-      request, [&](grpc::Status status,
-                   magma::UpdateTunnelIdsResponse response) { return; });
+      request,
+      [request](grpc::Status status, magma::UpdateTunnelIdsResponse response) {
+        if (status.error_code() == grpc::ABORTED) {
+#if MME_UNIT_TEST
+          return;
+#endif
+          MessageDef* message_p = DEPRECATEDitti_alloc_new_message_fatal(
+              TASK_GRPC_SERVICE, GX_NW_INITIATED_DEACTIVATE_BEARER_REQ);
+          itti_gx_nw_init_deactv_bearer_request_t* itti_msg =
+              &message_p->ittiMsg.gx_nw_init_deactv_bearer_request;
+          std::string imsi = request.sid().id();
+          OAILOG_INFO(
+              LOG_UTIL,
+              "Received grpc::ABORTED for update_teids RPC for %s with error "
+              "msg: %s. Deactivating bearer %u.",
+              imsi.c_str(), status.error_message().c_str(),
+              request.bearer_id());
+          // strip off "IMSI" prefix
+          imsi = imsi.substr(4, std::string::npos);
+          itti_msg->imsi_length = imsi.size();
+          strcpy(itti_msg->imsi, imsi.c_str());
+          itti_msg->lbi = request.bearer_id();
+          itti_msg->no_of_bearers = 1;
+          itti_msg->ebi[0] = request.bearer_id();
+          send_msg_to_task(&grpc_service_task_zmq_ctx, TASK_SPGW_APP,
+                           message_p);
+        }
+
+        return;
+      });
 }
 
 /*
@@ -223,36 +254,35 @@ char convert_digit_to_char(char digit) {
   }
 }
 
-static void get_plmn_from_session_req(
-    const itti_s11_create_session_request_t* saved_req,
-    struct pcef_create_session_data* data) {
-  data->mcc_mnc[0]  = convert_digit_to_char(saved_req->serving_network.mcc[0]);
-  data->mcc_mnc[1]  = convert_digit_to_char(saved_req->serving_network.mcc[1]);
-  data->mcc_mnc[2]  = convert_digit_to_char(saved_req->serving_network.mcc[2]);
-  data->mcc_mnc[3]  = convert_digit_to_char(saved_req->serving_network.mnc[0]);
-  data->mcc_mnc[4]  = convert_digit_to_char(saved_req->serving_network.mnc[1]);
-  data->mcc_mnc_len = 5;
+void get_plmn_from_session_req(
+    const itti_s11_create_session_request_t* saved_req, char* mcc_mnc) {
+  mcc_mnc[0] = convert_digit_to_char(saved_req->serving_network.mcc[0]);
+  mcc_mnc[1] = convert_digit_to_char(saved_req->serving_network.mcc[1]);
+  mcc_mnc[2] = convert_digit_to_char(saved_req->serving_network.mcc[2]);
+  mcc_mnc[3] = convert_digit_to_char(saved_req->serving_network.mnc[0]);
+  mcc_mnc[4] = convert_digit_to_char(saved_req->serving_network.mnc[1]);
+  int mcc_mnc_len = 5;
   if ((saved_req->serving_network.mnc[2] & 0xf) != 0xf) {
-    data->mcc_mnc[5] = convert_digit_to_char(saved_req->serving_network.mnc[2]);
-    data->mcc_mnc[6] = '\0';
-    data->mcc_mnc_len += 1;
+    mcc_mnc[5] = convert_digit_to_char(saved_req->serving_network.mnc[2]);
+    mcc_mnc[6] = '\0';
+    mcc_mnc_len += 1;
   } else {
-    data->mcc_mnc[5] = '\0';
+    mcc_mnc[5] = '\0';
   }
 }
 
-static void get_imsi_plmn_from_session_req(
-    const itti_s11_create_session_request_t* saved_req,
-    struct pcef_create_session_data* data) {
-  data->imsi_mcc_mnc[0]  = convert_digit_to_char(saved_req->imsi.digit[0]);
-  data->imsi_mcc_mnc[1]  = convert_digit_to_char(saved_req->imsi.digit[1]);
-  data->imsi_mcc_mnc[2]  = convert_digit_to_char(saved_req->imsi.digit[2]);
-  data->imsi_mcc_mnc[3]  = convert_digit_to_char(saved_req->imsi.digit[3]);
-  data->imsi_mcc_mnc[4]  = convert_digit_to_char(saved_req->imsi.digit[4]);
+void get_imsi_plmn_from_session_req(const std::string imsi,
+                                    struct pcef_create_session_data* data) {
+  const char* imsi_digit = imsi.c_str();
+  data->imsi_mcc_mnc[0] = convert_digit_to_char(imsi_digit[0]);
+  data->imsi_mcc_mnc[1] = convert_digit_to_char(imsi_digit[1]);
+  data->imsi_mcc_mnc[2] = convert_digit_to_char(imsi_digit[2]);
+  data->imsi_mcc_mnc[3] = convert_digit_to_char(imsi_digit[3]);
+  data->imsi_mcc_mnc[4] = convert_digit_to_char(imsi_digit[4]);
   data->imsi_mcc_mnc_len = 5;
-  // Check if 2 or 3 digit by verifying mnc[2] has a valid value
-  if ((saved_req->serving_network.mnc[2] & 0xf) != 0xf) {
-    data->imsi_mcc_mnc[5] = convert_digit_to_char(saved_req->imsi.digit[5]);
+  // Check the mcc_mnc_len which is deocoded from serving network mnc value
+  if (data->mcc_mnc_len == 6) {
+    data->imsi_mcc_mnc[5] = convert_digit_to_char(imsi_digit[5]);
     data->imsi_mcc_mnc[6] = '\0';
     data->imsi_mcc_mnc_len += 1;
   } else {
@@ -260,7 +290,7 @@ static void get_imsi_plmn_from_session_req(
   }
 }
 
-static int get_uli_from_session_req(
+bool get_uli_from_session_req(
     const itti_s11_create_session_request_t* saved_req, char* uli) {
   if (!saved_req->uli.present) {
     return 0;
@@ -285,27 +315,30 @@ static int get_uli_from_session_req(
            ((saved_req->uli.s.ecgi.plmn.mcc_digit3 & 0xf));
   uli[8] = ((saved_req->uli.s.ecgi.plmn.mnc_digit2 & 0xf) << 4) |
            ((saved_req->uli.s.ecgi.plmn.mnc_digit1 & 0xf));
-  uli[9]  = (saved_req->uli.s.ecgi.cell_identity.enb_id >> 16) & 0xf;
+  uli[9] = (saved_req->uli.s.ecgi.cell_identity.enb_id >> 16) & 0xf;
   uli[10] = (saved_req->uli.s.ecgi.cell_identity.enb_id >> 8) & 0xff;
   uli[11] = saved_req->uli.s.ecgi.cell_identity.enb_id & 0xff;
   uli[12] = saved_req->uli.s.ecgi.cell_identity.cell_id & 0xff;
   uli[13] = '\0';
 
   char hex_uli[3 * ULI_DATA_SIZE + 1];
-  OAILOG_DEBUG(
-      LOG_SPGW_APP, "Session request ULI %s",
-      bytes_to_hex(uli, ULI_DATA_SIZE, hex_uli));
+  OAILOG_DEBUG(LOG_SPGW_APP, "Session request ULI %s",
+               bytes_to_hex(uli, ULI_DATA_SIZE, hex_uli));
   return 1;
 }
 
 int get_msisdn_from_session_req(
     const itti_s11_create_session_request_t* saved_req, char* msisdn) {
   int len = saved_req->msisdn.length;
+  if (len == 0) {
+    return len;
+  }
+
   int i, j;
 
   for (i = 0; i < len; ++i) {
-    j             = i << 1;
-    msisdn[j]     = (saved_req->msisdn.digit[i] & 0xf) + '0';
+    j = i << 1;
+    msisdn[j] = (saved_req->msisdn.digit[i] & 0xf) + '0';
     msisdn[j + 1] = ((saved_req->msisdn.digit[i] >> 4) & 0xf) + '0';
   }
   if ((saved_req->msisdn.digit[len - 1] & 0xf0) == 0xf0) {
@@ -316,63 +349,47 @@ int get_msisdn_from_session_req(
   return len;
 }
 
+void convert_imeisv_to_string(char* imeisv) {
+  OAILOG_FUNC_IN(LOG_SGW_S8);
+  uint8_t idx = 0;
+  for (; idx < IMEISV_DIGITS_MAX; idx++) {
+    imeisv[idx] = convert_digit_to_char(imeisv[idx]);
+  }
+  imeisv[idx] = '\0';
+
+  OAILOG_FUNC_OUT(LOG_SGW_S8);
+}
+
 int get_imeisv_from_session_req(
     const itti_s11_create_session_request_t* saved_req, char* imeisv) {
   if (saved_req->mei.present & MEI_IMEISV) {
     // IMEISV as defined in 3GPP TS 23.003 MEI_IMEISV
-    imeisv[0]                 = saved_req->mei.choice.imeisv.u.num.tac8;
-    imeisv[1]                 = saved_req->mei.choice.imeisv.u.num.tac7;
-    imeisv[2]                 = saved_req->mei.choice.imeisv.u.num.tac6;
-    imeisv[3]                 = saved_req->mei.choice.imeisv.u.num.tac5;
-    imeisv[4]                 = saved_req->mei.choice.imeisv.u.num.tac4;
-    imeisv[5]                 = saved_req->mei.choice.imeisv.u.num.tac3;
-    imeisv[6]                 = saved_req->mei.choice.imeisv.u.num.tac2;
-    imeisv[7]                 = saved_req->mei.choice.imeisv.u.num.tac1;
-    imeisv[8]                 = saved_req->mei.choice.imeisv.u.num.snr6;
-    imeisv[9]                 = saved_req->mei.choice.imeisv.u.num.snr5;
-    imeisv[10]                = saved_req->mei.choice.imeisv.u.num.snr4;
-    imeisv[11]                = saved_req->mei.choice.imeisv.u.num.snr3;
-    imeisv[12]                = saved_req->mei.choice.imeisv.u.num.snr2;
-    imeisv[13]                = saved_req->mei.choice.imeisv.u.num.snr1;
-    imeisv[14]                = saved_req->mei.choice.imeisv.u.num.svn2;
-    imeisv[15]                = saved_req->mei.choice.imeisv.u.num.svn1;
+    imeisv[0] = saved_req->mei.choice.imeisv.u.num.tac1;
+    imeisv[1] = saved_req->mei.choice.imeisv.u.num.tac2;
+    imeisv[2] = saved_req->mei.choice.imeisv.u.num.tac3;
+    imeisv[3] = saved_req->mei.choice.imeisv.u.num.tac4;
+    imeisv[4] = saved_req->mei.choice.imeisv.u.num.tac5;
+    imeisv[5] = saved_req->mei.choice.imeisv.u.num.tac6;
+    imeisv[6] = saved_req->mei.choice.imeisv.u.num.tac7;
+    imeisv[7] = saved_req->mei.choice.imeisv.u.num.tac8;
+    imeisv[8] = saved_req->mei.choice.imeisv.u.num.snr1;
+    imeisv[9] = saved_req->mei.choice.imeisv.u.num.snr2;
+    imeisv[10] = saved_req->mei.choice.imeisv.u.num.snr3;
+    imeisv[11] = saved_req->mei.choice.imeisv.u.num.snr4;
+    imeisv[12] = saved_req->mei.choice.imeisv.u.num.snr5;
+    imeisv[13] = saved_req->mei.choice.imeisv.u.num.snr6;
+    imeisv[14] = saved_req->mei.choice.imeisv.u.num.svn1;
+    imeisv[15] = saved_req->mei.choice.imeisv.u.num.svn2;
     imeisv[IMEISV_DIGITS_MAX] = '\0';
-
     return 1;
   }
   return 0;
 }
 
-void get_session_req_data(
-    spgw_state_t* spgw_state,
-    const itti_s11_create_session_request_t* saved_req,
-    struct pcef_create_session_data* data) {
-  const bearer_qos_t* qos;
+bool pcef_delete_dedicated_bearer(const char* imsi, const ebi_list_t ebi_list) {
+  auto imsi_str = std::string(imsi);
 
-  data->msisdn_len = get_msisdn_from_session_req(saved_req, data->msisdn);
-
-  data->imeisv_exists = get_imeisv_from_session_req(saved_req, data->imeisv);
-  data->uli_exists    = get_uli_from_session_req(saved_req, data->uli);
-  get_plmn_from_session_req(saved_req, data);
-  get_imsi_plmn_from_session_req(saved_req, data);
-  memcpy(
-      &data->charging_characteristics, &saved_req->charging_characteristics,
-      sizeof(charging_characteristics_t));
-
-  memcpy(data->apn, saved_req->apn, APN_MAX_LENGTH + 1);
-  data->pdn_type = saved_req->pdn_type;
-
-  inet_ntop(
-      AF_INET, &spgw_state->sgw_ip_address_S1u_S12_S4_up, data->sgw_ip,
-      INET_ADDRSTRLEN);
-
-  // QoS Info
-  data->ambr_dl = saved_req->ambr.br_dl;
-  data->ambr_ul = saved_req->ambr.br_ul;
-  qos           = &saved_req->bearer_contexts_to_be_created.bearer_contexts[0]
-             .bearer_level_qos;
-  data->pl  = qos->pl;
-  data->pci = qos->pci;
-  data->pvi = qos->pvi;
-  data->qci = qos->qci;
+  // TODO(pruthvihebbani) : Send grpc message to session manager to delete
+  // dedicated bearer
+  return true;
 }

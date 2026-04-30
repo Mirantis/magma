@@ -20,15 +20,16 @@ option go_package = "magma/lte/cloud/go/protos/mconfig";
 
 // --------------------------------------------------------------------------
 // SentryConfig stores the network-wide Sentry.io configuration
+// TODO(hcgatewood): remove this after 1.7 release, duplicated in the shared_mconfig
 // --------------------------------------------------------------------------
 message SentryConfig {
-    // url_python initializes the Sentry Python SDK and sets the remote URL.
+    // dsn_python initializes the Sentry Python SDK and sets the remote URL.
     // If set to empty string, Sentry Python SDK will not be initialized.
-    string url_python = 1;
-    // url_native initializes the Sentry Native SDK for C/C++ and sets the
+    string dsn_python = 1;
+    // dsn_native initializes the Sentry Native SDK for C/C++ and sets the
     // remote URL. If set to empty string, Sentry Native SDK will not be
     // initialized.
-    string url_native = 2;
+    string dsn_native = 2;
     // upload_mme_log decides whether MME service log file (/var/log/mme.log)
     // is uploaded along with MME crashreports
     bool upload_mme_log = 3;
@@ -36,6 +37,11 @@ message SentryConfig {
     // sample_rate should be a number between 0 (0% of errors sent) and 1 (100%
     // of errors sent)
     float sample_rate = 4;
+    // message patterns that are excluded from Sentry (regex substring match)
+    repeated string exclusion_patterns = 5;
+    // number_of_lines_in_log defines the number of lines from the 
+    // journal log that is uploaded with every crash report
+    uint32 number_of_lines_in_log = 6;
 }
 
 //------------------------------------------------------------------------------
@@ -175,6 +181,11 @@ message PipelineD {
     bool enable5g_features = 18;
     string upf_node_identifier = 19;
 
+    // SGi management IPv6 address with network mask
+    string sgi_management_iface_ipv6_addr = 20;
+    // IPv6 address of SGi management network GW
+    string sgi_management_iface_ipv6_gw = 21;
+
     // DEPRECATED
     reserved 4, 11;
 }
@@ -190,8 +201,9 @@ message SessionD {
     WalletExhaustDetection wallet_exhaust_detection = 3;
     // Enable relaying Gx/Gy messages via FeG RPC
     bool gx_gy_relay_enabled = 4;
+    // DEPRECATED: now configured in "shared_mconfig"
     // sentry_config stores the Sentry.io configuration for this service
-    SentryConfig sentry_config = 5;
+    SentryConfig sentry_config = 5 [deprecated = true];
 
     // Enables 5G Standalone (SA) at a network level
     bool enable5g_features = 6;
@@ -359,17 +371,18 @@ message MME {
     // MME congestion control configs
     bool congestion_control_enabled = 40;
 
+    // DEPRECATED: now configured in "shared_mconfig"
     // sentry_config stores the Sentry.io configuration for this service
-    SentryConfig sentry_config = 45;
+    SentryConfig sentry_config = 45 [deprecated = true];
 
     // Enables 5G Standalone (SA) at a network level
     bool enable5g_features = 46;
 
     // AMF Slice Service Type (SST)
-    string default_slice_service_type = 47;
+    uint32 amf_default_slice_service_type = 47;
 
     // AMF Slice Descriptor (SD)
-    string default_slice_differentiator = 48;
+    string amf_default_slice_differentiator = 48;
 
     // AMF Name
     string amf_name = 50;
@@ -382,6 +395,9 @@ message MME {
 
     // AMF pointer
     string amf_pointer = 53;
+
+    // SGW S1U ipv6 endpoint on AGW
+    string ipv6_sgw_s1u_addr = 54;
 }
 
 message FederatedModeMap {
@@ -515,4 +531,16 @@ message AgwD {
   string sctpd_upstream_service_target = 3;
   string mme_sctpd_downstream_service_target = 4;
   string mme_sctpd_upstream_service_target = 5;
+
+  // Sentry Client Options.
+  // The DSN to use. If the data source name is not set, the client is effectively
+  // disabled.
+  string sentry_dsn = 6;
+}
+
+//------------------------------------------------------------------------------
+// SctpD configs
+//------------------------------------------------------------------------------
+message SctpD {
+  orc8r.LogLevel log_level = 1;
 }

@@ -40,13 +40,6 @@ class TestRestoreConfigAfterNonSanity(unittest.TestCase):
             ),
         )
 
-        print("Disabling IPv6 solicitation service")
-        ret_codes.append(
-            self._magmad_util.config_ipv6_solicitation(
-                MagmadUtil.ipv6_config_cmds.DISABLE,
-            ),
-        )
-
         print(
             "Restoring MME configuration to default values using backup "
             "configuration file",
@@ -56,7 +49,7 @@ class TestRestoreConfigAfterNonSanity(unittest.TestCase):
         )
 
         print("Restarting services to apply configuration change")
-        self._magmad_util.restart_all_services()
+        self._magmad_util.restart_magma_services()
 
 
 if __name__ == "__main__":

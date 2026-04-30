@@ -25,17 +25,17 @@ import (
 	"sync"
 	"time"
 
-	"fbc/lib/go/radius"
-	"fbc/lib/go/radius/rfc2869"
 	"magma/cwf/cloud/go/protos"
 	"magma/cwf/gateway/registry"
 	"magma/cwf/gateway/services/uesim"
 	"magma/feg/gateway/services/eap"
-	"magma/lte/cloud/go/crypto"
 	"magma/orc8r/cloud/go/tools/commands"
 	"magma/orc8r/lib/go/service/config"
 
 	"github.com/golang/glog"
+	"github.com/magma/milenage"
+	"layeh.com/radius"
+	"layeh.com/radius/rfc2869"
 )
 
 const (
@@ -275,7 +275,7 @@ func getConfiguredSubscribers(params ...string) ([]*protos.UEConfig, error) {
 			if !ok {
 				continue
 			}
-			configMap := &config.ConfigMap{RawMap: subscriberCfg}
+			configMap := &config.Map{RawMap: subscriberCfg}
 
 			ue, err := createUeConfig(imsi, 0, configMap)
 			if err != nil {
@@ -289,7 +289,7 @@ func getConfiguredSubscribers(params ...string) ([]*protos.UEConfig, error) {
 	return ues, nil
 }
 
-func createUeConfig(imsi string, seq_num uint64, configMap *config.ConfigMap) (*protos.UEConfig, error) {
+func createUeConfig(imsi string, seq_num uint64, configMap *config.Map) (*protos.UEConfig, error) {
 	var op string
 	var msisdn, apn string = DefaultMsisdn, DefaultApn
 	var rat int = DefaultRatType
@@ -311,7 +311,7 @@ func createUeConfig(imsi string, seq_num uint64, configMap *config.ConfigMap) (*
 	if err != nil {
 		return nil, fmt.Errorf("Could not add subscriber due to incorrect auth key format: %s", err)
 	}
-	opc, err := crypto.GenerateOpc(authKeyBytes, []byte(op))
+	opc, err := milenage.GenerateOpc(authKeyBytes, []byte(op))
 	if err != nil {
 		return nil, fmt.Errorf("could not generate OPc for subscriber: %s: %s", imsi, err)
 	}

@@ -132,27 +132,44 @@ message UeContext {
   uint32 granted_service = 100; // granted_service_t
   uint32 cs_fallback_indicator = 101;
   SgsContext sgs_context = 102;
+  uint32 tau_accept_eps_ber_cntx_status = 103;
+  uint32 nb_delete_sessions = 104;
+  uint32 nb_delete_bearer_cmd = 105;
+  bool mme_initiated_ded_bearer_deactivation = 106;
+  uint32 nb_rabs = 107;
 
-  Timer mobile_reachability_timer = 200;
-  Timer implicit_detach_timer = 201;
-  Timer initial_context_setup_rsp_timer =202;
-  Timer ue_context_modification_timer = 203;
-  Timer paging_response_timer = 204;
+  Timer mobile_reachability_timer = 200 [deprecated=true];
+  Timer implicit_detach_timer = 201 [deprecated=true];
+  Timer initial_context_setup_rsp_timer =202 [deprecated=true];
+  Timer ue_context_modification_timer = 203 [deprecated=true];
+  Timer paging_response_timer = 204 [deprecated=true];
   uint32 rau_tau_timer = 205;
-  Timer ulr_response_timer = 206;
+  Timer ulr_response_timer = 206 [deprecated=true];
   google.protobuf.Timestamp time_mobile_reachability_timer_started = 207;
   google.protobuf.Timestamp time_implicit_detach_timer_started = 208;
   google.protobuf.Timestamp time_paging_response_timer_started = 209;
   uint32 paging_retx_count = 210;
   google.protobuf.Timestamp time_ics_rsp_timer_started = 211;
+
+  // 5G protos
+  // AMF UE NGAP ID, Unique identity of UE within AMF
+  uint32 amf_ue_ngap_id = 221;
+  // UEContextRequest in  INITIAL UE MESSAGE
+  uint32 ue_context_request = 222;
+  uint32 gnb_ue_ngap_id = 223;
+  uint64 gnb_ngap_id_key = 224;
+  uint32 amf_teid_n11 = 225; //teid_t
 }
 
 // mme_ue_context_t
 message MmeUeContext {
   map<uint64, uint64> imsi_ue_id_htbl = 4;  // imsi -> mme_ue_id
-  map<uint64, uint64> tun11_ue_id_htbl = 5; // tun_id -> mme_ue_id
-  map<uint64, uint64> enb_ue_id_ue_id_htbl = 7; // enb_ue_id -> mme_ue_id
+  map<uint64, uint64> tun11_ue_id_htbl = 5 [deprecated=true]; // tun_id -> mme_ue_id
+  map<uint64, uint64> enb_ue_id_ue_id_htbl = 7 [deprecated=true]; // enb_ue_id -> mme_ue_id
   map<string, uint64> guti_ue_id_htbl = 8; // guti -> mme_ue_id
+  map<uint64, uint32> imsi_ue_id_map = 9;  // imsi -> mme_ue_id
+  map<uint32, uint32> s11_teid_ueid_map = 10; // tun_id -> mme_ue_id
+  map<uint64, uint32> enb_ue_s1ap_key_ue_id_map = 11; // enb_ue_id_key -> mme_ue_id
 }
 
 // mme_app_desc_t
@@ -170,6 +187,7 @@ message MmeNasState {
   uint32 nb_ue_since_last_stat = 11; //TODO: remove
   uint32 nb_bearers_since_last_stat = 12; //TODO: remove
   uint32 mme_app_ue_s1ap_id_generator = 20;
+  uint32 nb_pdu_sessions = 21;
 }
 
 message imsi_list {

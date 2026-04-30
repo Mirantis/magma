@@ -1,3 +1,16 @@
+/*
+ * Copyright 2020 The Magma Authors.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package handlers
 
 import (
@@ -9,14 +22,13 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/labstack/echo"
-	"github.com/pkg/errors"
+	"github.com/labstack/echo/v4"
 	"github.com/prometheus/alertmanager/api/v2/client/silence"
 	"github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/prometheus/alertmanager/pkg/parse"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"magma/orc8r/cloud/go/obsidian"
+	"magma/orc8r/cloud/go/services/obsidian"
 	"magma/orc8r/lib/go/metrics"
 )
 
@@ -65,7 +77,7 @@ func GetDeleteSilencerHandler(alertmanagerURL string, client HttpClient) func(c 
 func postSilencer(networkID, silencerURL string, c echo.Context, client HttpClient) error {
 	silencer, err := buildSilencerFromContext(c)
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusBadRequest)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	isRegex := false
@@ -79,23 +91,23 @@ func postSilencer(networkID, silencerURL string, c echo.Context, client HttpClie
 
 	newSilencerBytes, err := json.Marshal(silencer)
 	if err != nil {
-		return obsidian.HttpError(errors.Wrap(err, "make silencer"), http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("make silencer: %v", err))
 	}
 
 	resp, err := client.Post(silencerURL, "application/json", bytes.NewBuffer(newSilencerBytes))
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
-		return obsidian.HttpError(fmt.Errorf("error posting silencer: %s", respBody), resp.StatusCode)
+		return echo.NewHTTPError(resp.StatusCode, fmt.Sprintf("error posting silencer: %s", respBody))
 	}
 	var silenceResponse silence.PostSilencesOKBody
 	err = json.NewDecoder(resp.Body).Decode(&silenceResponse)
 	if err != nil {
-		return obsidian.HttpError(fmt.Errorf("error decoding alertmanager response: %v", err), http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("error decoding alertmanager response: %v", err))
 	}
 	return c.String(http.StatusOK, silenceResponse.SilenceID)
 }
@@ -103,13 +115,13 @@ func postSilencer(networkID, silencerURL string, c echo.Context, client HttpClie
 func getSilencers(networkID, silencerURL string, c echo.Context, client HttpClient) error {
 	filters, err := parse.Matchers(c.QueryParam(filterParam))
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusBadRequest)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	filters = append(filters, &labels.Matcher{Type: labels.MatchEqual, Name: metrics.NetworkLabelName, Value: networkID})
 
 	filteredURL, err := url.Parse(silencerURL)
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	q := filteredURL.Query()
@@ -118,19 +130,19 @@ func getSilencers(networkID, silencerURL string, c echo.Context, client HttpClie
 
 	resp, err := client.Get(filteredURL.String())
 	if err != nil {
-		return obsidian.HttpError(fmt.Errorf("error getting silences: %v", err), http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("error getting silences: %v", err))
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
-		return obsidian.HttpError(fmt.Errorf("error getting silences: %s", respBody), resp.StatusCode)
+		return echo.NewHTTPError(resp.StatusCode, fmt.Sprintf("error getting silences: %s", respBody))
 	}
 
 	var silencers []models.GettableSilence
 	err = json.NewDecoder(resp.Body).Decode(&silencers)
 	if err != nil {
-		return obsidian.HttpError(fmt.Errorf("error decoding server response: %v", err), http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("error decoding server response: %v", err))
 	}
 
 	// Alertmanager API doesn't implement filtering on status so we have to do
@@ -161,17 +173,17 @@ func getSilencers(networkID, silencerURL string, c echo.Context, client HttpClie
 func deleteSilencer(silenceID, silencerURL string, c echo.Context, client HttpClient) error {
 	req, err := http.NewRequest(http.MethodDelete, silencerURL+"/"+silenceID, nil)
 	if err != nil {
-		return obsidian.HttpError(err, http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return obsidian.HttpError(fmt.Errorf("error deleting silence: %v", err), http.StatusInternalServerError)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("error deleting silence: %v", err))
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
-		return obsidian.HttpError(fmt.Errorf("error deleting silence: %s", respBody), resp.StatusCode)
+		return echo.NewHTTPError(resp.StatusCode, fmt.Sprintf("error deleting silence: %s", respBody))
 	}
 	return c.NoContent(http.StatusOK)
 }

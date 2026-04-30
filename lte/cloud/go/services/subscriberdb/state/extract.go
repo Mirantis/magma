@@ -15,10 +15,10 @@ package state
 
 import (
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"net"
 	"regexp"
-
-	"github.com/pkg/errors"
 
 	"magma/orc8r/cloud/go/services/state"
 )
@@ -34,12 +34,14 @@ var (
 
 // GetAssignedIPAddress extracts the IP address from a mobilityd state element.
 // We expect something along the lines of:
-// {
-//   "state": "ALLOCATED",
-//   "sid": {"id": "IMSI001010000000001.magma.ipv4"},
-//   "ipBlock": {"netAddress": "wKiAAA==", "prefixLen": 24},
-//   "ip": {"address": "wKiArg=="}
-//  }
+//
+//	{
+//	  "state": "ALLOCATED",
+//	  "sid": {"id": "IMSI001010000000001.magma.ipv4"},
+//	  "ipBlock": {"netAddress": "wKiAAA==", "prefixLen": 24},
+//	  "ip": {"address": "wKiArg=="}
+//	 }
+//
 // The IP addresses are base64 encoded versions of the packed bytes
 func GetAssignedIPAddress(mobilitydState state.ArbitraryJSON) (string, error) {
 	ipField, ipExists := mobilitydState["ip"]
@@ -67,7 +69,7 @@ func GetAssignedIPAddress(mobilitydState state.ArbitraryJSON) (string, error) {
 func GetIMSIAndAPNFromMobilitydStateKey(key string) (string, string, error) {
 	matches := imsiAPNRegex.FindStringSubmatch(key)
 	if len(matches) != imsiAPNExpectedMatchCount {
-		return "", "", errors.Errorf("mobilityd state key %s did not match regex", key)
+		return "", "", fmt.Errorf("mobilityd state key %s did not match regex", key)
 	}
 	imsi, apn := matches[1], matches[2]
 	return imsi, apn, nil
@@ -76,10 +78,10 @@ func GetIMSIAndAPNFromMobilitydStateKey(key string) (string, string, error) {
 func base64DecodeIPAddress(encodedIP string) (string, error) {
 	ipBytes, err := base64.StdEncoding.DecodeString(encodedIP)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to decode mobilityd IP address")
+		return "", fmt.Errorf("failed to decode mobilityd IP address: %w", err)
 	}
 	if len(ipBytes) != 4 {
-		return "", errors.Errorf("expected IP address to decode to 4 bytes, got %d", len(ipBytes))
+		return "", fmt.Errorf("expected IP address to decode to 4 bytes, got %d", len(ipBytes))
 	}
 	return net.IPv4(ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3]).String(), nil
 }

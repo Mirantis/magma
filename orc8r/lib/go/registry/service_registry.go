@@ -18,7 +18,6 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/pkg/errors"
 
 	"magma/orc8r/lib/go/service/config"
 )
@@ -70,7 +69,7 @@ func LoadServiceRegistryConfigs() ([]ServiceLocation, error) {
 		}
 		locations, err := convertToServiceLocations(rawMap)
 		if err != nil {
-			return nil, errors.Wrapf(err, "load service registry for %s:%s.yml", module, serviceRegistryFilename)
+			return nil, fmt.Errorf("load service registry for %s:%s.yml: %w", module, serviceRegistryFilename, err)
 		}
 		ret = append(ret, locations...)
 	}
@@ -78,7 +77,7 @@ func LoadServiceRegistryConfigs() ([]ServiceLocation, error) {
 	return ret, nil
 }
 
-func getRawMap(serviceRegistry *config.ConfigMap) (map[interface{}]interface{}, error) {
+func getRawMap(serviceRegistry *config.Map) (map[interface{}]interface{}, error) {
 	services, ok := serviceRegistry.RawMap["services"]
 	if !ok {
 		return nil, fmt.Errorf("the field services does not exist")
@@ -103,7 +102,7 @@ func convertToServiceLocations(rawMap rawMapType) ([]ServiceLocation, error) {
 		}
 
 		// Get host
-		configMap := &config.ConfigMap{RawMap: rawMap}
+		configMap := &config.Map{RawMap: rawMap}
 		host, err := configMap.GetString("host")
 		if err != nil {
 			// Check old/py format: 'ip_address'
@@ -117,6 +116,12 @@ func convertToServiceLocations(rawMap rawMapType) ([]ServiceLocation, error) {
 		port, err := configMap.GetInt("port")
 		if err != nil {
 			return nil, err
+		}
+
+		// Get protected port
+		protectedPort, err := configMap.GetInt("protected_port")
+		if err != nil {
+			glog.V(1).Infof("service %s does not have a protected port", name)
 		}
 
 		// Get echo port
@@ -143,13 +148,14 @@ func convertToServiceLocations(rawMap rawMapType) ([]ServiceLocation, error) {
 		proxyAliases := getProxyAliases(rawMap)
 
 		location := ServiceLocation{
-			Name:         strings.ToUpper(name),
-			Host:         host,
-			Port:         port,
-			EchoPort:     echoPort,
-			Labels:       labels,
-			Annotations:  annotations,
-			ProxyAliases: proxyAliases,
+			Name:          strings.ToUpper(name),
+			Host:          host,
+			Port:          port,
+			ProtectedPort: protectedPort,
+			EchoPort:      echoPort,
+			Labels:        labels,
+			Annotations:   annotations,
+			ProxyAliases:  proxyAliases,
 		}
 		serviceLocations = append(serviceLocations, location)
 	}

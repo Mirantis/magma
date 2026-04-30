@@ -20,7 +20,7 @@ import s1ap_wrapper
 from integ_tests.s1aptests.s1ap_utils import SpgwUtil
 
 
-class TestSecondaryPdnConnWithDedBearerDeactivateReq(unittest.TestCase):
+class TestAttachDetachSecondaryPdnWithDedicatedBearerDeactivate(unittest.TestCase):
     """Test secondary pdn with dedicated bearer deactivation"""
 
     def setUp(self):
@@ -32,7 +32,7 @@ class TestSecondaryPdnConnWithDedBearerDeactivateReq(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_secondary_pdn_conn_ded_bearer_deactivate(self):
+    def test_attach_detach_secondary_pdn_with_dedicated_bearer_deactivate(self):
         """Attach a single UE and send standalone PDN Connectivity
         Request + add dedicated bearer to each default bearer + deactivate
         dedicated bearers + detach
@@ -41,7 +41,7 @@ class TestSecondaryPdnConnWithDedBearerDeactivateReq(unittest.TestCase):
 
         self._s1ap_wrapper.configUEDevice(num_ues)
 
-        for i in range(num_ues):
+        for _ in range(num_ues):
             req = self._s1ap_wrapper.ue_req
             ue_id = req.ue_id
             # APN of the secondary PDN
@@ -93,9 +93,7 @@ class TestSecondaryPdnConnWithDedBearerDeactivateReq(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             act_ded_ber_req_oai_apn = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
             )
@@ -110,9 +108,7 @@ class TestSecondaryPdnConnWithDedBearerDeactivateReq(unittest.TestCase):
             self._s1ap_wrapper.sendPdnConnectivityReq(ue_id, apn)
             # Receive PDN CONN RSP/Activate default EPS bearer context request
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value
             act_def_bearer_req = response.cast(s1ap_types.uePdnConRsp_t)
             addr = act_def_bearer_req.m.pdnInfo.pAddr.addrInfo
             sec_ip = ipaddress.ip_address(bytes(addr[:4]))
@@ -135,9 +131,7 @@ class TestSecondaryPdnConnWithDedBearerDeactivateReq(unittest.TestCase):
                 flow_list2,
             )
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type, s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_ACT_DED_BER_REQ.value
             act_ded_ber_req_ims_apn = response.cast(
                 s1ap_types.UeActDedBearCtxtReq_t,
             )
@@ -176,10 +170,7 @@ class TestSecondaryPdnConnWithDedBearerDeactivateReq(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value
 
             deactv_bearer_req = response.cast(s1ap_types.UeDeActvBearCtxtReq_t)
 
@@ -202,10 +193,7 @@ class TestSecondaryPdnConnWithDedBearerDeactivateReq(unittest.TestCase):
             )
 
             response = self._s1ap_wrapper.s1_util.get_response()
-            self.assertEqual(
-                response.msg_type,
-                s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value,
-            )
+            assert response.msg_type == s1ap_types.tfwCmd.UE_DEACTIVATE_BER_REQ.value
 
             deactv_bearer_req = response.cast(s1ap_types.UeDeActvBearCtxtReq_t)
             # Send Deactivate dedicated bearer rsp

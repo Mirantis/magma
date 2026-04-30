@@ -14,15 +14,17 @@
  * For more information about the OpenAirInterface (OAI) Software Alliance:
  *      contact@openairinterface.org
  */
+
+#include "lte/gateway/c/core/oai/tasks/grpc_service/CSFBGatewayServiceImpl.hpp"
+
 #include <iostream>
 
-#include "CSFBGatewayServiceImpl.h"
-#include "proto_msg_to_itti_msg.h"
-#include "common_ies.h"
-#include "sgs_messages_types.h"
+#include "lte/gateway/c/core/oai/tasks/grpc_service/proto_msg_to_itti_msg.hpp"
+#include "lte/gateway/c/core/oai/common/common_ies.h"
+#include "lte/gateway/c/core/oai/include/sgs_messages_types.hpp"
+#include "lte/gateway/c/core/oai/include/sgs_service_handler.hpp"
 
 extern "C" {
-#include "sgs_service_handler.h"
 
 namespace grpc {
 class ServerContext;
@@ -55,8 +57,9 @@ namespace magma {
 
 CSFBGatewayServiceImpl::CSFBGatewayServiceImpl() {}
 
-grpc::Status CSFBGatewayServiceImpl::AlertReq(
-    ServerContext* context, const AlertRequest* request, Void* response) {
+grpc::Status CSFBGatewayServiceImpl::AlertReq(ServerContext* context,
+                                              const AlertRequest* request,
+                                              Void* response) {
   itti_sgsap_alert_request_t itti_msg;
   convert_proto_msg_to_itti_sgsap_alert_request(request, &itti_msg);
   std::cout << "[DEBUG] Received SGSAP_ALERT_REQUEST message from"
@@ -66,8 +69,9 @@ grpc::Status CSFBGatewayServiceImpl::AlertReq(
   return grpc::Status::OK;
 }
 
-grpc::Status CSFBGatewayServiceImpl::Downlink(
-    ServerContext* context, const DownlinkUnitdata* request, Void* response) {
+grpc::Status CSFBGatewayServiceImpl::Downlink(ServerContext* context,
+                                              const DownlinkUnitdata* request,
+                                              Void* response) {
   itti_sgsap_downlink_unitdata_t itti_msg;
   convert_proto_msg_to_itti_sgsap_downlink_unitdata(request, &itti_msg);
   std::cout << "[DEBUG] "
@@ -77,8 +81,9 @@ grpc::Status CSFBGatewayServiceImpl::Downlink(
   return grpc::Status::OK;
 }
 
-grpc::Status CSFBGatewayServiceImpl::EPSDetachAc(
-    ServerContext* context, const EPSDetachAck* request, Void* response) {
+grpc::Status CSFBGatewayServiceImpl::EPSDetachAc(ServerContext* context,
+                                                 const EPSDetachAck* request,
+                                                 Void* response) {
   itti_sgsap_eps_detach_ack_t itti_msg;
   convert_proto_msg_to_itti_sgsap_eps_detach_ack(request, &itti_msg);
   std::cout << "[DEBUG] Received SGSAP_EPS_DETACH_ACK message"
@@ -88,8 +93,9 @@ grpc::Status CSFBGatewayServiceImpl::EPSDetachAc(
   return grpc::Status::OK;
 }
 
-grpc::Status CSFBGatewayServiceImpl::IMSIDetachAc(
-    ServerContext* context, const IMSIDetachAck* request, Void* response) {
+grpc::Status CSFBGatewayServiceImpl::IMSIDetachAc(ServerContext* context,
+                                                  const IMSIDetachAck* request,
+                                                  Void* response) {
   itti_sgsap_imsi_detach_ack_t itti_msg;
   convert_proto_msg_to_itti_sgsap_imsi_detach_ack(request, &itti_msg);
   std::cout << "[DEBUG] Received SGSAP_IMSI_DETACH_ACK message"
@@ -145,8 +151,9 @@ grpc::Status CSFBGatewayServiceImpl::MMInformationReq(
   return grpc::Status::OK;
 }
 
-grpc::Status CSFBGatewayServiceImpl::PagingReq(
-    ServerContext* context, const PagingRequest* request, Void* response) {
+grpc::Status CSFBGatewayServiceImpl::PagingReq(ServerContext* context,
+                                               const PagingRequest* request,
+                                               Void* response) {
   itti_sgsap_paging_request_t itti_msg;
   convert_proto_msg_to_itti_sgsap_paging_request(request, &itti_msg);
   std::cout << "[DEBUG] Received SGSAP_PAGING_REQUEST message"
@@ -156,8 +163,9 @@ grpc::Status CSFBGatewayServiceImpl::PagingReq(
   return grpc::Status::OK;
 }
 
-grpc::Status CSFBGatewayServiceImpl::ReleaseReq(
-    ServerContext* context, const ReleaseRequest* request, Void* response) {
+grpc::Status CSFBGatewayServiceImpl::ReleaseReq(ServerContext* context,
+                                                const ReleaseRequest* request,
+                                                Void* response) {
   itti_sgsap_release_req_t itti_msg;
   convert_proto_msg_to_itti_sgsap_release_req(request, &itti_msg);
   std::cout << "[DEBUG] Received SGSAP_RELEASE_REQ message from FeG with IMSI: "
@@ -178,8 +186,9 @@ grpc::Status CSFBGatewayServiceImpl::ServiceAbort(
   return grpc::Status::OK;
 }
 
-grpc::Status CSFBGatewayServiceImpl::VLRResetAck(
-    ServerContext* context, const ResetAck* request, Void* response) {
+grpc::Status CSFBGatewayServiceImpl::VLRResetAck(ServerContext* context,
+                                                 const ResetAck* request,
+                                                 Void* response) {
   std::cout << "[DEBUG] Received SGSAP_RESET_ACK message from FeG" << std::endl;
   return grpc::Status::OK;
 }
@@ -194,8 +203,9 @@ grpc::Status CSFBGatewayServiceImpl::VLRResetIndication(
   return grpc::Status::OK;
 }
 
-grpc::Status CSFBGatewayServiceImpl::VLRStatus(
-    ServerContext* context, const Status* request, Void* response) {
+grpc::Status CSFBGatewayServiceImpl::VLRStatus(ServerContext* context,
+                                               const Status* request,
+                                               Void* response) {
   itti_sgsap_status_t itti_msg;
   convert_proto_msg_to_itti_sgsap_status_t(request, &itti_msg);
   std::cout << "[DEBUG] Received SGSAP_STATUS message from FeG" << std::endl;

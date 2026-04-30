@@ -79,9 +79,9 @@ This section lists some of the commonly asked questions related to Magma operati
     - From the popup window, select tab **COMMANDS**. Then, check section **Reboot**.
     - Click on **Reboot** to reboot the AGW node.
 
-### Does AGW supports IPv6?
+### Does the AGW support IPv6?
 
-- IPv6 and dual stack IPv4V6 session support are currently under active development and we are working towards making this feature ready as part of release 1.4.
+- IPv6 and dual stack IPv4v6 session support is implemented for Magma v1.7 and later.
 
 ### How to change hardware UUID of AGW?
 
@@ -102,6 +102,26 @@ This section lists some of the commonly asked questions related to Magma operati
 ### Where can I get more information about services running in Magma?
 
 - <https://github.com/magma/magma/tree/master/docs/readmes/lte>
+
+### How can I detach/purge a subscriber from AGW?
+
+- The command `s6a_service_cli.py delete <IMSI>,<IMSI>` will detach the list of subscriber from MME.
+- Detached subscribers will need to reattach to the network.
+
+### How to change MME IP address?
+
+- Edit the IP address of eth1 interface: `sudo vim /etc/network/interfaces.d/eth1`
+- Then restart network manager: `sudo systemctl restart networking`
+- And check IP again: `ip a s eth1`
+
+### How can I check if a given subscriber is idle or connected?
+
+- SSH into the the AGW
+- Fetch the subscriber's state using its IMSI:
+    - `state_cli.py parse IMSI716770120257790:MME`
+- Looking at the `ecm_state` configuration, the value:
+    - 0 - Indicates the user is IDLE
+    - 1 - Indicates the user is CONNECTED
 
 ## Orchestrator
 

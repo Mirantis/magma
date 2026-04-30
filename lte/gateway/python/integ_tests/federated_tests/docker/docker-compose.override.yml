@@ -1,27 +1,9 @@
 version: "3.7"
 
 services:
-  test:
-    container_name: test
-    image: feg_gateway_go_base
-    build:
-      target: base
-      context: ${BUILD_CONTEXT}
-      dockerfile: feg/gateway/docker/go/Dockerfile
-    network_mode: host
-    volumes:
-      - ../../../:/magma
-      - ../configs:/etc/magma
-      - gwcerts:/var/opt/magma/certs
-      - gwconfigs:/var/opt/magma/configs
-    command:
-      - /bin/bash
-      - -c
-      - |
-         mkdir -p ../../.cache/feg/
-         touch ../../.cache/feg/snowflake
-         tail -f /dev/null
-
+  s6a_proxy:
+    depends_on:
+      - hss
   hss:
     container_name: hss
     image: feg_gateway_go
@@ -32,17 +14,16 @@ services:
       - gwconfigs:/var/opt/magma/configs
     restart: always
     environment:
+      MAGMA_PRINT_GRPC_PAYLOAD: 2
       USE_REMOTE_SWX_PROXY: 0
-    command: envdir /var/opt/magma/envdir /var/opt/magma/bin/hss -logtostderr=true -v=0
+    command: envdir /var/opt/magma/envdir /var/opt/magma/bin/hss -logtostderr=true -v=9
 
   control_proxy:
-    depends_on:
-      - test
     extra_hosts:
-      - controller.magma.test:127.0.0.1
-      - bootstrapper-controller.magma.test:127.0.0.1
-      #- controller.magma.test:10.0.2.2
-      #- bootstrapper-controller.magma.test:10.0.0.2
+      # Use 127.0.0.1 when running FEG on the host itself
+      # Use 10.0.2.2 when running FEG on Vagrant VM
+      - controller.magma.test:10.0.2.2
+      - bootstrapper-controller.magma.test:10.0.2.2
     command:
       - /bin/bash
       - -c
@@ -56,16 +37,14 @@ services:
       dockerfile: feg/gateway/docker/go/Dockerfile
 
   magmad:
-    depends_on:
-      - test
     build:
       context: ${BUILD_CONTEXT}
       dockerfile: feg/gateway/docker/python/Dockerfile
     extra_hosts:
-      - controller.magma.test:127.0.0.1
-      - bootstrapper-controller.magma.test:127.0.0.1
-      #- controller.magma.test:10.0.2.2
-      #- bootstrapper-controller.magma.test:10.0.2.2
+      # Use 127.0.0.1 when running FEG on the host itself
+      # Use 10.0.2.2 when running FEG on Vagrant VM
+      - controller.magma.test:10.0.2.2
+      - bootstrapper-controller.magma.test:10.0.2.2
     command: python3.8 -m magma.magmad.main
 
 volumes:

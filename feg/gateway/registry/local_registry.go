@@ -16,6 +16,8 @@ package registry
 import (
 	"log"
 
+	"magma/orc8r/lib/go/protos"
+
 	"google.golang.org/grpc"
 
 	"magma/orc8r/lib/go/registry"
@@ -32,6 +34,7 @@ const (
 	HLR_PROXY        = "HLR_PROXY"
 	HEALTH           = "HEALTH"
 	CSFB             = "CSFB"
+	N7_N40_PROXY     = "N7_N40_PROXY"
 	FEG_HELLO        = "FEG_HELLO"
 	AAA_SERVER       = "AAA_SERVER"
 	ENVOY_CONTROLLER = "ENVOY_CONTROLLER"
@@ -48,6 +51,7 @@ const (
 	MOCK_PCRF        = "MOCK_PCRF"
 	MOCK_PCRF2       = "MOCK_PCRF2"
 	MOCK_HSS         = "HSS"
+	MOCK_PCF         = "MOCK_PCF"
 
 	SESSION_MANAGER = "SESSIOND"
 )
@@ -61,12 +65,12 @@ func AddService(serviceType, host string, port int) {
 // Returns the RPC address of the service.
 // The service needs to be added to the registry before this.
 func GetServiceAddress(service string) (string, error) {
-	return fegRegistry.GetServiceAddress(service)
+	return fegRegistry.GetServiceAddress(service, protos.ServiceType_SOUTHBOUND)
 }
 
 // Provides a gRPC connection to a service in the registry.
 func GetConnection(service string) (*grpc.ClientConn, error) {
-	return fegRegistry.GetConnection(service)
+	return fegRegistry.GetConnection(service, protos.ServiceType_SOUTHBOUND)
 }
 
 func addLocalService(serviceType string, port int) {
@@ -97,6 +101,7 @@ func init() {
 	addLocalService(HLR_PROXY, 9116)
 	addLocalService(PIPELINED, 9117)
 	addLocalService(ENVOY_CONTROLLER, 9118)
+	addLocalService(N7_N40_PROXY, 9119)
 
 	addLocalService(MOCK_OCS, 9201)
 	addLocalService(MOCK_PCRF, 9202)
@@ -104,6 +109,7 @@ func init() {
 	addLocalService(MOCK_PCRF2, 9206)
 	addLocalService(MOCK_VLR, 9203)
 	addLocalService(MOCK_HSS, 9204)
+	addLocalService(MOCK_PCF, 9207)
 
 	// Overwrite/Add from /etc/magma/service_registry.yml if it exists
 	// moduleName is "" since all feg configs lie in /etc/magma without a module name

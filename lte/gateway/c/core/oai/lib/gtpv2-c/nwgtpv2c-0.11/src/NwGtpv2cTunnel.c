@@ -36,11 +36,11 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "NwTypes.h"
-#include "NwUtils.h"
-#include "NwError.h"
-#include "NwGtpv2cPrivate.h"
-#include "NwGtpv2cTunnel.h"
+#include "lte/gateway/c/core/oai/lib/gtpv2-c/nwgtpv2c-0.11/shared/NwTypes.h"
+#include "lte/gateway/c/core/oai/lib/gtpv2-c/nwgtpv2c-0.11/shared/NwUtils.h"
+#include "lte/gateway/c/core/oai/lib/gtpv2-c/nwgtpv2c-0.11/shared/NwError.h"
+#include "lte/gateway/c/core/oai/lib/gtpv2-c/nwgtpv2c-0.11/include/NwGtpv2cPrivate.h"
+#include "lte/gateway/c/core/oai/lib/gtpv2-c/nwgtpv2c-0.11/include/NwGtpv2cTunnel.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,20 +55,19 @@ nw_gtpv2c_tunnel_t* nwGtpv2cTunnelNew(
   nw_gtpv2c_tunnel_t* thiz;
 
   if (gpGtpv2cTunnelPool) {
-    thiz               = gpGtpv2cTunnelPool;
+    thiz = gpGtpv2cTunnelPool;
     gpGtpv2cTunnelPool = gpGtpv2cTunnelPool->next;
   } else {
-    NW_GTPV2C_MALLOC(
-        pStack, sizeof(nw_gtpv2c_tunnel_t), thiz, nw_gtpv2c_tunnel_t*);
+    NW_GTPV2C_MALLOC(pStack, sizeof(nw_gtpv2c_tunnel_t), thiz,
+                     nw_gtpv2c_tunnel_t*);
   }
 
   if (thiz) {
     memset(thiz, 0, sizeof(nw_gtpv2c_tunnel_t));
     thiz->teid = teid;
-    memcpy(
-        (void*) &thiz->ipAddrRemote, ipAddrRemote,
-        ipAddrRemote->sa_family == AF_INET ? sizeof(struct sockaddr_in) :
-                                             sizeof(struct sockaddr_in6));
+    memcpy((void*)&thiz->ipAddrRemote, ipAddrRemote,
+           ipAddrRemote->sa_family == AF_INET ? sizeof(struct sockaddr_in)
+                                              : sizeof(struct sockaddr_in6));
     thiz->hUlpTunnel = hUlpTunnel;
   }
   return thiz;
@@ -78,7 +77,7 @@ nw_gtpv2c_tunnel_t* nwGtpv2cTunnelNew(
 nw_rc_t nwGtpv2cTunnelDelete(
     __attribute__((unused)) struct nw_gtpv2c_stack_s* pStack,
     nw_gtpv2c_tunnel_t* thiz) {
-  thiz->next         = gpGtpv2cTunnelPool;
+  thiz->next = gpGtpv2cTunnelPool;
   gpGtpv2cTunnelPool = thiz;
   return NW_OK;
 }

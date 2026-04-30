@@ -11,12 +11,15 @@
  * limitations under the License.
  */
 
-#include <chrono>
+#include "lte/gateway/c/li_agent/src/Utilities.hpp"
 
-#include "Utilities.h"
-#include "includes/MagmaService.h"
-#include "includes/MConfigLoader.h"
-#include "magma_logging_init.h"
+#include <glog/logging.h>
+#include <orc8r/protos/common.pb.h>
+#include <chrono>
+#include <ostream>
+
+#include "orc8r/gateway/c/common/config/MConfigLoader.hpp"
+#include "orc8r/gateway/c/common/logging/magma_logging.hpp"
 
 namespace magma {
 namespace lte {

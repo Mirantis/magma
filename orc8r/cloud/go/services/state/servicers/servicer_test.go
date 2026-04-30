@@ -22,7 +22,7 @@ import (
 
 	"magma/orc8r/cloud/go/blobstore"
 	"magma/orc8r/cloud/go/blobstore/mocks"
-	"magma/orc8r/cloud/go/services/state/servicers"
+	"magma/orc8r/cloud/go/services/state/servicers/protected"
 	"magma/orc8r/cloud/go/storage"
 	"magma/orc8r/lib/go/protos"
 )
@@ -36,7 +36,7 @@ var (
 func TestStateServicer_GetStates(t *testing.T) {
 	// mock setup: expect 1 RPC to result in a search, the other to a concrete
 	// GetMany
-	mockStore := &mocks.TransactionalBlobStorage{}
+	mockStore := &mocks.Store{}
 	mockStore.On("Search",
 		blobstore.CreateSearchFilter(strPtr("network1"), []string{"t1", "t2"}, []string{"k1", "k2"}, nil),
 		blobstore.GetDefaultLoadCriteria(),
@@ -55,10 +55,10 @@ func TestStateServicer_GetStates(t *testing.T) {
 
 	mockStore.On("Commit").Return(nil)
 
-	fact := &mocks.BlobStorageFactory{}
+	fact := &mocks.StoreFactory{}
 	fact.On("StartTransaction", mock.Anything).Return(mockStore, nil)
 
-	srv, err := servicers.NewStateServicer(fact)
+	srv, err := protected.NewCloudStateServicer(fact)
 	assert.NoError(t, err)
 
 	actual, err := srv.GetStates(ctx, &protos.GetStatesRequest{

@@ -17,6 +17,7 @@ import unittest
 from collections import namedtuple
 from unittest.mock import MagicMock, call, patch
 
+import fakeredis
 from lte.protos.policydb_pb2 import FlowMatch
 from magma.pipelined.bridge_util import BridgeTools
 from magma.pipelined.qos.common import QosImplType, QosManager, SubscriberState
@@ -96,7 +97,7 @@ class TestQosCommon(unittest.TestCase):
 
 class TestQosManager(unittest.TestCase):
     def setUp(self):
-        self.dl_intf = "eth0"
+        self.dl_intf = "gtpu_sys_2152"
         self.ul_intf = "eth1"
 
         self.config = {
@@ -116,7 +117,6 @@ class TestQosManager(unittest.TestCase):
         self, mock_get_action_inst, mock_traffic_cls, d, qid, qos_info,
         parent_qid=0, skip_filter=False,
     ):
-        intf = self.ul_intf if d == FlowMatch.UPLINK else self.dl_intf
         mock_get_action_inst.assert_any_call(qid)
         mock_traffic_cls.init_qdisc.assert_any_call(self.ul_intf, enable_pyroute2=False, default_gbr='80Kbit')
         mock_traffic_cls.init_qdisc.assert_any_call(self.dl_intf, enable_pyroute2=False, default_gbr='80Kbit')
@@ -191,14 +191,15 @@ get_action_instruction",
         if self.config["qos"]["impl"] == QosImplType.LINUX_TC:
             mock_traffic_cls.read_all_classes.side_effect = lambda intf: prior_qids[intf]
 
-        qos_mgr = QosManager(MagicMock, asyncio.new_event_loop(), self.config)
+        qos_mgr = QosManager(asyncio.new_event_loop(), self.config, fakeredis.FakeStrictRedis())
+        qos_mgr.init_impl(MagicMock)
         qos_mgr._redis_store = {}
         qos_mgr._setupInternal()
         imsi, ip_addr, rule_num, qos_info = "1234", '1.1.1.1', 0, QosInfo(100000, 100000)
 
         # add new subscriber qos queue
-        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, rule_num, FlowMatch.UPLINK, qos_info)
-        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, rule_num, FlowMatch.DOWNLINK, qos_info)
+        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, 'bit', rule_num, FlowMatch.UPLINK, qos_info)
+        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, 'bit', rule_num, FlowMatch.DOWNLINK, qos_info)
 
         k1 = get_key_json(get_subscriber_key(imsi, ip_addr, rule_num, FlowMatch.UPLINK))
         k2 = get_key_json(get_subscriber_key(imsi, ip_addr, rule_num, FlowMatch.DOWNLINK))
@@ -214,8 +215,9 @@ get_action_instruction",
 
         # add the same subscriber and ensure that we didn't create another
         # qos config for the subscriber
-        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, rule_num, FlowMatch.UPLINK, qos_info)
-        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, rule_num, FlowMatch.DOWNLINK, qos_info)
+
+        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, 'bit', rule_num, FlowMatch.UPLINK, qos_info)
+        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, 'bit', rule_num, FlowMatch.DOWNLINK, qos_info)
 
         self.assertTrue(qos_mgr._subscriber_state[imsi].rules[rule_num][0] == (0, ul_qid_info))
         self.assertTrue(qos_mgr._subscriber_state[imsi].rules[rule_num][1] == (1, dl_qid_info))
@@ -296,7 +298,8 @@ get_action_instruction",
             mock_traffic_cls.read_all_classes.side_effect = lambda intf: []
             mock_traffic_cls.delete_class.side_effect = lambda *args: 0
 
-        qos_mgr = QosManager(MagicMock, asyncio.new_event_loop(), self.config)
+        qos_mgr = QosManager(asyncio.new_event_loop(), self.config, fakeredis.FakeStrictRedis())
+        qos_mgr.init_impl(MagicMock)
         qos_mgr._redis_store = {}
         qos_mgr._setupInternal()
         rule_list1 = [
@@ -322,12 +325,11 @@ get_action_instruction",
 
         # add new subscriber qos queues
         for i, (imsi, rule_num, d) in enumerate(rule_list1):
-            qos_mgr.add_subscriber_qos(imsi, '', 0, rule_num, d, qos_info)
+            qos_mgr.add_subscriber_qos(imsi, '', 0, 'bit', rule_num, d, qos_info)
 
             exp_id = id_list[i]
             k = get_key_json(get_subscriber_key(imsi, '', rule_num, d))
             exp_id_dict[k] = exp_id
-            # self.assertTrue(qos_mgr._redis_store[k] == exp_id)
             qid_info = get_data_json(get_subscriber_data(exp_id, 0, 0))
             self.assertEqual(qos_mgr._subscriber_state[imsi].rules[rule_num][0], (d, qid_info))
 
@@ -408,7 +410,7 @@ get_action_instruction",
 
         # add new subscriber qos queues
         for i, (imsi, rule_num, d) in enumerate(rule_list2):
-            qos_mgr.add_subscriber_qos(imsi, '', 0, rule_num, d, qos_info)
+            qos_mgr.add_subscriber_qos(imsi, '', 0, 'bit', rule_num, d, qos_info)
             exp_id = id_list[i]
             qid_info = get_data_json(get_subscriber_data(exp_id, 0, 0))
 
@@ -460,7 +462,8 @@ get_action_instruction",
         and ensure that eventually the system and qos store state remains
         consistent"""
         loop = asyncio.new_event_loop()
-        qos_mgr = QosManager(MagicMock, loop, self.config)
+        qos_mgr = QosManager(loop, self.config, fakeredis.FakeStrictRedis())
+        qos_mgr.init_impl(MagicMock)
         qos_mgr._redis_store = {}
 
         def populate_db(qid_list, rule_list):
@@ -514,7 +517,7 @@ get_action_instruction",
         # add a new rule to the qos_mgr and check if it is assigned right id
         imsi, rule_num, d, qos_info = "3", 0, 0, QosInfo(100000, 100000)
         qos_mgr.impl.get_action_instruction = MagicMock
-        qos_mgr.add_subscriber_qos(imsi, '', 0, rule_num, d, qos_info)
+        qos_mgr.add_subscriber_qos(imsi, '', 0, 'bit', rule_num, d, qos_info)
         k = get_key_json(get_subscriber_key(imsi, '', rule_num, d))
 
         exp_id = 3  # since start_idx 2 is already used
@@ -593,7 +596,8 @@ get_action_instruction",
         AMBR configs.
         """
         loop = asyncio.new_event_loop()
-        qos_mgr = QosManager(MagicMock, loop, self.config)
+        qos_mgr = QosManager(loop, self.config, fakeredis.FakeStrictRedis())
+        qos_mgr.init_impl(MagicMock)
         qos_mgr._redis_store = {}
 
         def populate_db(qid_list, old_ambr_list, old_leaf_list, rule_list):
@@ -666,7 +670,7 @@ get_action_instruction",
         # add a new rule to the qos_mgr and check if it is assigned right id
         imsi, rule_num, d, qos_info = "3", 0, 0, QosInfo(100000, 100000)
         qos_mgr.impl.get_action_instruction = MagicMock
-        qos_mgr.add_subscriber_qos(imsi, '', 10, rule_num, d, qos_info)
+        qos_mgr.add_subscriber_qos(imsi, '', 10, 'bit', rule_num, d, qos_info)
         k = get_key_json(get_subscriber_key(imsi, '', rule_num, d))
 
         exp_id = 3  # since start_idx 2 is already used
@@ -780,15 +784,17 @@ get_action_instruction",
         prior_qids = {self.ul_intf: [(2, 0)], self.dl_intf: [(3, 0)]}
         mock_traffic_cls.read_all_classes.side_effect = lambda intf: prior_qids[intf]
 
-        qos_mgr = QosManager(MagicMock, asyncio.new_event_loop(), self.config)
+        qos_mgr = QosManager(asyncio.new_event_loop(), self.config, fakeredis.FakeStrictRedis())
+        qos_mgr.init_impl(MagicMock)
         qos_mgr._redis_store = {}
         qos_mgr._setupInternal()
         ambr_ul, ambr_dl = 250000, 500000
         imsi, ip_addr, rule_num, qos_info = ("1234", '1.1.1.1', 1, QosInfo(50000, 100000))
+        units = 'bit'
 
         # add new subscriber qos queue
-        qos_mgr.add_subscriber_qos(imsi, ip_addr, ambr_ul, rule_num, FlowMatch.UPLINK, qos_info)
-        qos_mgr.add_subscriber_qos(imsi, ip_addr, ambr_dl, rule_num, FlowMatch.DOWNLINK, qos_info)
+        qos_mgr.add_subscriber_qos(imsi, ip_addr, ambr_ul, units, rule_num, FlowMatch.UPLINK, qos_info)
+        qos_mgr.add_subscriber_qos(imsi, ip_addr, ambr_dl, units, rule_num, FlowMatch.DOWNLINK, qos_info)
 
         k1 = get_key_json(get_subscriber_key(imsi, ip_addr, rule_num, FlowMatch.UPLINK))
         k2 = get_key_json(get_subscriber_key(imsi, ip_addr, rule_num, FlowMatch.DOWNLINK))
@@ -813,8 +819,8 @@ get_action_instruction",
 
         # add the same subscriber and ensure that we didn't create another
         # qos config for the subscriber
-        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, rule_num, FlowMatch.UPLINK, qos_info)
-        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, rule_num, FlowMatch.DOWNLINK, qos_info)
+        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, units, rule_num, FlowMatch.UPLINK, qos_info)
+        qos_mgr.add_subscriber_qos(imsi, ip_addr, 0, units, rule_num, FlowMatch.DOWNLINK, qos_info)
 
         self.assertTrue(qos_mgr._subscriber_state[imsi].rules[rule_num][0] == (0, get_data_json(qid_info_ul)))
         self.assertTrue(qos_mgr._subscriber_state[imsi].rules[rule_num][1] == (1, get_data_json(qid_info_dl)))
@@ -902,11 +908,11 @@ class TestTrafficClass(unittest.TestCase):
         TrafficClass.init_qdisc(intf, show_error=False)
 
         # create APN level ambr
-        TrafficClass.create_class(intf, qid=parent_qid, max_bw=apn_ambr)
+        TrafficClass.create_class(intf, qid=parent_qid, units='bit', max_bw=apn_ambr)
 
         # create child queue
         TrafficClass.create_class(
-            intf, qid=qid, rate=bearer_gbr, max_bw=bearer_mbr,
+            intf, qid=qid, rate=bearer_gbr, units='bit', max_bw=bearer_mbr,
             parent_qid=parent_qid,
         )
 

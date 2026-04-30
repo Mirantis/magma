@@ -19,7 +19,7 @@ import s1ap_types
 import s1ap_wrapper
 
 
-class TestSecondaryPdnDisconnInvalidBearerId(unittest.TestCase):
+class TestAttachDetachSecondaryPdnDisconnectInvalidBearer(unittest.TestCase):
     """Test secondary pdn disconnect with invalid bearerid"""
 
     def setUp(self):
@@ -30,7 +30,7 @@ class TestSecondaryPdnDisconnInvalidBearerId(unittest.TestCase):
         """Cleanup"""
         self._s1ap_wrapper.cleanup()
 
-    def test_secondary_pdn_disconn_invalid_bearer_id(self):
+    def test_attach_detach_secondary_pdn_disconnect_invalid_bearer(self):
         """Attach a single UE + send standalone PDN Connectivity
         Request + send PDN disconnect with invalid bearer id
         """
@@ -85,9 +85,7 @@ class TestSecondaryPdnDisconnInvalidBearerId(unittest.TestCase):
         self._s1ap_wrapper.sendPdnConnectivityReq(ue_id, apn)
         # Receive PDN CONN RSP/Activate default EPS bearer context request
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value
         act_def_bearer_req = response.cast(s1ap_types.uePdnConRsp_t)
         addr = act_def_bearer_req.m.pdnInfo.pAddr.addrInfo
         sec_ip = ipaddress.ip_address(bytes(addr[:4]))
@@ -135,9 +133,7 @@ class TestSecondaryPdnDisconnInvalidBearerId(unittest.TestCase):
 
         # Receive PDN Disconnect reject
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_PDN_DISCONNECT_REJ.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_PDN_DISCONNECT_REJ.value
 
         print("************************* Received PDN disconnect reject")
 

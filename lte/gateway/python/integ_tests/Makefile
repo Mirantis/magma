@@ -1,61 +1,86 @@
-# By default just setup the env.
+# By default do nothing.
 .PHONY: default
-default: $(PYTHON_BUILD)/setupinteg_env
+default:
+	# No default set for this Makefile.
 
 include $(MAGMA_ROOT)/orc8r/gateway/python/python.mk
 include defs.mk
 
-# Pull in dependencies from the magma dev build to create virtualenv and
-# generate the python protobufs and the common rpc wrappers.
-# Also, copy over test config files and update PYTHONPATH to include s1aptester
-# lib directory, as well as Swagger-generated API bindings.
-$(PYTHON_BUILD)/setupinteg_env:
-	make -C .. buildenv
-	#@echo "Installing swagger-codegen requirements"
-	#$(VIRT_ENV_PIP_INSTALL) -r $(SWAGGER_CODEGEN_OUTPUT)/requirements.txt
-	@echo "Copying s1aptester config files"
-	cp $(S1AP_TESTER_CFG)/* $(S1AP_TESTER_ROOT)
-	@echo "Install MySQL for upstreaming"
-	$(VIRT_ENV_PIP_INSTALL) mysqlclient==1.3.12
-	@echo export PYTHONPATH=$(PYTHONPATH):$(S1AP_TESTER_PYTHON_PATH) >> $(PYTHON_BUILD)/bin/activate
-	touch $(PYTHON_BUILD)/setupinteg_env
-
-# TODO T21489739 - Don't sleep and don't stop after a failure
 RESULTS_DIR := /var/tmp/test_results
-define execute_test
-	echo "Running test: $(1)"
-	timeout --foreground -k 930s 900s sudo -E PATH=$(PATH) PYTHONPATH=$(PYTHONPATH):$(S1AP_TESTER_PYTHON_PATH) $(PYTHON_BUILD)/bin/nosetests --with-xunit --xunit-file=$(RESULTS_DIR)/$(basename $(notdir $(1))).xml -x -s $(1) || exit 1
-	sleep 1
+ifdef enable-flaky-retry
+ifneq ($(enable-flaky-retry), false)
+	IS_FLAKY_RETRIES_ENABLED := True
+	FLAKY_CMD_ARGS := --force-flaky --no-flaky-report --max-runs=3 --min-passes=1
+else
+	IS_FLAKY_RETRIES_ENABLED := False
+	FLAKY_CMD_ARGS :=
+endif
+else
+	IS_FLAKY_RETRIES_ENABLED := False
+	FLAKY_CMD_ARGS :=
+endif
+
+define apply_final_status
+	if [ ! -z `grep -s pass $(MAGMA_ROOT)/test_status.txt` ]; \
+	then echo "Final status: Passed"; \
+	else echo "Final status: Failed"; exit 1; \
+	fi
 endef
 
+# Don't remove the ending comment from function execute_test. Somehow without
+# any ending statement the failing testcases are missing status update
+define execute_test
+	echo "Running test: $(1)"
+	timeout --foreground -k 930s 900s \
+	sudo -E PATH=$(PATH) /tmp/integ_test_env/bin/python3 -m pytest \
+	$(FLAKY_CMD_ARGS) \
+	--capture=tee-sys \
+	--junit-xml=$(RESULTS_DIR)/$(basename $(notdir $(1))).xml -x $(1) \
+	|| (echo "fail" > $(MAGMA_ROOT)/test_status.txt && exit 1)
+	# Testcase $(1) execution completed
+endef
+
+.PHONY: prepare_environment
+prepare_environment:
+	rm -rf /tmp/integ_test_env
+	bazel run --define=on_magma_test=1 //lte/gateway/python/integ_tests/s1aptests:python_env /tmp/integ_test_env
+	echo "pass" > $(MAGMA_ROOT)/test_status.txt
+	echo "Flaky test retries enabled? $(IS_FLAKY_RETRIES_ENABLED)"
+
+.PHONY: prepare_federation
+prepare_federation:
+	$(eval export FEDERATED_MODE = True)
+
+.PHONY: selected_tests
+selected_tests: prepare_environment
+	-$(foreach test,$(TESTS),$(call execute_test,$(test));)
+
 .PHONY: precommit
-precommit: $(PYTHON_BUILD)/setupinteg_env $(BIN)/nosetests
-	. $(PYTHON_BUILD)/bin/activate
-ifdef TESTS
-	$(call execute_test,$(TESTS))
-else
-	$(foreach test,$(PRECOMMIT_TESTS),$(call execute_test,$(test));)
-endif
+precommit: prepare_environment
+	-$(foreach test,$(PRECOMMIT_TESTS),$(call execute_test,$(test));)
+
+.PHONY: extended_tests
+extended_tests: prepare_environment
+	-$(foreach test,$(EXTENDED_TESTS),$(call execute_test,$(test));)
+
+.PHONY: extended_tests_long
+extended_tests_long: prepare_environment
+	-$(foreach test,$(EXTENDED_TESTS_LONG),$(call execute_test,$(test));)
 
 .PHONY: integ_test
-integ_test: $(PYTHON_BUILD)/setupinteg_env $(BIN)/nosetests
-	. $(PYTHON_BUILD)/bin/activate
-ifdef TESTS
-	$(call execute_test,$(TESTS))
-else
-	$(foreach test,$(EXTENDED_TESTS) $(PRECOMMIT_TESTS),$(call execute_test,$(test));)
-endif
+integ_test: precommit extended_tests extended_tests_long
+
+.PHONY: integ_test_containerized
+integ_test_containerized: precommit extended_tests extended_tests_long
+
+.PHONY: federated_integ_test
+federated_integ_test: prepare_environment prepare_federation
+	-$(foreach test,$(FEDERATED_TESTS),$(call execute_test,$(test));)
 
 .PHONY: nonsanity
-nonsanity: $(PYTHON_BUILD)/setupinteg_env $(BIN)/nosetests
-	. $(PYTHON_BUILD)/bin/activate
-ifdef TESTS
-	$(call execute_test,$(TESTS))
-else
-	$(foreach test,$(NON_SANITY_TESTS),$(call execute_test,$(test));)
-endif
+nonsanity: prepare_environment
+	-$(foreach test,$(NON_SANITY_TESTS),$(call execute_test,$(test));)
 
-local_integ_test:
-	# check if magma services are running
-	systemctl is-active --quiet magma@magmad || (echo "Local integ tests should be run on access gw with magma services running"; exit 1)
-	. $(PYTHON_BUILD)/bin/activate; sudo $(BIN)/nosetests -s $(LOCAL_INTEG_TESTS)
+.PHONY: evaluate_result
+evaluate_result:
+	$(call apply_final_status)

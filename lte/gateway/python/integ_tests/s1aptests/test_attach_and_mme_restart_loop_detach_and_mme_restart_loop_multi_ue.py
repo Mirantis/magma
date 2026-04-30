@@ -20,16 +20,26 @@ import s1ap_wrapper
 from s1ap_utils import MagmadUtil
 
 
-class TestAttachAndMmeRestartLoopDetachAndMmeRestartLoopMultiUe(unittest.TestCase):
+class TestAttachAndMmeRestartLoopDetachAndMmeRestartLoopMultiUe(
+    unittest.TestCase,
+):
+    """
+    Integration Test: TestAttachAndMmeRestartLoopDetachAndMmeRestartLoopMultiUe
+    """
+
     def setUp(self):
+        """Initialize before test case execution"""
         self._s1ap_wrapper = s1ap_wrapper.TestWrapper(
             stateless_mode=MagmadUtil.stateless_cmds.ENABLE,
         )
 
     def tearDown(self):
+        """Cleanup after test case execution"""
         self._s1ap_wrapper.cleanup()
 
-    def test_attach_and_mme_restart_loop_detach_and_mme_restart_loop_multi_ue(self):
+    def test_attach_and_mme_restart_loop_detach_and_mme_restart_loop_multi_ue(
+        self,
+    ):
         """
         Multi UE attach-detach with MME restart. Steps to be followed:
         1-Attach
@@ -47,11 +57,24 @@ class TestAttachAndMmeRestartLoopDetachAndMmeRestartLoopMultiUe(unittest.TestCas
         detach_type_str = ["NORMAL", "SWITCHOFF"]
         self._s1ap_wrapper.configUEDevice(num_ues)
 
+        # The inactivity timers for UEs attached in the beginning starts getting
+        # expired before all the UEs could be attached. Increasing UE inactivity
+        # timer to 15 min (900000 ms) to allow all the UEs to get attached and
+        # detached properly
+        config_data = s1ap_types.FwNbConfigReq_t()
+        config_data.inactvTmrVal_pr.pres = True
+        config_data.inactvTmrVal_pr.val = 900000
+        self._s1ap_wrapper._s1_util.issue_cmd(
+            s1ap_types.tfwCmd.ENB_INACTV_TMR_CFG,
+            config_data,
+        )
+        time.sleep(0.5)
+
         ue_ids = []
-        for i in range(num_ues):
+        for _ in range(num_ues):
             req = self._s1ap_wrapper.ue_req
             print(
-                "************************* Running End to End attach for ",
+                "************************* Running End to End attach for "
                 "UE id ",
                 req.ue_id,
             )
@@ -68,18 +91,16 @@ class TestAttachAndMmeRestartLoopDetachAndMmeRestartLoopMultiUe(unittest.TestCas
             ue_ids.append(req.ue_id)
 
             print(
-                "************************* Restarting MME service on",
-                "gateway",
+                "************************* Restarting MME service on gateway",
             )
-            self._s1ap_wrapper.magmad_util.restart_services(["mme"])
-
-            for j in range(30):
-                print("Waiting for", j, "seconds")
-                time.sleep(1)
+            wait_for_restart = 30
+            self._s1ap_wrapper.magmad_util.restart_services(
+                ["mme"], wait_for_restart,
+            )
 
         for ue in ue_ids:
             # Now detach the UE
-            random.seed(time.clock())
+            random.seed(time.time())
             index = random.randint(0, 1)
             print(
                 "************************* Running UE detach for UE id ",
@@ -91,11 +112,10 @@ class TestAttachAndMmeRestartLoopDetachAndMmeRestartLoopMultiUe(unittest.TestCas
             print(
                 "************************* Restarting MME service on gateway",
             )
-            self._s1ap_wrapper.magmad_util.restart_services(["mme"])
-
-            for j in range(30):
-                print("Waiting for", j, "seconds")
-                time.sleep(1)
+            wait_for_restart = 30
+            self._s1ap_wrapper.magmad_util.restart_services(
+                ["mme"], wait_for_restart,
+            )
 
 
 if __name__ == "__main__":

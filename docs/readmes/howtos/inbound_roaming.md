@@ -17,6 +17,10 @@ those roaming services but is out of scope of Magma.
 At the bottom of this document you have
 [configuration example](#configuration-example)
 
+TEID allocation is described on
+[Technical Reference](https://magma.github.io/magma/docs/lte/dev_teid_allocation)
+section.
+
 ## Architecture
 
 Currently, we support two Architectures:
@@ -45,15 +49,56 @@ subscribers may also work but are not tested yet.
 Configurations with SubscriberDB, local HSS and remote HSS all at the same
 time is not supported yet.
 
+The following is a logic diagram of Neutral Host architecture we
+use on Inbound Roaming to be able to route the request properly. Note that
+in this diagram we add the Optional Local FeG. In case you are using
+subscriberDB for your local subscribers, you will not need that FeG Gateway,
+but you will still need the Neutral Host Network.
+
+```mermaid
+graph LR
+
+AGW_G --Any_PLMN--> Orc8r
+Orc8r --PLMN1--> FeG_Gateway_1
+Orc8r --PLMN2--> FeG_Gateway_2
+Orc8r --PLMN3--> FeG_Gateway_3
+Optional_FeG_gateway --Other_PLMN--> Local_HSS
+FeG_Gateway_1 --> HSS_1
+FeG_Gateway_2 --> HSS_2
+FeG_Gateway_3 --> HSS_3
+
+
+subgraph AGW Network
+AGW_G
+end
+
+subgraph Neutral_Host_Network
+Orc8r & Optional_FeG_gateway
+
+end
+
+subgraph Roaming_FeG_Network_1
+FeG_Gateway_1
+end
+
+subgraph Roaming_FeG_Network_2
+FeG_Gateway_2
+end
+
+subgraph Roaming_FeG_Network_3
+FeG_Gateway_3
+end
+```
+
 ## Prerequisites
 
 Before starting to configure roaming setup, first you need to bring up a
 setup to handle your own/local subscribers. So before configuring Inbound
 Roaming you need:
 
-- Install [Or8cr](https://docs.magmacore.org/docs/orc8r/architecture_overview),
-- Install [Federatetion Gateway](https://docs.magmacore.org/docs/feg/deploy_intro) and,
-- Install [Access Gateway](https://docs.magmacoreorg/docs/lte/setup_deb).
+- Install [Or8cr](https://magma.github.io/magma/docs/orc8r/architecture_overview),
+- Install [Federation Gateway](https://magma.github.io/magma/docs/feg/deploy_intro) and,
+- Install [Access Gateway](https://magma.github.io/magma/docs/lte/setup_deb).
 - Create a Federate Deployment (see [below](#Create a Federated Deployment)).
 - Make sure your setup is able to serve calls with your local subscribers
 
@@ -70,7 +115,7 @@ from the `roaming` Networks and Gateways we will create in the next step.
 
 As mentioned, Inbound Roaming requires of a FeG gateway to reach the roaming
 network. That is why Federated Deployment is required. Please, configure it
-using this guide for [Federated Deployment](https://docs.magmacore.org/docs/feg/federated_FWA_setup_guide).
+using this guide for [Federated Deployment](https://magma.github.io/magma/docs/feg/federated_FWA_setup_guide).
 
 All architectures requiere a Local FeG Network to exist. However depending on
 your architecture, you may not need to create a local FeG Gateway inside that
@@ -149,10 +194,10 @@ Gateway Network we created in Pre Requisites. On **Swagger API**:
   federated LTE network` your local (non roaming) Federated LTE Network
 - Copy/paste the response into PUT method `Update an entire Federated LTE
   network`
-- Find a key `federation`. If you completed Pre Requisites properly, you
-  should have there `feg_network_id` pointing to your FeG Network Modify/add
-- Add the routing dictionary following the example, adding an entry per each
-PLMN
+- Find the key `federation`. If you completed Pre Requisites properly, you
+  should have `feg_network_id` pointing to your FeG Network.
+- Add the routing dictionary following the example below, adding an entry per
+each PLMN.
 
 ```text
   "federation": {
@@ -177,16 +222,20 @@ PLMN
   },
 ```
 
-- Field `mode` will indicate the flow the subscriber will take. Use
-  `local_subscriber` for PLMN served by your own SubscriberDB/HSS. Use
-  `s8_subscriber` to use roam HSS and roam PGW. Leave `apn` and `imsi_range`
-  blank since it is not supported yet.
+To configure that key properly:
 
+- Field `mode` will indicate the path the subscriber will take:
+    - `local_subscriber` for PLMNs served by your own SubscriberDB/HSS.
+    - `s8_subscriber` for PLMNs served by roam HSS (`S6a`) and roam PGW (`S8`).
+    - Any other PLMN not configured here will be defaulted to local HSS (`S6a`).
+- You can leave `apn` and `imsi_range` blank since it is not supported yet
+- Add the routing dictionary following the example, adding an entry per each
+PLMN.
 - Note `hss_relay_enabled` must be enabled. The decision to send it to HSS or
   not will be taken by `federated_modes_mapping`. If you disable, s8_subscribers
-  will not be sent to the FeG to get the HSS
+  will not be sent to the FeG to get the HSS.
 
-- Flag `gx_gy_relay_enabled` can be enabled or disabled depending if your
+- Flag `gx_gy_relay_enabled` can be enabled or disabled depending on if your
   network works with local policy db or with OCS and PCRF (gx/gy). If your
   local subscribers authenticate with HSS but use GX/GY, then you will have to
   leave it as `True`.
@@ -204,7 +253,8 @@ we created in Pre Requisites. On **Swagger API**:
 - Copy/paste the response into PUT method `Update an entire federation network`
 - Modify/add the `nh_routes` (see the example on Swagger API if it is
   missing from your configuration). On the map match the PLMN, and the name
-  of the roam FeG Network.
+  of the roam FeG Network. Note that these are names of FeG Networks,
+  not FeG Gateways.
 
 ```text
     "nh_routes": {
@@ -263,7 +313,7 @@ Federated Gateway can reach PGW using this command
 
 ```bash
 $ cd /var/opt/magma/docker
-$ sudo docker-compose exec s8_proxy /var/opt/magma/bin/s8_cli cs -server
+$ sudo docker compose exec s8_proxy /var/opt/magma/bin/s8_cli cs -server
 
 192.168.32.118:2123 123456789012345
 # where 192.168.32.118:2123 is the ip and port of the PGW-C
@@ -301,9 +351,9 @@ For better details Federated Gateway logs:
       MAGMA_PRINT_GRPC_PAYLOAD: 1
 ```
 
-- Restart docker process, so the vars are taken `sudo docker-compose down` and
-  `sudo docker-compose up -d`
-- Display the logs using for example`sudo docker-compose logs -f s8_proxy`
+- Restart docker process, so the vars are taken `sudo docker compose down` and
+  `sudo docker compose --compatibility up -d`
+- Display the logs using for example`sudo docker compose logs -f s8_proxy`
 
 ### Test with s6a_cli and s8_cli
 
@@ -315,14 +365,14 @@ either on FeG or AGW.
 
 ```bash
 # Use FeG s6a_proxy
-sudo docker-compose exec s8_proxy /var/opt/magma/bin/s6a_cli air -remote_s6a 001002000000810
+sudo docker compose exec s8_proxy /var/opt/magma/bin/s6a_cli air -remote_s6a 001002000000810
 # Use s6a_porxy that runs on the cli
-sudo docker-compose exec s8_proxy /var/opt/magma/bin/s6a_cli air -use_builtincli false  -remote_s6a 001002000000810
+sudo docker compose exec s8_proxy /var/opt/magma/bin/s6a_cli air -use_builtincli false  -remote_s6a 001002000000810
 
 # use FeG s8_proxy
-sudo docker-compose exec s8_proxy /var/opt/magma/bin/s8_cli cs -server 192.168.32.118:2123 -delete 3
+sudo docker compose exec s8_proxy /var/opt/magma/bin/s8_cli cs -server 192.168.32.118:2123 -delete 3
 # use s8_proxy that runs on the cli
-sudo docker-compose exec s8_proxy /var/opt/magma/bin/s8_cli cs -server 192.168.32.118:2123 -use_builtincli false -delete 3
+sudo docker compose exec s8_proxy /var/opt/magma/bin/s8_cli cs -server 192.168.32.118:2123 -use_builtincli false -delete 3
 ```
 
 - Run from AGW

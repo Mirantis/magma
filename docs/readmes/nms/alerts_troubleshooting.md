@@ -28,12 +28,12 @@ It is one of the key KPI and may impact network deployment/expansion/operations 
 ### Troubleshooting steps
 
 1. If any Orchestrator pods has some issue, please try to resolve that first.
-2. Make sure that Gateways are successfully checking in. If they are not checked-in, means that their metrics won’t be reported. Please follow [these steps](https://docs.magmacore.org/docs/howtos/troubleshooting/agw_unable_to_checkin) to troubleshoot.
+2. Make sure that Gateways are successfully checking in. If they are not checked-in, means that their metrics won’t be reported. Please follow [these steps](https://magma.github.io/magma/docs/howtos/troubleshooting/agw_unable_to_checkin) to troubleshoot.
 3. Perform relevant sync/changes if any update has been performed on NMS -> Network.
-4. Make sure that configuration for [Gateway](https://docs.magmacore.org/docs/lte/deploy_config_agw), [eNodeB](https://docs.magmacore.org/docs/lte/deploy_config_enodebd) and [APN](https://docs.magmacore.org/docs/lte/deploy_config_apn)has been followed.
+4. Make sure that configuration for [Gateway](https://magma.github.io/magma/docs/lte/deploy_config_agw), [eNodeB](https://magma.github.io/magma/docs/lte/deploy_config_enodebd) and [APN](https://magma.github.io/magma/docs/lte/deploy_config_apn) has been followed.
 5. If any faulty Gateway has been identified, please consider rebooting _enodebd_ service. Please consider rebooting the device (this should be done in minimal traffic duration) if need be.
 6. If still not resolved, then capture trace on eth1 interface on issue Gateway(s) to identify the case. Try to analyze and identify the cause. This will give an indication of any parameter inserted by eNodeB causing the issue.
-7. If issue persists then get higher level support by providing relevant traces/logs and [additional files](https://docs.magmacore.org/docs/lte/debug_show_tech). Report issue with eNodeB (vendor, firmware etc) and Magma node details along with any issue found in step 6.
+7. If issue persists then get higher level support by providing relevant traces/logs and [additional files](https://magma.github.io/magma/docs/lte/debug_show_tech). Report issue with eNodeB (vendor, firmware etc) and Magma node details along with any issue found in step 6.
 
 ### Causes / Effects/ Solutions
 
@@ -75,13 +75,13 @@ Subscribers will not be able to access the services.
 ### Troubleshooting steps
 
 1. Perform relevant sync/changes if any update has been performed on NMS -> Network.
-2. Make sure that configuration for [Gateway](https://docs.magmacore.org/docs/lte/deploy_config_agw), [eNodeB](https://docs.magmacore.org/docs/lte/deploy_config_enodebd) and [APN](https://docs.magmacore.org/docs/lte/deploy_config_apn)has been followed.
-3. Please follow troubleshooting steps from [here](https://docs.magmacore.org/docs/howtos/troubleshooting/user_unable_to_attach) for issue Gateway. Please note the error code.
+2. Make sure that configuration for [Gateway](https://magma.github.io/magma/docs/lte/deploy_config_agw), [eNodeB](https://magma.github.io/magma/docs/lte/deploy_config_enodebd) and [APN](https://magma.github.io/magma/docs/lte/deploy_config_apn) has been followed.
+3. Please follow troubleshooting steps from [here](https://magma.github.io/magma/docs/howtos/troubleshooting/user_unable_to_attach) for issue Gateway. Please note the error code.
 4. Please check mme logs, verify if the service request failures are coming from a specific user/device/model/firmware.
 5. You may use PromQL _ue_attach{networkID=&lt;NetworkID>,result="failure"}_ to isolate further.
 6. If required, please consider rebooting the problematic device (this should be done in minimal traffic duration).
 7. If still not resolved, then capture trace on eth1 interface on issue Gateway(s) to identify the case.
-8. If issue persists then get higher level support by providing relevant traces/logs and [additional files](https://docs.magmacore.org/docs/lte/debug_show_tech). Report issue with eNodeB (vendor, firmware etc) and Magma node details along with any issue found in step 6.
+8. If issue persists then get higher level support by providing relevant traces/logs and [additional files](https://magma.github.io/magma/docs/lte/debug_show_tech). Report issue with eNodeB (vendor, firmware etc) and Magma node details along with any issue found in step 6.
 
 ### Causes / Effects/ Solutions
 
@@ -106,7 +106,7 @@ Network, eNodeB, Gateway, Subscribers.
 
 ### Description
 
-It was observed that AGW is not able to check-in to Orchestrator as described [here](https://docs.magmacore.org/docs/lte/deploy_config_agw).
+It was observed that AGW is not able to check-in to Orchestrator as described in the [Configure Access Gateway](https://magma.github.io/magma/docs/lte/deploy_config_agw) docs.
 
 ### Why is this important?
 
@@ -121,8 +121,8 @@ Visibility of AGW will be lost. That means admins cannot perform AGW related con
 
 ### Troubleshooting steps
 
-1. Please follow [this section](https://docs.magmacore.org/docs/howtos/troubleshooting/agw_unable_to_checkin) for troubleshooting steps.
-2. If issue persists then get higher level support by providing relevant traces/logs and [additional files](https://docs.magmacore.org/docs/lte/debug_show_tech).
+1. Please follow [this section](https://magma.github.io/magma/docs/howtos/troubleshooting/agw_unable_to_checkin) for troubleshooting steps.
+2. If issue persists then get higher level support by providing relevant traces/logs and [additional files](https://magma.github.io/magma/docs/lte/debug_show_tech).
 
 ### Causes / Effects/ Solutions
 
@@ -164,8 +164,8 @@ Impacts the new radio deployment.
 ### Troubleshooting steps
 
 1. Please make sure that IP reachability is ok between eNodeB and AGW.
-2. Please make sure to that all the steps mentioned [here](https://docs.magmacore.org/docs/lte/deploy_config_enodebd) are followed properly.
-3. If issue still persists then get higher level support by providing relevant traces/logs and [additional files](https://docs.magmacore.org/docs/lte/debug_show_tech).
+2. Please make sure to that all the steps mentioned [here](https://magma.github.io/magma/docs/lte/deploy_config_enodebd) are followed properly.
+3. If issue still persists then get higher level support by providing relevant traces/logs and [additional files](https://magma.github.io/magma/docs/lte/debug_show_tech).
 
 ### Causes / Effects/ Solutions
 
@@ -380,17 +380,17 @@ If other alerts related to power failure are firing, then the reboot might be re
 - Use last reboot to list the last logged in users and system last reboot time and date.
 - Confirm the same information in /var/log/syslog, logs like kernel loading should indicate the AGW has been rebooted.
 - Example of what the log could look like:
-- magma kernel: [0.000000] Linux version 4.9.0-9-amd64 (debiankernel@lists.debian.org) (gcc version 6.3.0 20170516 (Debian 6.3.0-18+deb9u1)) #1 SMP Debian 4.9.168-1
+- magma kernel: `[0.000000] Linux version 4.9.0-9-amd64 (debiankernel@lists.debian.org) (gcc version 6.3.0 20170516 (Debian 6.3.0-18+deb9u1)) #1 SMP Debian 4.9.168-1`
 - Use this timestamp and compare with the timestamp in the metrics degradation to confirm both events are related
 - Verify the commands history matching the timestamp to confirm if AGW was intentionally restarted.
 - If it wasn’t intentional then check the power connection and health of device running AGW
 
 ### Causes / Effects/ Solutions
 
-| Cause                                                                                                  |                                      Possible Effects                                      |                             Solutions |
-| ------------------------------------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------: | ------------------------------------: |
-| Command run intentionally/AGW reboot due to an unknown cause (power failure)                           | Gateway service(s)/ whole AGW restart causing disruption of services served by the gateway | If expected then it’s not applicable. |
-| However if reboot was happened due to unknown reason, then root cause has to be identified accordingly |
+| Cause                                                                        |                                      Possible Effects                                      |                                                                                              Solutions |
+| ---------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------: | -----------------------------------------------------------------------------------------------------: |
+| Command run intentionally/AGW reboot due to an unknown cause (power failure) | Gateway service(s)/ whole AGW restart causing disruption of services served by the gateway |                                                                  If expected then it’s not applicable. |
+|                                                                              |                                                                                            | However if reboot was happened due to unknown reason, then root cause has to be identified accordingly |
 
 ### How does this affect the SLA?
 
@@ -429,7 +429,7 @@ If AGW reboot alert has fired then service(s) restart would be an outcome of tha
 - Use last reboot to list the last logged in users and system last reboot time and date.
 - Confirm the same information in /var/log/syslog, logs like kernel loading should indicate the AGW has been rebooted.
 - Example of what the log could look like:
-- magma kernel: [0.000000] Linux version 4.9.0-9-amd64 (debiankernel@lists.debian.org) (gcc version 6.3.0 20170516 (Debian 6.3.0-18+deb9u1)) #1 SMP Debian 4.9.168-1
+- magma kernel: `[0.000000] Linux version 4.9.0-9-amd64 (debiankernel@lists.debian.org) (gcc version 6.3.0 20170516 (Debian 6.3.0-18+deb9u1)) #1 SMP Debian 4.9.168-1`
 - Use this timestamp and compare with the timestamp in the metrics degradation to confirm both events are related
 - Verify the commands history in syslog matching the timestamp to confirm if the services were intentionally restarted.
 
@@ -477,8 +477,8 @@ If AGW reboot alert has fired then service(s) restart would be an outcome of tha
 - If applicable, revert the recent changes and check if issue is still observed
 - Capture the service crash syslogs and coredumps. Use the approximate time in metrics and look for the events in both syslogs and coredumps
 - In syslogs located in /var/log, look for service terminating events and its previous logs. For example, in below mme service crash there is a segfault reported in mme service before its being terminated.
-- Dec 5 22:25:55 magma kernel: [266759.489500] ITTI 3[13887]: segfault at 1d6d80 ip 000055b0080da0c2 sp 00007f529e6c0310 error 4 in mme[55b0077bd000+e79000]
-- Dec 5 22:25:59 magma systemd[1]: magma@mme.service: Main process exited, code=killed, status=11/SEGV
+- `Dec 5 22:25:55 magma kernel: [266759.489500] ITTI 3[13887]: segfault at 1d6d80 ip 000055b0080da0c2 sp 00007f529e6c0310 error 4 in mme[55b0077bd000+e79000]`
+- `Dec 5 22:25:59 magma systemd[1]: magma@mme.service: Main process exited, code=killed, status=11/SEGV`
 - Service crashes with a segmentation fault will create coredumps in /tmp/ folder. Verify if coredumps have been created and obtain the coredump that matches the time of the outage/crash. Depending on the type of service crash the name of the coredump will vary. More detail in [https://magma.github.io/magma/docs/lte/dev_notes#analyzing-coredumps](https://magma.github.io/magma/docs/lte/dev_notes#analyzing-coredumps)
 - Using latest mme binary, inspect coredumps via gdb and backtrace to find possible root cause
 - **Obtain event that triggered the crash**. Every time a service restarts it will generate a log file (i.e. mme.log). Inside the coredump folder you will find the log (i.e. mme.log) that was generated just before the crash. To understand what was the event that triggered the crash, get the last event (Attach Request, Detach, timer expiring, etc.) in the log file.

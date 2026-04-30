@@ -13,12 +13,12 @@ limitations under the License.
 #include <sstream>
 #include <cstdint>
 #include <cstring>
-#include "M5GCommonDefs.h"
-#include "M5GPDUSessionStatus.h"
+#include "lte/gateway/c/core/oai/tasks/nas5g/include/M5GCommonDefs.h"
+#include "lte/gateway/c/core/oai/tasks/nas5g/include/ies/M5GPDUSessionStatus.hpp"
 
 namespace magma5g {
-M5GPDUSessionStatus::M5GPDUSessionStatus(){};
-M5GPDUSessionStatus::~M5GPDUSessionStatus(){};
+M5GPDUSessionStatus::M5GPDUSessionStatus() {};
+M5GPDUSessionStatus::~M5GPDUSessionStatus() {};
 
 int M5GPDUSessionStatus::EncodePDUSessionStatus(
     M5GPDUSessionStatus* pduSessionStatus, uint8_t iei, uint8_t* buffer,
@@ -46,20 +46,14 @@ int M5GPDUSessionStatus::DecodePDUSessionStatus(
 
   if (iei > 0) {
     pduSessionStatus->iei = *buffer;
-    MLOG(MDEBUG) << "DecodePDUSessionStatus: iei = " << std::hex
-                 << int(pduSessionStatus->iei);
     decoded++;
 
     pduSessionStatus->len = *(buffer + decoded);
-    MLOG(MDEBUG) << "In DecodePDUSessionStatus: len = " << std::hex
-                 << int(pduSessionStatus->len);
     decoded++;
 
     pduSessionStatus->pduSessionStatus = *(buffer + decoded);
     decoded++;
     pduSessionStatus->pduSessionStatus |= (*(buffer + decoded) << 8);
-    MLOG(MDEBUG) << "In DecodePDUSessionStatus: pduSessionStatus = " << std::hex
-                 << int(pduSessionStatus->pduSessionStatus);
     decoded++;
   }
 

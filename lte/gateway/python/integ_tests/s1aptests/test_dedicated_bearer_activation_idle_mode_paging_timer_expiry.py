@@ -22,7 +22,7 @@ from integ_tests.s1aptests.s1ap_utils import SessionManagerUtil
 from lte.protos.policydb_pb2 import FlowMatch
 
 
-class TestDedicatedBearerActivationIdleModePagingTmrExpiry(unittest.TestCase):
+class TestDedicatedBearerActivationIdleModePagingTimerExpiry(unittest.TestCase):
     def setUp(self):
         self._s1ap_wrapper = s1ap_wrapper.TestWrapper()
         self._sessionManager_util = SessionManagerUtil()
@@ -30,7 +30,7 @@ class TestDedicatedBearerActivationIdleModePagingTmrExpiry(unittest.TestCase):
     def tearDown(self):
         self._s1ap_wrapper.cleanup()
 
-    def test_dedicated_bearer_activation_idle_mode_pag_tmr_exp(self):
+    def test_dedicated_bearer_activation_idle_mode_paging_timer_expiry(self):
         """
         Test with a single UE attach + UE context release
         + dedicated bearer activation + page the UE + Paging timer expires
@@ -163,9 +163,7 @@ class TestDedicatedBearerActivationIdleModePagingTmrExpiry(unittest.TestCase):
             s1ap_types.tfwCmd.UE_CNTXT_REL_REQUEST, req,
         )
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_CTX_REL_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_CTX_REL_IND.value
 
         # Verify if paging flow rules are created
         ip_list = [default_ip]
@@ -189,16 +187,12 @@ class TestDedicatedBearerActivationIdleModePagingTmrExpiry(unittest.TestCase):
         )
 
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_PAGING_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_PAGING_IND.value
 
         print("*********** Received Paging for UE id ", ue_id)
 
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_PAGING_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_PAGING_IND.value
 
         print("*********** Received second Paging for UE id ", ue_id)
 

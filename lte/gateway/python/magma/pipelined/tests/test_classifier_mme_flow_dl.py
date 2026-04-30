@@ -82,6 +82,8 @@ class ClassifierMmeTest(unittest.TestCase):
                 'ovs_multi_tunnel': True,
                 'paging_timeout': 30,
                 'classifier_controller_id': 5,
+                'enable_nat': True,
+                'ovs_uplink_port_name': "patch-up",
             },
             mconfig=None,
             loop=None,
@@ -109,12 +111,12 @@ class ClassifierMmeTest(unittest.TestCase):
         self.test_detach_default_tunnel_flows()
 
         dest_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.128.12"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.128.12"),
         )
         src_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.129.64"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.129.64"),
         )
         ip_flow_dl = IPFlowDL(
             set_params=71, tcp_dst_port=0,
@@ -125,18 +127,18 @@ class ClassifierMmeTest(unittest.TestCase):
         seid1 = 5000
         ue_ip_addr = "192.168.128.30"
         self.classifier_controller.gtp_handler(
-            0, 65525, 1, 100000,
-            IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            self.EnodeB_IP, seid1, ip_flow_dl=ip_flow_dl,
+            0, 65525, 1, 100000, self.EnodeB_IP,
+            ue_ip_addr,
+            seid1, ip_flow_dl=ip_flow_dl,
         )
 
         dest_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.128.111"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.128.111"),
         )
         src_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.129.4"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.129.4"),
         )
 
         ip_flow_dl = IPFlowDL(
@@ -148,9 +150,9 @@ class ClassifierMmeTest(unittest.TestCase):
         seid2 = 5001
         ue_ip_addr = "192.168.128.31"
         self.classifier_controller.gtp_handler(
-            0, 65525, 2, 100001,
-            IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            self.EnodeB_IP, seid2, ip_flow_dl=ip_flow_dl,
+            0, 65525, 2, 100001, self.EnodeB_IP,
+            ue_ip_addr,
+            seid2, ip_flow_dl=ip_flow_dl,
         )
 
         snapshot_verifier = SnapshotVerifier(
@@ -163,12 +165,12 @@ class ClassifierMmeTest(unittest.TestCase):
     def test_delete_tunnel_ip_flow_dl(self):
 
         dest_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.128.12"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.128.12"),
         )
         src_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.129.64"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.129.64"),
         )
 
         ip_flow_dl = IPFlowDL(
@@ -180,18 +182,18 @@ class ClassifierMmeTest(unittest.TestCase):
         seid1 = 5000
         ue_ip_addr = "192.168.128.30"
         self.classifier_controller.gtp_handler(
-            1, 65525, 1, 100000,
-            IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            self.EnodeB_IP, seid1, ip_flow_dl=ip_flow_dl,
+            1, 65525, 1, 100000, self.EnodeB_IP,
+            ue_ip_addr,
+            seid1, ip_flow_dl=ip_flow_dl,
         )
 
         dest_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.128.111"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.128.111"),
         )
         src_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.129.4"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.129.4"),
         )
 
         ip_flow_dl = IPFlowDL(
@@ -203,9 +205,9 @@ class ClassifierMmeTest(unittest.TestCase):
         seid2 = 5001
         ue_ip_addr = "192.168.128.31"
         self.classifier_controller.gtp_handler(
-            1, 65525, 2, 100001,
-            IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            self.EnodeB_IP, seid2, ip_flow_dl=ip_flow_dl,
+            1, 65525, 2, 100001, self.EnodeB_IP,
+            ue_ip_addr,
+            seid2, ip_flow_dl=ip_flow_dl,
         )
 
         snapshot_verifier = SnapshotVerifier(
@@ -218,12 +220,12 @@ class ClassifierMmeTest(unittest.TestCase):
     def test_discard_tunnel_ip_flow_dl(self):
 
         dest_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.128.12"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.128.12"),
         )
         src_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.129.64"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.129.64"),
         )
 
         ip_flow_dl = IPFlowDL(
@@ -235,14 +237,14 @@ class ClassifierMmeTest(unittest.TestCase):
         seid1 = 5000
         ue_ip_addr = "192.168.128.30"
         self.classifier_controller.gtp_handler(
-            0, 65525, 1, 100000,
-            IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            self.EnodeB_IP, seid1, ip_flow_dl=ip_flow_dl,
+            0, 65525, 1, 100000, self.EnodeB_IP,
+            ue_ip_addr,
+            seid1, ip_flow_dl=ip_flow_dl,
         )
         self.classifier_controller.gtp_handler(
-            4, 65525, 1, 100000,
-            IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            self.EnodeB_IP, seid1, ip_flow_dl=ip_flow_dl,
+            4, 65525, 1, 100000, self.EnodeB_IP,
+            ue_ip_addr,
+            seid1, ip_flow_dl=ip_flow_dl,
         )
 
         snapshot_verifier = SnapshotVerifier(
@@ -255,12 +257,12 @@ class ClassifierMmeTest(unittest.TestCase):
     def test_resume_tunnel_ip_flow_dl(self):
 
         dest_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.128.12"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.128.12"),
         )
         src_ip = IPAddress(
-                version=IPAddress.IPV4,
-                address=socket.inet_pton(socket.AF_INET, "192.168.129.64"),
+            version=IPAddress.IPV4,
+            address=socket.inet_pton(socket.AF_INET, "192.168.129.64"),
         )
         ip_flow_dl = IPFlowDL(
             set_params=71, tcp_dst_port=0,
@@ -271,9 +273,9 @@ class ClassifierMmeTest(unittest.TestCase):
         ue_ip_addr = "192.168.128.30"
         seid1 = 5000
         self.classifier_controller.gtp_handler(
-            5, 65525, 1, 100000,
-            IPAddress(version=IPAddress.IPV4, address=ue_ip_addr.encode('utf-8')),
-            self.EnodeB_IP, seid1, ip_flow_dl=ip_flow_dl,
+            5, 65525, 1, 100000, self.EnodeB_IP,
+            ue_ip_addr,
+            seid1, ip_flow_dl=ip_flow_dl,
         )
 
         snapshot_verifier = SnapshotVerifier(

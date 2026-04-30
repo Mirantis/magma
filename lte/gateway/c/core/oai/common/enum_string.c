@@ -37,8 +37,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "common_types.h"
-#include "enum_string.h"
+#include "lte/gateway/c/core/oai/common/common_types.h"
+#include "lte/gateway/c/core/oai/common/enum_string.h"
 
 enum_to_string_t rat_to_string[NUMBER_OF_RAT_TYPE] = {
     {RAT_WLAN, "WLAN"},      {RAT_VIRTUAL, "VIRUTAL"},
@@ -69,21 +69,20 @@ enum_to_string_t pdn_type_to_string[IP_MAX] = {
 };
 
 static int compare_values(const void* m1, const void* m2) {
-  enum_to_string_t* mi1 = (enum_to_string_t*) m1;
-  enum_to_string_t* mi2 = (enum_to_string_t*) m2;
+  enum_to_string_t* mi1 = (enum_to_string_t*)m1;
+  enum_to_string_t* mi2 = (enum_to_string_t*)m2;
 
   return (mi1->enum_value - mi2->enum_value);
 }
 
-char* enum_to_string(
-    int enum_val, enum_to_string_t* string_table, int nb_element) {
+char* enum_to_string(int enum_val, enum_to_string_t* string_table,
+                     int nb_element) {
   enum_to_string_t* res;
   enum_to_string_t temp;
 
   temp.enum_value = enum_val;
-  res             = bsearch(
-      &temp, string_table, nb_element, sizeof(enum_to_string_t),
-      compare_values);
+  res = bsearch(&temp, string_table, nb_element, sizeof(enum_to_string_t),
+                compare_values);
 
   if (res == NULL) {
     return "UNKNOWN";

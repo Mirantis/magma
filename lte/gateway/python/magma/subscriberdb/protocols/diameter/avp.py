@@ -10,6 +10,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+# pylint: disable=too-many-function-args
 
 import abc
 import socket
@@ -239,7 +240,7 @@ class BaseAVP(metaclass=abc.ABCMeta):
         return offset - begin
 
     # pylint:disable=no-self-argument
-    def flag_getter(mask):
+    def flag_getter(mask: int):  # type: ignore[misc]
         """Convenience getter for reading AVP flags"""
 
         def getter(self):
@@ -248,7 +249,7 @@ class BaseAVP(metaclass=abc.ABCMeta):
         return getter
 
     # pylint:disable=no-self-argument
-    def flag_setter(mask):
+    def flag_setter(mask: int):  # type: ignore[misc]
         """Convenience setter for reading AVP flags"""
 
         def setter(self, value):
@@ -432,6 +433,7 @@ class ResultCode(IntEnum):
     DIAMETER_AUTHORIZATION_REJECTED = 5003
     DIAMETER_AUTHENTICATION_REJECTED = 4001
     DIAMETER_UNABLE_TO_COMPLY = 5012
+    DIAMETER_ERROR_UNAUTHORIZED_SERVICE = 5511
 
 
 class ResultCodeAVP(EnumAVP):

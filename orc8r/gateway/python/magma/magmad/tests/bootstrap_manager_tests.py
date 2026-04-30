@@ -25,7 +25,9 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
-from google.protobuf.timestamp_pb2 import Timestamp
+from google.protobuf.timestamp_pb2 import (  # pylint: disable=no-name-in-module
+    Timestamp,
+)
 from orc8r.protos import bootstrapper_pb2_grpc
 from orc8r.protos.bootstrapper_pb2 import Challenge, ChallengeKey
 from orc8r.protos.certifier_pb2 import CSR, Certificate
@@ -533,6 +535,13 @@ class BootstrapManagerTest(TestCase):
                 log.output,
                 ['WARNING:root:Received a 1.0-hour certificate'],
             )
+
+        # expired
+        not_before = datetime.datetime.utcnow() - datetime.timedelta(days=2)
+        not_after = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+        cert = create_cert_message(not_before=not_before, not_after=not_after)
+        is_valid = self.manager._is_valid_certificate(cert)
+        self.assertFalse(is_valid)
 
         # correct
         cert = create_cert_message()

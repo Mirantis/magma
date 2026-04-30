@@ -13,14 +13,16 @@ Session.vim
 # Python: byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+.mypy_cache/
 
 # Python: virtual environments
 .env/
 .coverage
 .python-version
 
-# C extensions
+# C/C++ extensions
 *.so
+.clangd/
 
 # Distribution / packaging
 .Python
@@ -45,8 +47,7 @@ orc8r/cloud/swagger/specs
 
 # Node
 node_modules/
-orc8r/cloud/package.json
-orc8r/cloud/yarn.lock
+orc8r/cloud/openapitools.json
 
 # Docusaurus
 docs/docusaurus/build/
@@ -61,11 +62,19 @@ docs/docusaurus/build/
 
 # Terraform
 .terraform
+.terraform.lock.hcl
+.terraform.tfstate.lock.info
+terraform.tfstate
+terraform.tfstate.backup
 *.plan
 aws_keys.tfvars
 
+# AWS EKS config file
+kubeconfig_orc8r
+
 # Helm
 orc8r/cloud/helm/**/.secrets/
+orc8r/cloud/helm/**/secrets/
 
 # Certs for accessing the cloud
 .certs
@@ -92,6 +101,7 @@ orc8r/cloud/test-results/
 
 # FB internal
 fb
+fbcinternal
 
 # MacOS artifacts
 .DS_Store
@@ -99,7 +109,6 @@ fb
 # Code coverage
 orc8r/cloud/coverage/
 feg/gateway/coverage/
-lte/gateway/c/oai/code_coverage/
 
 # Bazel
 bazel-bin
@@ -108,3 +117,8 @@ bazel-out
 bazel-testlogs
 help
 compile_commands.json
+
+# Domain Proxy
+dp/cloud/helm/dp/charts/domain-proxy/certificates/**/*
+dp/tools/deployment/certificates/certs
+orc8r/cloud/helm/orc8r/charts/secrets

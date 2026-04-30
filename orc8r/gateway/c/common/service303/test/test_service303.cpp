@@ -11,21 +11,32 @@
  * limitations under the License.
  */
 
-#include <map>
-#include <pthread.h>
-#include <string>
+#include <assert.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/impl/codegen/client_context.h>
+#include <grpcpp/impl/codegen/status.h>
+#include <grpcpp/security/credentials.h>
+#include <gtest/gtest.h>
+#include <metrics.pb.h>
+#include <orc8r/protos/common.pb.h>
+#include <orc8r/protos/metricsd.pb.h>
+#include <orc8r/protos/service303.grpc.pb.h>
+#include <orc8r/protos/service303.pb.h>
 #include <unistd.h>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <string>
 #include <thread>
 
-#include <gtest/gtest.h>
-#include <prometheus/registry.h>
-#include "orc8r/protos/metricsd.pb.h"
+#include "orc8r/gateway/c/common/service303/MagmaService.hpp"
+#include "orc8r/gateway/c/common/service303/MetricsHelpers.hpp"
+#include "orc8r/gateway/c/common/service303/MetricsSingleton.hpp"
+#include "orc8r/gateway/c/common/service_registry/ServiceRegistrySingleton.hpp"
 
-#include "includes/MetricsRegistry.h"
-#include "includes/MetricsSingleton.h"
-#include "includes/MetricsHelpers.h"
-#include "includes/MagmaService.h"
-#include "includes/ServiceRegistrySingleton.h"
+namespace grpc {
+class Channel;
+}  // namespace grpc
 
 using grpc::Channel;
 using grpc::ChannelCredentials;
@@ -103,25 +114,28 @@ class Service303Test : public ::testing::Test {
     delete service303_client;
   }
 
-  static const MetricFamily& findFamily(
-      const MetricsContainer& container, const std::string& match) {
+  static const MetricFamily& findFamily(const MetricsContainer& container,
+                                        const std::string& match) {
     for (auto const& fam : container.family()) {
       if (fam.name().compare(match) == 0) {
         return fam;
       }
     }
     assert(false);
+    // Just return the first family to make the compiler happy (This is test
+    // only code and we should not get here anyways)
+    return container.family()[0];
   }
 
-  static const double findGauge(
-      const MetricsContainer& container, const std::string& match) {
+  static const double findGauge(const MetricsContainer& container,
+                                const std::string& match) {
     const MetricFamily& fam = findFamily(container, match);
     return fam.metric().Get(0).gauge().value();
   }
 
  protected:
   const std::string service_name = "test_service";
-  const std::string version      = "magma@1.2.3";
+  const std::string version = "magma@1.2.3";
   std::thread magma_server_thread;
   std::shared_ptr<MagmaService> magma_service = nullptr;
   Service303Client* service303_client;
@@ -134,7 +148,7 @@ class Service303Test : public ::testing::Test {
         magma::ServiceRegistrySingleton::Instance()->GetServiceAddrString(
             service_name);
     const std::shared_ptr<Channel> channel = CreateChannel(service_addr, cred);
-    service303_client                      = new Service303Client(channel);
+    service303_client = new Service303Client(channel);
   }
 };
 
@@ -214,9 +228,8 @@ TEST_F(Service303Test, test_histograms) {
   EXPECT_EQ(histogram->sample_sum(), 3);
   EXPECT_EQ(histogram->bucket().size(), 1);
   EXPECT_EQ(histogram->bucket().Get(0).cumulative_count(), 1);
-  EXPECT_EQ(
-      histogram->bucket().Get(0).upper_bound(),
-      std::numeric_limits<double>::infinity());
+  EXPECT_EQ(histogram->bucket().Get(0).upper_bound(),
+            std::numeric_limits<double>::infinity());
 
   // Adding another observation with buckets won't add another metric or
   // more buckets but it will add another observation to the metric
@@ -230,9 +243,8 @@ TEST_F(Service303Test, test_histograms) {
   EXPECT_EQ(histogram->sample_sum(), 10);
   EXPECT_EQ(histogram->bucket().size(), 1);
   EXPECT_EQ(histogram->bucket().Get(0).cumulative_count(), 2);
-  EXPECT_EQ(
-      histogram->bucket().Get(0).upper_bound(),
-      std::numeric_limits<double>::infinity());
+  EXPECT_EQ(histogram->bucket().Get(0).upper_bound(),
+            std::numeric_limits<double>::infinity());
 
   // Since we define a new metric using labels, it should construct with the
   // boundary definitions
@@ -252,32 +264,27 @@ TEST_F(Service303Test, test_histograms) {
   EXPECT_EQ(histogram->bucket().Get(2).cumulative_count(), 1);
   EXPECT_EQ(histogram->bucket().Get(2).upper_bound(), 100);
   EXPECT_EQ(histogram->bucket().Get(3).cumulative_count(), 0);
-  EXPECT_EQ(
-      histogram->bucket().Get(3).upper_bound(),
-      std::numeric_limits<double>::infinity());
+  EXPECT_EQ(histogram->bucket().Get(3).upper_bound(),
+            std::numeric_limits<double>::infinity());
 }
 
 TEST_F(Service303Test, test_timing_metrics) {
   MetricsContainer metrics_container;
   EXPECT_EQ(0, service303_client->GetMetrics(&metrics_container));
-  double start_time = Service303Test::findGauge(
-      metrics_container,
-      std::to_string(magma::orc8r::MetricName::process_start_time_seconds));
-  double uptime = Service303Test::findGauge(
-      metrics_container,
-      std::to_string(magma::orc8r::MetricName::process_cpu_seconds_total));
+  double start_time = Service303Test::findGauge(metrics_container,
+                                                "process_start_time_seconds");
+  double uptime =
+      Service303Test::findGauge(metrics_container, "process_cpu_seconds_total");
 
   EXPECT_GT(start_time, 0);
   EXPECT_GE(uptime, 0);
 
   sleep(1);
   EXPECT_EQ(0, service303_client->GetMetrics(&metrics_container));
-  double new_start = Service303Test::findGauge(
-      metrics_container,
-      std::to_string(magma::orc8r::MetricName::process_start_time_seconds));
-  double new_uptime = Service303Test::findGauge(
-      metrics_container,
-      std::to_string(magma::orc8r::MetricName::process_cpu_seconds_total));
+  double new_start = Service303Test::findGauge(metrics_container,
+                                               "process_start_time_seconds");
+  double new_uptime =
+      Service303Test::findGauge(metrics_container, "process_cpu_seconds_total");
 
   EXPECT_DOUBLE_EQ(start_time, new_start);
   EXPECT_GT(new_uptime, uptime);
@@ -287,45 +294,33 @@ TEST_F(Service303Test, test_memory_metrics) {
   MetricsContainer metrics_container;
   EXPECT_EQ(0, service303_client->GetMetrics(&metrics_container));
   double physical_mem = Service303Test::findGauge(
-      metrics_container,
-      std::to_string(magma::orc8r::MetricName::process_resident_memory_bytes));
+      metrics_container, "process_resident_memory_bytes");
   double virtual_mem = Service303Test::findGauge(
-      metrics_container,
-      std::to_string(magma::orc8r::MetricName::process_virtual_memory_bytes));
+      metrics_container, "process_virtual_memory_bytes");
 
   // Sanity check memory metrics
   EXPECT_GT(physical_mem, 0);
   EXPECT_GT(virtual_mem, 0);
 }
 
-// test that metric names and labels can be converted to their enum form
-TEST_F(Service303Test, test_enum_conversions) {
-  // enum values (from metricsd.proto):
-  // s1_setup => 500, result => 0
-  increment_counter(
-      "mme_new_association", 3, 2, "result", "success", "gateway", "1234");
+TEST_F(Service303Test, test_metric_sample) {
+  increment_counter("mme_new_association", 3, 2, "result", "success", "gateway",
+                    "1234");
 
   MetricsContainer metrics_container;
   EXPECT_EQ(0, service303_client->GetMetrics(&metrics_container));
   const MetricFamily& family =
-      Service303Test::findFamily(metrics_container, "500");
+      Service303Test::findFamily(metrics_container, "mme_new_association");
   const io::prometheus::client::Counter& counter =
       family.metric().Get(0).counter();
   EXPECT_EQ(counter.value(), 3);
 
   const LabelPair& first_label = family.metric().Get(0).label().Get(0);
-  // test converted enum
-  EXPECT_EQ(first_label.name(), "0");
-  EXPECT_EQ(first_label.value(), "success");
+  EXPECT_EQ(first_label.name(), "gateway");
+  EXPECT_EQ(first_label.value(), "1234");
 
   const LabelPair& second_label = family.metric().Get(0).label().Get(1);
-  // test non converted enum
-  EXPECT_EQ(second_label.name(), "gateway");
-  EXPECT_EQ(second_label.value(), "1234");
-}
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  EXPECT_EQ(second_label.name(), "result");
+  EXPECT_EQ(second_label.value(), "success");
 }
 }  // namespace magma

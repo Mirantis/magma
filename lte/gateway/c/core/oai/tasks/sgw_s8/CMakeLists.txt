@@ -10,8 +10,8 @@ generate_cpp_protos("${SGW_LTE_CPP_PROTOS}" "${PROTO_SRCS}" "${PROTO_HDRS}"
 message("s8 Proto_srcs are ${PROTO_SRCS}")
 message("s8 Proto_includes are ${PROTO_HDRS}")
 set(SGW_S8_SRC
-    sgw_s8_task.c
-    sgw_s8_handlers.c
+    sgw_s8_task.cpp
+    sgw_s8_handlers.cpp
     sgw_s8_state.cpp
     sgw_s8_state_manager.cpp
     sgw_s8_state_converter.cpp
@@ -22,7 +22,7 @@ add_library(TASK_SGW_S8 ${SGW_S8_SRC})
 
 target_link_libraries(TASK_SGW_S8
     COMMON
-    LIB_BSTR LIB_HASHTABLE LIB_S8_PROXY
+    LIB_BSTR LIB_S8_PROXY
     LIB_OPENFLOW_CONTROLLER TASK_SERVICE303
     cpp_redis tacopie protobuf
     )

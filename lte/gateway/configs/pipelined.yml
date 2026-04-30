@@ -49,6 +49,9 @@ default_rule_tag: 0x1
 
 # Pipeline application level configs
 access_control:
+  # Blocks access to all AGW local IPs from UEs.
+  block_agw_local_ips: true
+
   # Traffic to ip blocks in the specified direction in the blocklist will be
   # dropped. Each entry in the blocklist should consist of an ip and a
   # direction('inbound' or 'outbound'). If direction is not specified, then
@@ -116,7 +119,7 @@ bridge_name: gtp_br0
 # Bridge ip comes from magma_ifaces_gtp
 bridge_ip_address: 192.168.128.1
 # For ipv6 router solicitation app
-ipv6_router_addr: 'd88d:aba4:472f:fc95:7e7d:8457:5301:ebce'
+# ipv6_router_addr: 'd88d:aba4:472f:fc95:7e7d:8457:5301:ebce'
 
 # QoS parameters
 qos:
@@ -168,10 +171,12 @@ non_nat_gw_probe_frequency: 20
 ovs_uplink_port_name: patch-up
 # virtual_mac: '02:ff:bb:cc:dd:ee'
 uplink_bridge: uplink_br0
-uplink_eth_port_name: uplink_p0
+uplink_eth_port_name: eth2
 uplink_gw_mac: 'ff:ff:ff:ff:ff:ff'
 dp_router_enabled: true
-
+sgi_management_iface_ip_addr: '192.168.129.1/24'
+sgi_management_iface_ipv6_addr: '3001::10/64'
+sgi_management_iface_ipv6_gw: '3001::2'
 ovs_gtp_stats_polling_interval: 180
 
 he_proxy_eth_mac: 'e6:8f:a2:80:80:80'
@@ -190,7 +195,9 @@ ovs_internal_conntrack_port_number: 15579
 ovs_internal_conntrack_fwd_tbl_number: 202
 
 # For 5G Functionality Support flag
-enable5g_features: false
+# Commenting local config parameter for enable5g_features to give
+# precedence to Orc8r streamed config parameter in gateway.mcofnig file
+# enable5g_features: false
 
 upf_node_identifier: 192.168.200.1
 
@@ -215,3 +222,6 @@ sgi_tunnel:
 # dp_tso:
 #   gtp_tso_enable: false
 #
+
+ebpf:
+  enabled: false

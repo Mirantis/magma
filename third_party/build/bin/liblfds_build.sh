@@ -47,13 +47,12 @@ fi
 mkdir ${WORK_DIR}
 cd ${WORK_DIR}
 
-git clone https://github.com/liblfds/liblfds.git
+mkdir -p liblfds/liblfds
+wget --no-check-certificate https://liblfds.org/downloads/liblfds%20release%207.1.0%20source.zip -P liblfds/liblfds
+
+unzip liblfds/liblfds/'liblfds release 7.1.0 source.zip' -d liblfds/
 # maybe want to edit a persistent copy...
 # rsync -ravP --delete "${SCRIPT_DIR}/liblfds/" liblfds/
-
-pushd liblfds
-git apply --verbose "${PATCH_DIR}"/*.patch
-popd
 
 cd liblfds/liblfds/liblfds7.1.0/liblfds710/build/gcc_gnumake
 make so_vanilla

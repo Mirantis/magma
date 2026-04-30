@@ -9,51 +9,48 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
-
- * @format
  */
 
-module.exports = {
-  ignore: [
-    filename => {
-      if (filename.indexOf('fbcnms') >= 0) {
-        return false;
-      } else if (filename.indexOf('magmalte') >= 0) {
-        return false;
-      } else if (filename.indexOf('node_modules') >= 0) {
-        return true;
-      }
-      return false;
-    },
-  ],
-  presets: [
-    [
-      '@babel/preset-env',
-      {
-        targets: {
-          node: 'current',
-          chrome: '58',
+function isWebpack(caller) {
+  return !!(caller && caller.name === 'babel-loader');
+}
+
+module.exports = api => {
+  const enableReactRefresh = api.caller(isWebpack) && !api.env('production');
+
+  return {
+    ignore: ['node_modules'],
+    presets: [
+      [
+        '@babel/preset-env',
+        {
+          targets: {
+            node: 'current',
+            chrome: '58',
+          },
+          corejs: 3,
+          useBuiltIns: 'entry',
         },
-        corejs: 3,
-        useBuiltIns: 'entry',
-      },
+      ],
+      // Enable development transform of React with new automatic runtime
+      [
+        '@babel/preset-react',
+        {development: !api.env('production'), runtime: 'automatic'},
+      ],
+      '@babel/preset-typescript',
     ],
-    '@babel/preset-flow',
-    '@babel/preset-react',
-  ],
-  plugins: [
-    'babel-plugin-lodash',
-    '@babel/plugin-proposal-class-properties',
-    '@babel/plugin-proposal-nullish-coalescing-operator',
-    '@babel/plugin-proposal-optional-chaining',
-    '@babel/plugin-transform-react-jsx',
-    'babel-plugin-fbt',
-    'babel-plugin-fbt-runtime',
-  ],
-  env: {
-    test: {
-      sourceMaps: 'both',
+    plugins: [
+      'babel-plugin-lodash',
+      '@babel/plugin-proposal-class-properties',
+      '@babel/plugin-proposal-nullish-coalescing-operator',
+      '@babel/plugin-proposal-optional-chaining',
+      '@babel/plugin-transform-react-jsx',
+      ...(enableReactRefresh ? ['react-refresh/babel'] : []),
+    ],
+    env: {
+      test: {
+        sourceMaps: 'both',
+      },
     },
-  },
+  };
 };

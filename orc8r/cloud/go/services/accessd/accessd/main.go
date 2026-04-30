@@ -23,7 +23,7 @@ import (
 	"magma/orc8r/cloud/go/service"
 	"magma/orc8r/cloud/go/services/accessd"
 	"magma/orc8r/cloud/go/services/accessd/protos"
-	"magma/orc8r/cloud/go/services/accessd/servicers"
+	servicers "magma/orc8r/cloud/go/services/accessd/servicers/protected"
 	"magma/orc8r/cloud/go/services/accessd/storage"
 	"magma/orc8r/cloud/go/sqorc"
 	storage2 "magma/orc8r/cloud/go/storage"
@@ -41,7 +41,7 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Failed to connect to database: %s", err)
 	}
-	fact := blobstore.NewEntStorage(storage.AccessdTableBlobstore, db, sqorc.GetSqlBuilder())
+	fact := blobstore.NewSQLStoreFactory(storage.AccessdTableBlobstore, db, sqorc.GetSqlBuilder())
 	err = fact.InitializeFactory()
 	if err != nil {
 		glog.Fatalf("Error initializing accessd database: %s", err)
@@ -50,7 +50,7 @@ func main() {
 
 	// Add servicers to the service
 	accessdServer := servicers.NewAccessdServer(store)
-	protos.RegisterAccessControlManagerServer(srv.GrpcServer, accessdServer)
+	protos.RegisterAccessControlManagerServer(srv.ProtectedGrpcServer, accessdServer)
 
 	// Run the service
 	err = srv.Run()

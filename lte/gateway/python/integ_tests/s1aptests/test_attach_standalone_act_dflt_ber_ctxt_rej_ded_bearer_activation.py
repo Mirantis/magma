@@ -22,7 +22,7 @@ from integ_tests.s1aptests.s1ap_utils import SessionManagerUtil
 from lte.protos.policydb_pb2 import FlowMatch
 
 
-class TestAttachStandaloneActvDfltBearCtxtRejDedBerActivation(
+class TestAttachStandaloneActDfltBerCtxtRejDedBearerActivation(
     unittest.TestCase,
 ):
     def setUp(self):
@@ -203,9 +203,7 @@ class TestAttachStandaloneActvDfltBearCtxtRejDedBerActivation(
         self._s1ap_wrapper.sendPdnConnectivityReq(req.ue_id, apn)
         # Receive PDN CONN RSP/Activate default EPS bearer context request
         response = self._s1ap_wrapper.s1_util.get_response()
-        self.assertEqual(
-            response.msg_type, s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value,
-        )
+        assert response.msg_type == s1ap_types.tfwCmd.UE_PDN_CONN_RSP_IND.value
         act_def_bearer_req = response.cast(s1ap_types.uePdnConRsp_t)
 
         print(
